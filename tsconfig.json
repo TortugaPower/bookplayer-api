@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+      "target": "es2020",
+      "lib": ["es2020"],
+      "types": ["reflect-metadata"],
+      "module": "commonjs",
+      "moduleResolution": "node",
+      "experimentalDecorators": true,
+      "emitDecoratorMetadata": true,
+      "outDir": "./dist",
+      "removeComments": true,
+      "sourceMap": true,
+      "incremental": true,
+      "noImplicitAny": true,
+      "esModuleInterop": true,
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "knexfile.ts"
+  ]
+}
