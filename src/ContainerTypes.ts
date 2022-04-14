@@ -4,6 +4,9 @@ const TYPES = {
   UserRouter: Symbol.for('UserRouter'),
   UserController: Symbol.for('UserController'),
   UserServices: Symbol.for('UserService'),
+  SubscriptionController: Symbol.for('SubscriptionController'),
+  SubscriptionService: Symbol.for('SubscriptionService'),
+  RestClientService: Symbol.for('RestClientService'),
 };
 
 export { TYPES };

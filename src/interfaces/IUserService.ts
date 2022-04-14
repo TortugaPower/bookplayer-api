@@ -1,4 +1,4 @@
-import { AppleJWT, SignApple, User, UserSession } from "../types/user";
+import { AppleJWT, AppleUser, SignApple, User, UserSession } from "../types/user";
 
 export interface IUserService {
   TokenUser(UserLogged: User): Promise<string>;
@@ -6,4 +6,5 @@ export interface IUserService {
   verifyToken({ token_id }: SignApple): Promise<AppleJWT>;
   AddNewUser(newUser: User): Promise<User>;
   AddNewDevice(userSession: UserSession): Promise<number>;
+  GetUserByAppleID(apple_id: string): Promise<AppleUser>;
 }

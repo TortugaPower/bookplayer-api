@@ -1,5 +1,5 @@
 import { injectable } from 'inversify';
-import { AppleJWT, SignApple, TypeUserParams, User, UserSession } from '../types/user';
+import { AppleJWT, AppleUser, SignApple, TypeUserParams, User, UserParamsObject, UserSession } from '../types/user';
 import verifyAppleToken from 'verify-apple-id-token';
 import { Knex } from 'knex';
 import database from '../database';
@@ -32,11 +32,12 @@ export class UserServices {
     try {
       const db = trx || this.db;
       const user = await db('users as usr')
-        .select('usr.id_user', 'usr.email', 'up.value as ' + TypeUserParams.subscription, 'ud.session')
-        .leftJoin('user_params as up', function() {
-          this.on('usr.id_user', '=', 'up.user_id').andOn('up.param', '=', db.raw('?', [TypeUserParams.subscription]))
-            .andOn('up.active', '=', db.raw('?', [true]));
-        })
+        .select('usr.id_user', 'usr.email', 'params.* as params', 'ud.session')
+        .joinRaw(`left join lateral (
+          select json_object_agg(p.param, p.value) as params from (
+          select up.param, up.value from user_params up where up.user_id=usr.id_user and up.active= true
+          ) as p
+        ) as params on true`)
         .leftJoin('user_devices as ud', function() {
           this.on('usr.id_user', '=', 'ud.user_id')
             .andOn('ud.session', '=', db.raw('?', [session || '']));
@@ -51,18 +52,34 @@ export class UserServices {
       return null;
     }
   }
+
   async AddNewUser(newUser: User, trx?: Knex.Transaction): Promise<User> {
+    const tx = trx || await this.db.transaction();
     try {
       const { email } = newUser;
-      const db = trx || this.db;
-      const userCreated = await db('users').insert({
+      const userCreated = await tx('users').insert({
         email,
         password: '',
       }).returning('*');
-      return userCreated[0];
+      if (newUser.params) {
+        const paramsRows = Object.keys(newUser.params).reduce((rows, k: keyof UserParamsObject) => {
+          return rows.concat([{
+            param: k,
+            value: newUser.params[k],
+            user_id: userCreated[0].id_user,
+          }]);
+        }, []);
+        await tx('user_params').insert(paramsRows).returning('id_param');
+      }
+      await tx.commit();
+      return {
+        ...userCreated[0],
+        params: newUser.params,
+      };
     } catch (err) {
       console.log(err.message);
-      return null;
+      await tx.rollback()
+      return null;;
     }
   }
 
@@ -77,6 +94,27 @@ export class UserServices {
       }).returning('id_user_device');
       return deviceCreated[0];
     } catch (err) {
+      console.log(err.message);
+      return null;
+    }
+  }
+
+  async GetUserByAppleID(apple_id: string, trx?: Knex.Transaction): Promise<AppleUser> {
+    try {
+      const db = trx || this.db;
+      const user = await db('user_params')
+        .select('usr.id_user', 'usr.email', 'value as '+TypeUserParams.apple_id)
+        .join('users as usr', function() {
+          this.on('usr.id_user', '=', 'user_params.user_id')
+            .andOn('usr.active', '=', db.raw('?', [true]));
+        })
+        .where({
+          'user_params.value': apple_id,
+          'user_params.param': TypeUserParams.apple_id,
+          'user_params.active': true,
+        }).first().debug(true);
+      return user;
+    } catch(err)  {
       console.log(err.message);
       return null;
     }

@@ -10,8 +10,14 @@ export type User = {
   active?: boolean;
   created_at?: string;
   updated_at?: string;
-  [TypeUserParams.subscription]?: string;
   session?: string;
+  params?: UserParamsObject;
+}
+
+export type AppleUser = {
+  id_user?: number;
+  email: string;
+  [TypeUserParams.apple_id]: string;
 }
 
 export type UserSession = {
@@ -52,5 +58,34 @@ export type AppleJWT = {
 
 export enum TypeUserParams {
   subscription = 'subscription',
+  apple_id = 'apple_id',
 }
-export type UserParamsObject = { [key in TypeUserParams]: unknown };
+export type UserParamsObject = { [key in TypeUserParams]?: unknown };
+
+export type RevenuecatEvent = {
+  aliasis: string[];
+  app_id: string;
+  country_code: string;
+  currency: string;
+  entitlement_id: string;
+  environment: string;
+  expiration_at_ms: number;
+  id: string;
+  original_app_user_id: string;
+  period_type: string;
+  price: number;
+  product_id: string;
+  purchased_at_ms: number;
+  takehome_percentage: number;
+  type: string;
+};
+
+export type HTTPMethod = "get" | "GET" | "delete" | "DELETE" | "head" | "HEAD" | "options" | "OPTIONS" | "post" | "POST" | "put" | "PUT" | "patch" | "PATCH" | "purge" | "PURGE" | "link" | "LINK" | "unlink" | "UNLINK";
+
+export interface RestClientProps {
+  headers?: object;
+  baseURL: string;
+  body?: object | null;
+  service: string;
+  method: HTTPMethod;
+}

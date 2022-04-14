@@ -34,7 +34,15 @@ export class UserController implements IUserController {
       session: appleAuth.sub,
     });
     if (!user) {
-      user = await this._userService.AddNewUser({ email: appleAuth.email, active: true });
+      user = await this._userService.AddNewUser({
+        email: appleAuth.email,
+        active: true,
+        params: { apple_id: appleAuth.sub },
+      });
+    }
+    if (!user.params?.apple_id) {
+      res.status(409).json({ message: 'The user exist with different apple id' });
+      return;
     }
     if(!user.session) {
       await this._userService.AddNewDevice({ user_id: user.id_user, session: appleAuth.sub });

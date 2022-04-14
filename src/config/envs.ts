@@ -24,7 +24,10 @@ export const Envs = () => {
       .prop('AWS_SECRET_ACCESS_KEY', S.string().required())
       .prop('S3_REGION', S.string().required())
       .prop('APPLE_CLIENT_ID', S.string().required())
-      .prop('APP_SECRET', S.string().required()),
+      .prop('APP_SECRET', S.string().required())
+      .prop('REVENUECAT_HEADER', S.string().required())
+      .prop('REVENUECAT_API', S.string().required())
+      .prop('REVENUECAT_KEY', S.string().required()),
   };
   envSchema(scheme);
 }

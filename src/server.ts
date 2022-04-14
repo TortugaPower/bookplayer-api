@@ -9,10 +9,12 @@ import authMiddleware from './api/middlewares/auth';
 import { IRouterHttp } from './interfaces/IRouters';
 import { TYPES } from './ContainerTypes';
 import { handleError } from './api/middlewares/error';
+import { IRestClientService } from './interfaces/IRestClientService';
 
 @injectable()
 export class Server {
   @inject(TYPES.RouterHttp) private _authRouter: IRouterHttp;
+  @inject(TYPES.RestClientService) private _restClient: IRestClientService;
   run(): void {
     const app = express();
     app.use(bodyParser.json());
@@ -30,8 +32,12 @@ export class Server {
 
     app.use('/v1', this._authRouter.get());
     app.use(handleError);
+
+    this._restClient.setupClient();
+
     app.listen(5000, () => {
       console.log('todo proper logger');
     });
+    
   }
 }
