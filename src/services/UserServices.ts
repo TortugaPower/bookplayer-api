@@ -119,4 +119,26 @@ export class UserServices {
       return null;
     }
   }
+
+  async UpdateSubscription(user_id: number, subscription: string, trx?: Knex.Transaction ): Promise<boolean> {
+    try {
+      await this.db('user_params').update({
+        updated_at: this.db.fn.now(),
+        active: false,
+      }).where({
+        active: true,
+        param: TypeUserParams.subscription,
+        user_id
+      });
+      await this.db('user_params').insert({
+        param: TypeUserParams.subscription,
+        value: subscription,
+        user_id,
+      }).returning('id_param');
+      return true;
+    } catch(err) {
+      console.log(err.message);
+      return false; 
+    }
+  }
 }

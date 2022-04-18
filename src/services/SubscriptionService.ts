@@ -48,13 +48,17 @@ export class SubscriptionService {
   async GetAndUpdateSubscription( user: AppleUser ): Promise<boolean> {
     try {
       const apple_id = user[TypeUserParams.apple_id];
-      const subscription = await this._restClient.callService({
+      const { subscriber } = await this._restClient.callService({
         baseURL: process.env.REVENUECAT_API,
         service: `subscribers/${apple_id}`,
         method: 'get',
         headers: { authorization: `Bearer ${process.env.REVENUECAT_KEY}`}
       });
-      console.log(subscription);
+      if (subscriber) {
+        const subscriptions = Object.keys(subscriber.subscriptions);
+        const subs = subscriptions.length ? subscriptions.join(',') : null;
+        await this._user.UpdateSubscription(user.id_user, subs);
+      }
       return true;
     } catch(err) {
       console.log(err.message);
