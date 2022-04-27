@@ -168,7 +168,7 @@ export class UserServices {
       }).where({
         active: true,
         id_user: user_id,
-      }).debug(true);
+      });
       await tx.commit();
       return true;
     } catch(err) {
