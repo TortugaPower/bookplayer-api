@@ -4,13 +4,13 @@ import verifyAppleToken from 'verify-apple-id-token';
 import { Knex } from 'knex';
 import database from '../database';
 import JWT from 'jsonwebtoken';
-
+import moment from 'moment';
 @injectable()
 export class UserServices {
   private db = database;
 
   async TokenUser(UserLogged: User): Promise<string> {
-    const token = JWT.sign(JSON.stringify(UserLogged), process.env.APP_SECRET);
+    const token = JWT.sign(JSON.stringify({...UserLogged, time: moment().unix()}), process.env.APP_SECRET);
     return token;
   }
 
@@ -141,4 +141,41 @@ export class UserServices {
       return false; 
     }
   }
+
+  async DeleteAccount(user_id: number, trx?: Knex.Transaction ): Promise<boolean> {
+    const tx = trx || await this.db.transaction();
+    try {
+      await tx('user_params').update({
+        updated_at: tx.fn.now(),
+        active: false,
+        value: tx.raw("concat(user_params.value, '-deleted')")
+      }).where({
+        active: true,
+        user_id
+      });
+      await tx('user_devices').update({
+        updated_at: tx.fn.now(),
+        active: false,
+        session: tx.raw("concat(user_devices.session, '-deleted')")
+      }).where({
+        active: true,
+        user_id
+      });
+      await tx('users').update({
+        updated_at: tx.fn.now(),
+        active: false,
+        email: tx.raw("concat(users.email, '-deleted')"),
+      }).where({
+        active: true,
+        id_user: user_id,
+      }).debug(true);
+      await tx.commit();
+      return true;
+    } catch(err) {
+      console.log(err.message);
+      await tx.rollback();
+      return false; 
+    }
+  }
+
 }

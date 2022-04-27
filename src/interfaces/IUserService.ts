@@ -7,5 +7,6 @@ export interface IUserService {
   AddNewUser(newUser: User): Promise<User>;
   AddNewDevice(userSession: UserSession): Promise<number>;
   GetUserByAppleID(apple_id: string): Promise<AppleUser>;
-  UpdateSubscription(user_id: number, subscription: string,): Promise<boolean>
+  UpdateSubscription(user_id: number, subscription: string,): Promise<boolean>;
+  DeleteAccount(user_id: number): Promise<boolean>
 }

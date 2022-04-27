@@ -55,4 +55,14 @@ export class UserController implements IUserController {
 
     return res.json({ email: user.email, token });
   }
+
+  public async DeleteAccount(req: IRequest, res: IResponse): Promise<IResponse> {
+    const user = req.user;
+    const deleted = await this._userService.DeleteAccount(user.id_user);
+    if (!deleted) {
+      res.status(400).json({ message: 'There is a problem deleting the account' });
+      return;
+    }
+    return res.json({ message: 'The account has been successfully deleted'});
+  }
 }
