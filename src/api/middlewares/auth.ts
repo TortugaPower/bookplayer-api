@@ -8,7 +8,7 @@ const loggedUser = (
 ) => {
   const authorization = req.headers?.authorization;
   if (authorization) {
-    const token = authorization.replace('bearer', '').trim();
+    const token = authorization.replace('Bearer', '').trim();
     try {
       var decoded = JWT.verify(token, process.env.APP_SECRET);
       req.user=decoded;
