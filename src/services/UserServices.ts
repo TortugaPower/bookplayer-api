@@ -164,7 +164,7 @@ export class UserServices {
       await tx('users').update({
         updated_at: tx.fn.now(),
         active: false,
-        email: tx.raw("concat(users.email, '-deleted', ?)", [`${moment().unix()}`]),
+        email: tx.raw(`concat(users.email, '-deleted', '${moment().unix()}')`),
       }).where({
         active: true,
         id_user: user_id,
