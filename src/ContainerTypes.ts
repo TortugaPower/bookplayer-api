@@ -7,6 +7,10 @@ const TYPES = {
   SubscriptionController: Symbol.for('SubscriptionController'),
   SubscriptionService: Symbol.for('SubscriptionService'),
   RestClientService: Symbol.for('RestClientService'),
+  StorageService: Symbol.for('StorageService'),
+  LibraryService: Symbol.for('LibraryService'),
+  LibraryController: Symbol.for('LibraryController'),
+  LibraryRouter: Symbol.for('LibraryRouter'),
 };
 
 export { TYPES };

@@ -89,3 +89,46 @@ export interface RestClientProps {
   service: string;
   method: HTTPMethod;
 }
+
+export enum LibraryItemType {
+  BOOK = '1',
+  FOLDER = '0',
+  BOUND = '2',
+}
+export interface LibraryItem {
+  relativePath: string;
+  originalFileName: string;
+  title: string;
+  details: string;
+  speed: number;
+  currentTime: number;
+  duration: number;
+  percentCompleted: number;
+  isFinished: boolean;
+  orderRank: number;
+  lastPlayDateTimestamp: number;
+  type: LibraryItemType;
+}
+
+export interface LibrarItemDB {
+  user_id: number;
+  key: string;
+  title: string;
+  speed: number;
+  actual_time: string;
+  duration: string;
+  percent_completed: number;
+  order_rank: number;
+  last_play_date: number;
+  type: LibraryItemType,
+  is_finish: boolean,
+  active: boolean,
+}
+
+export interface StorageItem {
+  Key?: string;
+  LastModified?: Date;
+  ETag?: string;
+  Size?: number;
+  isFolder?: boolean;
+}

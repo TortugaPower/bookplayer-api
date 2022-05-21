@@ -7,3 +7,7 @@ export interface IUserRouter {
 export interface IRouterHttp {
   get(): Router;
 }
+
+export interface ILibraryRouter {
+  get(): Router;
+}
