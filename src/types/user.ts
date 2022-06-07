@@ -108,6 +108,7 @@ export interface LibraryItem {
   orderRank: number;
   lastPlayDateTimestamp: number;
   type: LibraryItemType;
+  url: string | null | undefined;
 }
 
 export interface LibrarItemDB {
@@ -131,4 +132,9 @@ export interface StorageItem {
   ETag?: string;
   Size?: number;
   isFolder?: boolean;
+}
+
+export enum S3Action {
+  PUT = 'put',
+  GET = 'get',
 }
