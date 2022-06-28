@@ -90,6 +90,10 @@ export interface RestClientProps {
   method: HTTPMethod;
 }
 
+export enum LibraryItemOutput {
+  DB = '1',
+  API = '0',
+}
 export enum LibraryItemType {
   BOOK = '1',
   FOLDER = '0',
@@ -112,7 +116,7 @@ export interface LibraryItem {
 }
 
 export interface LibrarItemDB {
-  user_id: number;
+  user_id?: number;
   key: string;
   title: string;
   speed: number;
@@ -123,7 +127,7 @@ export interface LibrarItemDB {
   last_play_date: number;
   type: LibraryItemType,
   is_finish: boolean,
-  active: boolean,
+  active?: boolean,
 }
 
 export interface StorageItem {

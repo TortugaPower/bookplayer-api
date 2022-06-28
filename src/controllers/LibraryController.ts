@@ -36,4 +36,16 @@ export class LibraryController implements ILibraryController {
       return;
     }
   }
+
+  public async putLibraryObject(req: IRequest, res: IResponse): Promise<IResponse> {
+    try {
+      const params = req.body;
+      const user = req.user;
+      const content = await this._libraryService.PutObject(user, params);
+      return res.json({ content });
+    } catch(err) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
 }

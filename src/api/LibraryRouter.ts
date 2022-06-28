@@ -12,6 +12,7 @@ export class LibraryRouter implements ILibraryRouter {
     const router = express.Router();
     router.get('/', (...req) => this._controller.getLibraryContentPath(...req));
     router.post('/', (...req) => this._controller.getLibraryObject(...req));
+    router.put('/', (...req) => this._controller.putLibraryObject(...req));
 
     return router;
   }
