@@ -4,7 +4,10 @@ import S from 'fluent-json-schema';
 
 export const Envs = () => {
   const result = require('dotenv').config({
-    path: path.join(__dirname, `../../${process.env.NODE_ENV ?? 'development'}.env`),
+    path: path.join(
+      __dirname,
+      `../../${process.env.NODE_ENV ?? 'development'}.env`,
+    ),
   });
 
   if (result.error) {
@@ -13,7 +16,10 @@ export const Envs = () => {
   const scheme = {
     data: result.parsed,
     schema: S.object()
-      .prop('NODE_ENV', S.string().enum(['development', 'testing', 'production']).required())
+      .prop(
+        'NODE_ENV',
+        S.string().enum(['development', 'testing', 'production']).required(),
+      )
       .prop('API_PORT', S.string().required())
       .prop('DB_HOST', S.string().required())
       .prop('DB_USER', S.string().required())
@@ -30,6 +36,6 @@ export const Envs = () => {
       .prop('REVENUECAT_KEY', S.string().required()),
   };
   envSchema(scheme);
-}
+};
 
 export default Envs;

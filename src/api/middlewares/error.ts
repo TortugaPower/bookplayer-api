@@ -1,6 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import httpStatus from 'http-status';
 import { IRequest, IResponse, INext } from '../../interfaces/IRequest';
-
 
 class HttpException extends Error {
   status: number;
@@ -16,14 +16,12 @@ export const handleError = (
   error: HttpException,
   _req: IResponse,
   res: IRequest,
-  _next: INext
+  _next: INext,
 ) => {
   const status = error.status || httpStatus[500];
   const message = error.message || 'Something went wrong';
-  return res
-    .status(status)
-    .send({
-      status,
-      message,
-    })
+  return res.status(status).send({
+    status,
+    message,
+  });
 };

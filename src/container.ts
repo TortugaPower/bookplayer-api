@@ -12,7 +12,11 @@ import { UserController } from './controllers/UserController';
 
 import { UserServices } from './services/UserServices';
 import { IUserService } from './interfaces/IUserService';
-import { IUserRouter, IRouterHttp, ILibraryRouter } from './interfaces/IRouters';
+import {
+  IUserRouter,
+  IRouterHttp,
+  ILibraryRouter,
+} from './interfaces/IRouters';
 import { SubscriptionController } from './controllers/SubscriptionController';
 import { ISubscriptionController } from './interfaces/ISubscriptionController';
 import { SubscriptionService } from './services/SubscriptionService';
@@ -35,12 +39,20 @@ container.bind<IUserRouter>(TYPES.UserRouter).to(UserRouter);
 
 container.bind<IUserService>(TYPES.UserServices).to(UserServices);
 container.bind<IUserController>(TYPES.UserController).to(UserController);
-container.bind<ISubscriptionController>(TYPES.SubscriptionController).to(SubscriptionController);
-container.bind<ISubscriptionService>(TYPES.SubscriptionService).to(SubscriptionService);
-container.bind<IRestClientService>(TYPES.RestClientService).to(RestClientService);
+container
+  .bind<ISubscriptionController>(TYPES.SubscriptionController)
+  .to(SubscriptionController);
+container
+  .bind<ISubscriptionService>(TYPES.SubscriptionService)
+  .to(SubscriptionService);
+container
+  .bind<IRestClientService>(TYPES.RestClientService)
+  .to(RestClientService);
 container.bind<IStorageService>(TYPES.StorageService).to(StorageService);
 container.bind<ILibraryService>(TYPES.LibraryService).to(LibraryService);
-container.bind<ILibraryController>(TYPES.LibraryController).to(LibraryController);
+container
+  .bind<ILibraryController>(TYPES.LibraryController)
+  .to(LibraryController);
 container.bind<ILibraryRouter>(TYPES.LibraryRouter).to(LibraryRouter);
 
 export { container };

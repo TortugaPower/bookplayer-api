@@ -10,9 +10,18 @@ export class LibraryRouter implements ILibraryRouter {
 
   get(): express.Router {
     const router = express.Router();
-    router.get('/', (...req) => this._controller.getLibraryContentPath(...req));
-    router.post('/', (...req) => this._controller.getLibraryObject(...req));
-    router.put('/', (...req) => this._controller.putLibraryObject(...req));
+    router.get('/', (req, res, next) =>
+      this._controller.getLibraryContentPath(req, res, next).catch(next),
+    );
+    router.post('/', (req, res, next) =>
+      this._controller.getLibraryObject(req, res, next).catch(next),
+    );
+    router.put('/', (req, res, next) =>
+      this._controller.putLibraryObject(req, res, next).catch(next),
+    );
+    router.delete('/', (req, res, next) =>
+      this._controller.deleteLibraryObject(req, res, next).catch(next),
+    );
 
     return router;
   }

@@ -1,5 +1,4 @@
-import { Knex } from "knex";
-
+import { Knex } from 'knex';
 
 export async function up(knex: Knex): Promise<void> {
   return knex.schema
@@ -26,7 +25,7 @@ export async function up(knex: Knex): Promise<void> {
       table.integer('user_id').unsigned().notNullable();
       table.foreign('user_id').references('id_user').inTable('users');
       table
-        .enu('param', ['subscription','apple_id'], {
+        .enu('param', ['subscription', 'apple_id'], {
           useNative: true,
           enumName: 'param_type',
         })
@@ -37,7 +36,4 @@ export async function up(knex: Knex): Promise<void> {
     });
 }
 
-
-export async function down(knex: Knex): Promise<void> {
-}
-
+export async function down(knex: Knex): Promise<void> {}

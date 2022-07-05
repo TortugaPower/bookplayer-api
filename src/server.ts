@@ -37,6 +37,5 @@ export class Server {
     app.listen(5000, () => {
       console.log('todo proper logger');
     });
-    
   }
 }

@@ -1,4 +1,3 @@
-
 export interface SignApple {
   token_id: string;
 }
@@ -12,19 +11,19 @@ export type User = {
   updated_at?: string;
   session?: string;
   params?: UserParamsObject;
-}
+};
 
 export type AppleUser = {
   id_user?: number;
   email: string;
   [TypeUserParams.apple_id]: string;
-}
+};
 
 export type UserSession = {
   email?: string;
   session?: string;
   user_id?: number;
-}
+};
 
 export type UserDevice = {
   id_user_device?: number;
@@ -34,7 +33,7 @@ export type UserDevice = {
   active: boolean;
   created_at?: string;
   updated_at?: string;
-}
+};
 
 export type UserParam = {
   id_param?: number;
@@ -44,7 +43,7 @@ export type UserParam = {
   active: boolean;
   created_at?: string;
   updated_at?: string;
-}
+};
 
 export type AppleJWT = {
   iss: string;
@@ -80,7 +79,27 @@ export type RevenuecatEvent = {
   type: string;
 };
 
-export type HTTPMethod = "get" | "GET" | "delete" | "DELETE" | "head" | "HEAD" | "options" | "OPTIONS" | "post" | "POST" | "put" | "PUT" | "patch" | "PATCH" | "purge" | "PURGE" | "link" | "LINK" | "unlink" | "UNLINK";
+export type HTTPMethod =
+  | 'get'
+  | 'GET'
+  | 'delete'
+  | 'DELETE'
+  | 'head'
+  | 'HEAD'
+  | 'options'
+  | 'OPTIONS'
+  | 'post'
+  | 'POST'
+  | 'put'
+  | 'PUT'
+  | 'patch'
+  | 'PATCH'
+  | 'purge'
+  | 'PURGE'
+  | 'link'
+  | 'LINK'
+  | 'unlink'
+  | 'UNLINK';
 
 export interface RestClientProps {
   headers?: object;
@@ -125,9 +144,9 @@ export interface LibrarItemDB {
   percent_completed: number;
   order_rank: number;
   last_play_date: number;
-  type: LibraryItemType,
-  is_finish: boolean,
-  active?: boolean,
+  type: LibraryItemType;
+  is_finish: boolean;
+  active?: boolean;
 }
 
 export interface StorageItem {

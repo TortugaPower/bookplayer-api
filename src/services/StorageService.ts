@@ -1,5 +1,12 @@
 import { injectable } from 'inversify';
-import { S3, S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3,
+  S3Client,
+  GetObjectCommand,
+  PutObjectCommand,
+  CopyObjectCommand,
+  DeleteObjectCommand,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { S3Action, StorageItem } from '../types/user';
 
@@ -10,23 +17,24 @@ export class StorageService {
 
   async GetDirectoryContent(path: string): Promise<StorageItem[]> {
     try {
-      const fixPath = path[path.length -1] === '/' ? path : path + '/';
+      const fixPath = path[path.length - 1] === '/' ? path : path + '/';
       const objects = await this.client.listObjectsV2({
         Bucket: process.env.S3_BUCKET,
         Delimiter: '/',
         Prefix: fixPath,
       });
       const files = objects?.Contents || [];
-      const folders = objects.CommonPrefixes?.map(pre => {
-        return {
-          Key: pre.Prefix,
-          Size: 0,
-          isFolder: true,
-        }
-      }) || [];
+      const folders =
+        objects.CommonPrefixes?.map((pre) => {
+          return {
+            Key: pre.Prefix,
+            Size: 0,
+            isFolder: true,
+          };
+        }) || [];
       const content = files.concat(folders);
-      return content.filter(item => item.Key !== fixPath);
-    } catch(err)  {
+      return content.filter((item) => item.Key !== fixPath);
+    } catch (err) {
       console.log(err.message);
       return null;
     }
@@ -35,12 +43,11 @@ export class StorageService {
   async GetPresignedUrl(key: string, type: S3Action): Promise<string> {
     try {
       let command;
-      console.log('ekey', key);
       const obj = {
         Bucket: process.env.S3_BUCKET,
         Key: key,
       };
-      switch(type) {
+      switch (type) {
         case S3Action.GET:
           command = new GetObjectCommand(obj);
           break;
@@ -48,8 +55,40 @@ export class StorageService {
           command = new PutObjectCommand(obj);
           break;
       }
-      const url = await getSignedUrl(this.clientObject, command, { expiresIn: 3600 });
+      const url = await getSignedUrl(this.clientObject, command, {
+        expiresIn: 3600,
+      });
       return url;
+    } catch (error) {
+      console.log(error.message);
+      return null;
+    }
+  }
+
+  async copyFile(
+    sourceKey: string,
+    targetKey: string,
+    move: boolean,
+  ): Promise<boolean> {
+    try {
+      console.log('sourceKey', `${process.env.S3_BUCKET}/${sourceKey}`);
+      console.log('targetKey', targetKey);
+      if (move) {
+        await this.clientObject.send(
+          new CopyObjectCommand({
+            Bucket: process.env.S3_BUCKET,
+            Key: targetKey,
+            CopySource: `${process.env.S3_BUCKET}/${sourceKey}`,
+          }),
+        );
+      }
+      await this.clientObject.send(
+        new DeleteObjectCommand({
+          Bucket: process.env.S3_BUCKET,
+          Key: sourceKey,
+        }),
+      );
+      return true;
     } catch (error) {
       console.log(error.message);
       return null;
