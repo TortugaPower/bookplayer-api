@@ -114,9 +114,9 @@ export enum LibraryItemOutput {
   API = '0',
 }
 export enum LibraryItemType {
-  BOOK = '1',
+  BOOK = '2',
   FOLDER = '0',
-  BOUND = '2',
+  BOUND = '1',
 }
 export interface LibraryItem {
   relativePath: string;
