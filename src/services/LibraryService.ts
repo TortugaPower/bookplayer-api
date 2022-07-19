@@ -79,14 +79,38 @@ export class LibraryService {
           user_id,
           key: item.key,
           title: item.title,
+          original_filename: item.original_filename,
           speed: item.speed,
           actual_time: item.actual_time,
+          details: item.details,
           duration: item.duration,
           percent_completed: item.percent_completed,
           order_rank: item.order_rank,
           last_play_date: item.last_play_date,
           type: item.type,
           is_finish: item.is_finish,
+        })
+        .returning('*');
+      return objects[0];
+    } catch (err) {
+      console.log(err.message);
+      return null;
+    }
+  }
+
+  async dbUpdateLibraryItem(
+    user_id: number,
+    key: string,
+    item: LibrarItemDB,
+    trx?: Knex.Transaction,
+  ): Promise<LibrarItemDB> {
+    try {
+      const db = trx || this.db;
+      const objects = await db('library_items')
+        .update(item)
+        .where({
+          user_id,
+          key: key,
         })
         .returning('*');
       return objects[0];
@@ -115,9 +139,9 @@ export class LibraryService {
           if (itemDb) {
             const libObj: LibraryItem = {
               relativePath: itemDb.key,
-              originalFileName: itemDb.title,
+              originalFileName: itemDb.original_filename,
               title: itemDb.title,
-              details: '',
+              details: itemDb.details,
               speed: itemDb.speed,
               currentTime: parseFloat(itemDb.actual_time),
               duration: parseFloat(itemDb.duration),
@@ -155,9 +179,9 @@ export class LibraryService {
         const itemTemp = item as LibrarItemDB;
         parsed = {
           relativePath: itemTemp.key,
-          originalFileName: itemTemp.title,
+          originalFileName: itemTemp.original_filename,
           title: itemTemp.title,
-          details: '',
+          details: itemTemp.details,
           speed: itemTemp.speed,
           currentTime: parseFloat(itemTemp.actual_time),
           duration: parseFloat(itemTemp.duration),
@@ -174,9 +198,11 @@ export class LibraryService {
         parsed = {
           key: itemApi.relativePath,
           title: itemApi.title,
+          original_filename: itemApi.originalFileName,
           speed: itemApi.speed,
+          details: itemApi.details,
           actual_time: `${itemApi.currentTime}`,
-          duration: `${itemApi.currentTime}`,
+          duration: `${itemApi.duration}`,
           percent_completed: itemApi.percentCompleted,
           order_rank: itemApi.orderRank,
           last_play_date: itemApi.lastPlayDateTimestamp,
@@ -269,6 +295,35 @@ export class LibraryService {
         );
       }
       return deletedObjects.map((i) => i.key);
+    } catch (err) {
+      console.log(err.message);
+      throw Error(err);
+    }
+  }
+
+  async UpdateObject(
+    user: User,
+    relativePath: string,
+    params: LibraryItem,
+  ): Promise<LibraryItem> {
+    try {
+      const cleanPath = relativePath.replace(`${user.email}/`, '');
+
+      const libraryItem = (await this.ParseLibraryItemDbB(
+        params,
+        LibraryItemOutput.DB,
+      )) as LibrarItemDB;
+
+      const itemDbInserted = await this.dbUpdateLibraryItem(
+        user.id_user,
+        cleanPath,
+        libraryItem,
+      );
+      const item = (await this.ParseLibraryItemDbB(
+        itemDbInserted,
+        LibraryItemOutput.API,
+      )) as LibraryItem;
+      return item;
     } catch (err) {
       console.log(err.message);
       throw Error(err);

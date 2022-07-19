@@ -4,6 +4,7 @@ import { IRequest, IResponse } from '../interfaces/IRequest';
 import { ISubscriptionService } from '../interfaces/ISubscriptionService';
 import { ILibraryController } from '../interfaces/ILibraryController';
 import { ILibraryService } from '../interfaces/ILibraryService';
+import { LibraryItem } from '../types/user';
 
 @injectable()
 export class LibraryController implements ILibraryController {
@@ -34,7 +35,28 @@ export class LibraryController implements ILibraryController {
       const { relativePath } = req.body;
       const user = req.user;
       const pathKey = `${user.email}/${relativePath ? relativePath : ''}`;
+
+      const updateFields = Object.keys(req.body).filter(
+        (key) => key !== 'relativePath' && key !== 'originalFileName',
+      );
+
+      if (relativePath.length) {
+        const updateObj = updateFields.reduce(
+          (obj: { [key: string]: unknown }, key) => {
+            obj[key] = req.body[key];
+            return obj;
+          },
+          {},
+        );
+        await this._libraryService.UpdateObject(
+          user,
+          relativePath,
+          updateObj as unknown as LibraryItem,
+        );
+      }
+
       const content = await this._libraryService.GetObject(user, pathKey);
+
       return res.json({ content });
     } catch (err) {
       res.status(400).json({ message: err.message });

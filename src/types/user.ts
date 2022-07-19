@@ -137,9 +137,11 @@ export interface LibraryItem {
 export interface LibrarItemDB {
   user_id?: number;
   key: string;
+  original_filename: string;
   title: string;
   speed: number;
   actual_time: string;
+  details: string;
   duration: string;
   percent_completed: number;
   order_rank: number;
