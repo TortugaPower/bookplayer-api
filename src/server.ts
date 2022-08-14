@@ -5,16 +5,18 @@ import compress from 'compression';
 import helmet from 'helmet';
 import cors from 'cors';
 import authMiddleware from './api/middlewares/auth';
-
+import { createServer } from 'http';
 import { IRouterHttp } from './interfaces/IRouters';
 import { TYPES } from './ContainerTypes';
 import { handleError } from './api/middlewares/error';
 import { IRestClientService } from './interfaces/IRestClientService';
+import { ISocketService } from './interfaces/ISocketService';
 
 @injectable()
 export class Server {
   @inject(TYPES.RouterHttp) private _authRouter: IRouterHttp;
   @inject(TYPES.RestClientService) private _restClient: IRestClientService;
+  @inject(TYPES.SocketService) private _socketService: ISocketService;
   run(): void {
     const app = express();
     app.use(bodyParser.json());
@@ -34,8 +36,10 @@ export class Server {
 
     this._restClient.setupClient();
 
-    app.listen(5000, () => {
+    const httpServer = createServer(app);
+    httpServer.listen(5000, () => {
       console.log('todo proper logger');
+      this._socketService.setupClient(httpServer);
     });
   }
 }

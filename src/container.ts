@@ -30,6 +30,8 @@ import { LibraryService } from './services/LibraryService';
 import { ILibraryController } from './interfaces/ILibraryController';
 import { LibraryController } from './controllers/LibraryController';
 import { LibraryRouter } from './api/LibraryRouter';
+import { SocketService } from './services/SocketServer';
+import { ISocketService } from './interfaces/ISocketService';
 
 const container = new Container();
 
@@ -54,5 +56,6 @@ container
   .bind<ILibraryController>(TYPES.LibraryController)
   .to(LibraryController);
 container.bind<ILibraryRouter>(TYPES.LibraryRouter).to(LibraryRouter);
+container.bind<ISocketService>(TYPES.SocketService).to(SocketService);
 
 export { container };

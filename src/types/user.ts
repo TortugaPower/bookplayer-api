@@ -163,3 +163,7 @@ export enum S3Action {
   PUT = 'put',
   GET = 'get',
 }
+
+export interface SocketDefaultEventsMap {
+  [event: string]: (...args: unknown[]) => void;
+}
