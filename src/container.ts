@@ -32,6 +32,8 @@ import { LibraryController } from './controllers/LibraryController';
 import { LibraryRouter } from './api/LibraryRouter';
 import { SocketService } from './services/SocketServer';
 import { ISocketService } from './interfaces/ISocketService';
+import { RedisService } from './services/RedisService';
+import { ICacheService } from './interfaces/ICacheService';
 
 const container = new Container();
 
@@ -57,5 +59,5 @@ container
   .to(LibraryController);
 container.bind<ILibraryRouter>(TYPES.LibraryRouter).to(LibraryRouter);
 container.bind<ISocketService>(TYPES.SocketService).to(SocketService);
-
+container.bind<ICacheService>(TYPES.CacheService).to(RedisService);
 export { container };

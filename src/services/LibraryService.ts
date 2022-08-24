@@ -86,7 +86,9 @@ export class LibraryService {
           duration: item.duration,
           percent_completed: item.percent_completed,
           order_rank: item.order_rank,
-          last_play_date: parseInt(`${item.last_play_date}`),
+          last_play_date: !!item.last_play_date
+            ? parseInt(`${item.last_play_date}`)
+            : null,
           type: item.type,
           is_finish: item.is_finish,
         })
@@ -205,7 +207,9 @@ export class LibraryService {
           duration: `${itemApi.duration}`,
           percent_completed: itemApi.percentCompleted,
           order_rank: itemApi.orderRank,
-          last_play_date: parseInt(`${itemApi.lastPlayDateTimestamp}`),
+          last_play_date: !!itemApi.lastPlayDateTimestamp
+            ? parseInt(`${itemApi.lastPlayDateTimestamp}`)
+            : null,
           type: itemApi.type,
           is_finish: itemApi.isFinished,
         };
