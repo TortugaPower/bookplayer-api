@@ -14,4 +14,12 @@ export interface ILibraryService {
     relativePath: string,
     params: LibraryItem,
   ): Promise<LibraryItem>;
+  reOrderObject(user: User, params: LibraryItem): Promise<LibraryItem>;
+  moveLibraryObject(
+    user: User,
+    params: {
+      origin: string;
+      destination: string;
+    },
+  ): Promise<LibraryItem>;
 }

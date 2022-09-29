@@ -22,7 +22,12 @@ export class LibraryRouter implements ILibraryRouter {
     router.delete('/', (req, res, next) =>
       this._controller.deleteLibraryObject(req, res, next).catch(next),
     );
-
+    router.post('/reorder', (req, res, next) =>
+      this._controller.reorderLibraryObject(req, res, next).catch(next),
+    );
+    router.post('/move', (req, res, next) =>
+      this._controller.moveLibraryObject(req, res, next).catch(next),
+    );
     return router;
   }
 }

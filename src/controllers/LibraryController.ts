@@ -18,6 +18,7 @@ export class LibraryController implements ILibraryController {
     try {
       const { relativePath, sign } = req.query;
       const user = req.user;
+      console.log(user);
       const path = `${user.email}/${relativePath ? relativePath : ''}`;
       const content = await this._libraryService.GetLibrary(user, path, sign);
       return res.json({ content });
@@ -87,6 +88,39 @@ export class LibraryController implements ILibraryController {
       const params = req.body;
       const user = req.user;
       const content = await this._libraryService.DeleteObject(user, params);
+      return res.json({ content });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
+
+  public async reorderLibraryObject(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const params = req.body;
+      const user = req.user;
+      const content = await this._libraryService.reOrderObject(user, params);
+      return res.json({ content });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
+
+  public async moveLibraryObject(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const params = req.body;
+      const user = req.user;
+      const content = await this._libraryService.moveLibraryObject(
+        user,
+        params,
+      );
       return res.json({ content });
     } catch (err) {
       res.status(400).json({ message: err.message });

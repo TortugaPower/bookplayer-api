@@ -21,6 +21,10 @@ export class LibraryService {
   async dbGetLibrary(
     user_id: number,
     path: string,
+    filter?: {
+      rawFilter?: string;
+      exactly?: boolean;
+    },
     trx?: Knex.Transaction,
   ): Promise<LibrarItemDB[]> {
     try {
@@ -34,7 +38,14 @@ export class LibraryService {
         .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [
           pathNumber,
         ])
-        .whereRaw('key like ?', [`${path}%`])
+        .whereRaw('key like ?', [`${path}${filter?.exactly ? '' : '%'}`])
+        .andWhere((builder) => {
+          if (!!filter?.rawFilter) {
+            builder.whereRaw(filter?.rawFilter);
+          } else {
+            builder.where(true);
+          }
+        })
         .debug(true);
       return objects;
     } catch (err) {
@@ -224,7 +235,7 @@ export class LibraryService {
       const objectDB = await this.dbGetLibrary(user.id_user, cleanPath);
       const itemDb = objectDB[0];
       if (!itemDb) {
-        throw Error('Item not exists');
+        throw Error('Item not found');
       }
       const url = await this._storage.GetPresignedUrl(
         `${user.email}/${itemDb.key}`,
@@ -327,6 +338,131 @@ export class LibraryService {
         itemDbInserted,
         LibraryItemOutput.API,
       )) as LibraryItem;
+      return item;
+    } catch (err) {
+      console.log(err.message);
+      throw Error(err);
+    }
+  }
+
+  async reOrderObject(user: User, params: LibraryItem): Promise<LibraryItem> {
+    try {
+      const { relativePath, orderRank } = params;
+      const cleanPath = relativePath.replace(`${user.email}/`, '');
+      const objectDB = await this.dbGetLibrary(user.id_user, cleanPath);
+
+      if (objectDB.length !== 1) {
+        throw Error('Item not found');
+      }
+      const prevOrder = objectDB[0].order_rank;
+
+      if (prevOrder === orderRank) {
+        throw Error('The order is the same');
+      }
+      const isGreater = prevOrder < orderRank;
+      const orderFilter: [number, number] = isGreater
+        ? [prevOrder + 1, orderRank]
+        : [orderRank, prevOrder - 1];
+
+      const pathArray = relativePath.split('/');
+      pathArray.pop();
+      const path = pathArray.join('/');
+      const trx = await this.db.transaction();
+      await trx('library_items as li')
+        .update({
+          order_rank: trx.raw(`order_rank ${isGreater ? '-' : '+'} 1`),
+        })
+        .where({
+          user_id: user.id_user,
+          active: true,
+        })
+        .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [
+          pathArray.length || 1,
+        ])
+        .whereRaw('key like ?', [`${path}%`])
+        .whereBetween('order_rank', orderFilter)
+        .debug(true);
+
+      const itemDbInserted = await this.dbUpdateLibraryItem(
+        user.id_user,
+        cleanPath,
+        {
+          ...objectDB[0],
+          order_rank: orderRank,
+        },
+        trx,
+      );
+      await trx.commit();
+
+      const item = (await this.ParseLibraryItemDbB(
+        itemDbInserted,
+        LibraryItemOutput.API,
+      )) as LibraryItem;
+
+      return item;
+    } catch (err) {
+      console.log(err.message);
+      throw Error(err);
+    }
+  }
+
+  async moveLibraryObject(
+    user: User,
+    params: {
+      origin: string;
+      destination: string;
+    },
+  ): Promise<LibraryItem> {
+    try {
+      const { origin, destination } = params;
+      const dest = destination.trim();
+      const destinationPathArray = dest.split('/');
+
+      if (destinationPathArray.length > 1) {
+        destinationPathArray.pop();
+        const destinationPathFolder = destinationPathArray.join('/');
+        const destinationDB = await this.dbGetLibrary(
+          user.id_user,
+          destinationPathFolder,
+          { exactly: true },
+        );
+        if (destinationDB.length !== 1) {
+          throw Error('destination not found');
+        }
+        const destType = `${destinationDB[0].type}`;
+        if (
+          destType !== LibraryItemType.FOLDER &&
+          destType !== LibraryItemType.BOUND
+        ) {
+          throw Error('The destination is invalid');
+        }
+      }
+      const originObj = await this.dbGetLibrary(user.id_user, origin);
+      if (originObj.length !== 1) {
+        throw Error('origin is invalid');
+      }
+
+      const sourceKey = `${user.email}/${originObj[0].key}`;
+      const targetKey = `${user.email}/${dest}`;
+      const moved = await this._storage.copyFile(sourceKey, targetKey, true);
+
+      if (!moved) {
+        throw Error('error moving the book');
+      }
+
+      const itemDbInserted = await this.dbUpdateLibraryItem(
+        user.id_user,
+        originObj[0].key,
+        {
+          ...originObj[0],
+          key: dest,
+        },
+      );
+      const item = (await this.ParseLibraryItemDbB(
+        itemDbInserted,
+        LibraryItemOutput.API,
+      )) as LibraryItem;
+
       return item;
     } catch (err) {
       console.log(err.message);

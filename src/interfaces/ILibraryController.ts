@@ -13,4 +13,14 @@ export interface ILibraryController {
     res: IResponse,
     _: INext,
   ): Promise<IResponse>;
+  reorderLibraryObject(
+    req: IRequest,
+    res: IResponse,
+    _: INext,
+  ): Promise<IResponse>;
+  moveLibraryObject(
+    req: IRequest,
+    res: IResponse,
+    _: INext,
+  ): Promise<IResponse>;
 }
