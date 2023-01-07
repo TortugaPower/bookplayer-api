@@ -23,4 +23,9 @@ export interface ILibraryController {
     res: IResponse,
     _: INext,
   ): Promise<IResponse>;
+  deleteFolderMoving(
+    req: IRequest,
+    res: IResponse,
+    _: INext,
+  ): Promise<IResponse>;
 }

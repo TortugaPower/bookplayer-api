@@ -7,15 +7,19 @@ import { TYPES } from '../ContainerTypes';
 import { ICacheService } from '../interfaces/ICacheService';
 import { Handshake } from 'socket.io/dist/socket';
 import loggedUser from '../api/middlewares/auth';
+import { ILibraryService } from '../interfaces/ILibraryService';
 
 enum SocketStates {
   CONNECTION = 'connection',
   DISCONNECT = 'disconnect',
 }
-
+enum SocketEvents {
+  TRACK_UPDATE = 'track_update',
+}
 @injectable()
 export class SocketService {
   @inject(TYPES.CacheService) private _cacheService: ICacheService;
+  @inject(TYPES.LibraryService) private _libraryService: ILibraryService;
   private socketServer: Server<
     SocketDefaultEventsMap,
     SocketDefaultEventsMap,
@@ -23,7 +27,7 @@ export class SocketService {
     any
   >;
 
-  authValidation(handshake: Handshake): { id_user: number } {
+  authValidation(handshake: Handshake): { id_user: number; email: string } {
     try {
       const { authorization } = handshake.auth;
       const req: any = {
@@ -38,6 +42,7 @@ export class SocketService {
       }
       return {
         id_user: req.user.id_user,
+        email: req.user.email,
       };
     } catch (err) {
       return null;
@@ -53,7 +58,7 @@ export class SocketService {
         if (user) {
           socket.data = {
             ...socket.data,
-            id_user: user.id_user,
+            ...user,
           };
           next();
         } else {
@@ -98,6 +103,22 @@ export class SocketService {
               `socket_${socket.data.id_user}`,
             );
           }
+        });
+
+        socket.on(SocketEvents.TRACK_UPDATE, (itemData: any) => {
+          const itemDataParsed = JSON.parse(itemData.data);
+          console.log(socket.data, itemDataParsed);
+          new Promise(async (resolve) => {
+            await this._libraryService.UpdateObject(
+              {
+                id_user: socket.data.id_user,
+                email: socket.data.email,
+              },
+              itemDataParsed.relativePath,
+              itemDataParsed,
+            );
+            resolve(true);
+          });
         });
       });
     }

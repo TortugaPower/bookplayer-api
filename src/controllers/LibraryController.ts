@@ -41,7 +41,7 @@ export class LibraryController implements ILibraryController {
         (key) => key !== 'relativePath' && key !== 'originalFileName',
       );
 
-      if (relativePath.length) {
+      if (updateFields.length) {
         const updateObj = updateFields.reduce(
           (obj: { [key: string]: unknown }, key) => {
             obj[key] = req.body[key];
@@ -122,6 +122,28 @@ export class LibraryController implements ILibraryController {
         params,
       );
       return res.json({ content });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
+
+  public async deleteFolderMoving(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const { relativePath } = req.body;
+
+      if (!relativePath) {
+        throw new Error('Invalid folder');
+      }
+      const user = req.user;
+      const success = await this._libraryService.deleteFolderMoving(
+        user,
+        relativePath,
+      );
+      return res.json({ success });
     } catch (err) {
       res.status(400).json({ message: err.message });
       return;

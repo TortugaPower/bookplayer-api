@@ -135,6 +135,7 @@ export interface LibraryItem {
 }
 
 export interface LibrarItemDB {
+  id_library_item?: number;
   user_id?: number;
   key: string;
   original_filename: string;

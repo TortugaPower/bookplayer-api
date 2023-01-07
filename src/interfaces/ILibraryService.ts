@@ -22,4 +22,5 @@ export interface ILibraryService {
       destination: string;
     },
   ): Promise<LibraryItem>;
+  deleteFolderMoving(user: User, folderPath: string): Promise<boolean>;
 }

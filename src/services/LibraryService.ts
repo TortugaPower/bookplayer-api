@@ -46,7 +46,7 @@ export class LibraryService {
             builder.where(true);
           }
         })
-        .debug(true);
+        .debug(false);
       return objects;
     } catch (err) {
       console.log(err.message);
@@ -58,6 +58,7 @@ export class LibraryService {
     user_id: number,
     path: string,
     trx?: Knex.Transaction,
+    exactly?: boolean,
   ): Promise<LibrarItemDB[]> {
     try {
       const db = trx || this.db;
@@ -69,9 +70,43 @@ export class LibraryService {
           user_id,
           active: true,
         })
-        .whereRaw('key like ?', [`${path}%`])
+        .whereRaw('key like ?', [`${path}${exactly ? '' : '%'}`])
         .returning('*');
       return objectsDeleted;
+    } catch (err) {
+      console.log(err.message);
+      return null;
+    }
+  }
+
+  async dbMoveFilesUp(
+    user_id: number,
+    folderPath: string,
+    trx?: Knex.Transaction,
+  ): Promise<LibrarItemDB[]> {
+    try {
+      const db = trx || this.db;
+      const objectsMoved = await db
+        .raw(
+          `
+      update library_items ss
+      set key=filtro.newKey
+      from (select filtroKey.id_library_item,
+                  array_to_string(array_remove(removing, removing[removeIndex]), '/') as newKey
+            from (
+                    select id_library_item,
+                            string_to_array(key, '/') as removing,
+                            array_length(string_to_array(?, '/'), 1) as removeIndex
+                    from library_items
+                    where user_id=? and active=true and key like ?
+                ) as filtroKey) as filtro
+      where ss.id_library_item = filtro.id_library_item
+      returning ss.id_library_item, ss.key, ss.type;
+      `,
+          [folderPath, user_id, `${folderPath}/%`],
+        )
+        .then((result) => result.rows);
+      return objectsMoved;
     } catch (err) {
       console.log(err.message);
       return null;
@@ -381,7 +416,7 @@ export class LibraryService {
         ])
         .whereRaw('key like ?', [`${path}%`])
         .whereBetween('order_rank', orderFilter)
-        .debug(true);
+        .debug(false);
 
       const itemDbInserted = await this.dbUpdateLibraryItem(
         user.id_user,
@@ -467,6 +502,51 @@ export class LibraryService {
     } catch (err) {
       console.log(err.message);
       throw Error(err);
+    }
+  }
+
+  async deleteFolderMoving(user: User, folderPath: string): Promise<boolean> {
+    try {
+      const trx = await this.db.transaction();
+      const folderDB = await this.dbGetLibrary(
+        user.id_user,
+        folderPath,
+        { exactly: true },
+        trx,
+      );
+      if (!folderDB[0]) {
+        throw Error('folder not found');
+      }
+      const folderDeleted = await this.dbDeleteLibrary(
+        user.id_user,
+        folderPath,
+        trx,
+        true,
+      );
+      if (!folderDeleted) {
+        throw Error('folder not deleted');
+      }
+      const allFilesInside = await this.dbGetLibrary(
+        user.id_user,
+        `${folderPath}/`,
+      );
+      const dbMoved = await this.dbMoveFilesUp(user.id_user, folderPath, trx);
+      for (let index = 0; index < dbMoved.length; index++) {
+        const fileMoved = dbMoved[index];
+        if (`${fileMoved.type}` === LibraryItemType.BOOK) {
+          const prevFile = allFilesInside.find(
+            (preFile) => preFile.id_library_item === fileMoved.id_library_item,
+          );
+          const sourceKey = `${user.email}/${prevFile.key}`;
+          const targetKey = `${user.email}/${fileMoved.key}`;
+          await this._storage.copyFile(sourceKey, targetKey, true);
+        }
+      }
+      // throw new Error('error');
+      await trx.commit();
+      return true;
+    } catch (err) {
+      throw Error(err.message);
     }
   }
 }
