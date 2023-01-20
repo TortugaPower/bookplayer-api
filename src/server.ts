@@ -35,11 +35,10 @@ export class Server {
 
     app.use('/v1', this._authRouter.get());
     app.use(handleError);
-
     this._restClient.setupClient();
 
     const httpServer = createServer(app);
-    httpServer.listen(5000, () => {
+    httpServer.listen(process.env.API_PORT || 5000, () => {
       console.log('todo proper logger');
       this._cacheService.connectCacheService();
       this._socketService.setupClient(httpServer);

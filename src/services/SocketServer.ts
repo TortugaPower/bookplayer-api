@@ -109,14 +109,18 @@ export class SocketService {
           const itemDataParsed = JSON.parse(itemData.data);
           console.log(socket.data, itemDataParsed);
           new Promise(async (resolve) => {
-            await this._libraryService.UpdateObject(
-              {
-                id_user: socket.data.id_user,
-                email: socket.data.email,
-              },
-              itemDataParsed.relativePath,
-              itemDataParsed,
-            );
+            try {
+              await this._libraryService.UpdateObject(
+                {
+                  id_user: socket.data.id_user,
+                  email: socket.data.email,
+                },
+                itemDataParsed.relativePath,
+                itemDataParsed,
+              );
+            } catch (err) {
+              console.log('Socket update', err.message);
+            }
             resolve(true);
           });
         });

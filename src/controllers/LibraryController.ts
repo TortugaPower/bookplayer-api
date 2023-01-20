@@ -1,7 +1,6 @@
 import { inject, injectable } from 'inversify';
 import { TYPES } from '../ContainerTypes';
 import { IRequest, IResponse } from '../interfaces/IRequest';
-import { ISubscriptionService } from '../interfaces/ISubscriptionService';
 import { ILibraryController } from '../interfaces/ILibraryController';
 import { ILibraryService } from '../interfaces/ILibraryService';
 import { LibraryItem } from '../types/user';
@@ -18,10 +17,34 @@ export class LibraryController implements ILibraryController {
     try {
       const { relativePath, sign } = req.query;
       const user = req.user;
-      console.log(user);
       const path = `${user.email}/${relativePath ? relativePath : ''}`;
       const content = await this._libraryService.GetLibrary(user, path, sign);
-      return res.json({ content });
+      let lastItemPlayed;
+      if (!relativePath || relativePath === '/' || relativePath === '') {
+        lastItemPlayed = await this._libraryService.dbGetLastItemPlayed(
+          user,
+          sign,
+        );
+      }
+      return res.json({ content, lastItemPlayed });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
+
+  public async getLastPlayedItem(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const { sign } = req.query;
+      const user = req.user;
+      const lastItemPlayed = await this._libraryService.dbGetLastItemPlayed(
+        user,
+        sign,
+      );
+      return res.json({ lastItemPlayed });
     } catch (err) {
       res.status(400).json({ message: err.message });
       return;

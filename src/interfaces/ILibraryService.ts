@@ -23,4 +23,5 @@ export interface ILibraryService {
     },
   ): Promise<LibraryItem>;
   deleteFolderMoving(user: User, folderPath: string): Promise<boolean>;
+  dbGetLastItemPlayed(user: User, withPresign?: boolean): Promise<LibraryItem>;
 }

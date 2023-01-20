@@ -31,6 +31,9 @@ export class LibraryRouter implements ILibraryRouter {
     router.delete('/folder_in_out', (req, res, next) =>
       this._controller.deleteFolderMoving(req, res, next).catch(next),
     );
+    router.get('/last_played', (req, res, next) =>
+      this._controller.getLastPlayedItem(req, res, next).catch(next),
+    );
     return router;
   }
 }

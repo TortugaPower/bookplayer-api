@@ -369,6 +369,7 @@ export class LibraryService {
         cleanPath,
         libraryItem,
       );
+
       const item = (await this.ParseLibraryItemDbB(
         itemDbInserted,
         LibraryItemOutput.API,
@@ -547,6 +548,40 @@ export class LibraryService {
       return true;
     } catch (err) {
       throw Error(err.message);
+    }
+  }
+
+  async dbGetLastItemPlayed(
+    user: User,
+    withPresign?: boolean,
+    trx?: Knex.Transaction,
+  ): Promise<LibraryItem> {
+    try {
+      const db = trx || this.db;
+      const itemDb = await db('library_items as li')
+        .where({
+          user_id: user.id_user,
+          active: true,
+        })
+        .andWhereRaw('last_play_date is not null')
+        .orderBy('last_play_date', 'desc')
+        .first()
+        .debug(false);
+
+      const item = (await this.ParseLibraryItemDbB(
+        itemDb,
+        LibraryItemOutput.API,
+      )) as LibraryItem;
+      if (withPresign) {
+        item.url = await this._storage.GetPresignedUrl(
+          `${user.email}/${itemDb.key}`,
+          S3Action.GET,
+        );
+      }
+      return item;
+    } catch (err) {
+      console.log(err.message);
+      return null;
     }
   }
 }
