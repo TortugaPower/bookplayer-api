@@ -297,14 +297,20 @@ export class LibraryService {
       if (itemDb) {
         throw Error('Item already exists');
       }
-      const url = await this._storage.GetPresignedUrl(
-        `${user.email}/${relativePath}`,
-        S3Action.PUT,
-      );
       const libObj = (await this.ParseLibraryItemDbB(
         params,
         LibraryItemOutput.DB,
       )) as LibrarItemDB;
+      
+      // S3 needs the forward slash to create an empty folder
+      const resourcePath = libObj.type == LibraryItemType.BOOK
+      ? `${user.email}/${relativePath}`
+      : `${user.email}/${relativePath}/`;
+      
+      const url = await this._storage.GetPresignedUrl(
+        resourcePath,
+        S3Action.PUT,
+      );
       const itemDbInserted = await this.dbInsertLibraryItem(
         user.id_user,
         libObj,
