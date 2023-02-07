@@ -15,9 +15,13 @@ export class StorageService {
   private client = new S3({ region: process.env.S3_REGION });
   private clientObject = new S3Client({ region: process.env.S3_REGION });
 
-  async GetDirectoryContent(path: string): Promise<StorageItem[]> {
+  async GetDirectoryContent(
+    path: string,
+    isFolder = true,
+  ): Promise<StorageItem[]> {
     try {
-      const fixPath = path[path.length - 1] === '/' ? path : path + '/';
+      const fixPath =
+        path[path.length - 1] === '/' || !isFolder ? path : path + '/';
       const objects = await this.client.listObjectsV2({
         Bucket: process.env.S3_BUCKET,
         Delimiter: '/',
@@ -33,7 +37,7 @@ export class StorageService {
           };
         }) || [];
       const content = files.concat(folders);
-      return content.filter((item) => item.Key !== fixPath);
+      return content.filter((item) => item.Key !== fixPath || !isFolder);
     } catch (err) {
       console.log(err.message);
       return null;

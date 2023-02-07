@@ -175,9 +175,16 @@ export class LibraryService {
     withPresign?: boolean,
   ): Promise<LibraryItem[]> {
     try {
-      const storageObjects = await this._storage.GetDirectoryContent(path);
       const cleanPath = path.replace(`${user.email}/`, '');
       const objectDB = await this.dbGetLibrary(user.id_user, cleanPath);
+      let isFolder = true;
+      if (objectDB?.length && objectDB[0].key === cleanPath) {
+        isFolder = false;
+      }
+      const storageObjects = await this._storage.GetDirectoryContent(
+        path,
+        isFolder,
+      );
       const library: LibraryItem[] = [];
       if (objectDB?.length) {
         for (let index = 0; index < objectDB.length; index++) {
@@ -302,12 +309,13 @@ export class LibraryService {
         params,
         LibraryItemOutput.DB,
       )) as LibrarItemDB;
-      
+
       // S3 needs the forward slash to create an empty folder
-      const resourcePath = libObj.type == LibraryItemType.BOOK
-      ? `${user.email}/${relativePath}`
-      : `${user.email}/${relativePath}/`;
-      
+      const resourcePath =
+        libObj.type == LibraryItemType.BOOK
+          ? `${user.email}/${relativePath}`
+          : `${user.email}/${relativePath}/`;
+
       const url = await this._storage.GetPresignedUrl(
         resourcePath,
         S3Action.PUT,
