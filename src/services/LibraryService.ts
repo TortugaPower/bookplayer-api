@@ -178,13 +178,13 @@ export class LibraryService {
       const cleanPath = path.replace(`${user.email}/`, '');
       const objectDB = await this.dbGetLibrary(user.id_user, cleanPath);
       const library: LibraryItem[] = [];
-      if (storageObjects?.length) {
-        for (let index = 0; index < storageObjects.length; index++) {
-          const obj = storageObjects[index];
-          const itemDb = objectDB.find(
-            (item) => obj.Key.indexOf(item.key) !== -1,
+      if (objectDB?.length) {
+        for (let index = 0; index < objectDB.length; index++) {
+          const itemDb = objectDB[index];
+          const storageObj = storageObjects.find(
+            (item) => item.Key.indexOf(itemDb.key) !== -1,
           );
-          if (itemDb) {
+          if (storageObj) {
             const libObj: LibraryItem = {
               relativePath: itemDb.key,
               originalFileName: itemDb.original_filename,
