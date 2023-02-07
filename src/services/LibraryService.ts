@@ -46,6 +46,7 @@ export class LibraryService {
             builder.where(true);
           }
         })
+        .orderBy('order_rank', 'asc')
         .debug(false);
       return objects;
     } catch (err) {
