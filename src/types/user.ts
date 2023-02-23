@@ -132,6 +132,7 @@ export interface LibraryItem {
   lastPlayDateTimestamp: number;
   type: LibraryItemType;
   url: string | null | undefined;
+  expires_in?: number;
 }
 
 export interface LibrarItemDB {

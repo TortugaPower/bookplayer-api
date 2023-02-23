@@ -209,10 +209,12 @@ export class LibraryService {
               url: null,
             };
             if (withPresign) {
-              libObj.url = await this._storage.GetPresignedUrl(
+              const { url, expires_in } = await this._storage.GetPresignedUrl(
                 `${user.email}/${itemDb.key}`,
                 S3Action.GET,
               );
+              libObj.url = url;
+              libObj.expires_in = expires_in;
             }
             library.push(libObj);
           }
@@ -280,7 +282,7 @@ export class LibraryService {
       if (!itemDb) {
         throw Error('Item not found');
       }
-      const url = await this._storage.GetPresignedUrl(
+      const { url, expires_in } = await this._storage.GetPresignedUrl(
         `${user.email}/${itemDb.key}`,
         S3Action.GET,
       );
@@ -289,6 +291,7 @@ export class LibraryService {
         LibraryItemOutput.API,
       )) as LibraryItem;
       libObj.url = url;
+      libObj.expires_in = expires_in;
       return libObj;
     } catch (err) {
       console.log(err.message);
@@ -316,7 +319,7 @@ export class LibraryService {
           ? `${user.email}/${relativePath}`
           : `${user.email}/${relativePath}/`;
 
-      const url = await this._storage.GetPresignedUrl(
+      const { url, expires_in } = await this._storage.GetPresignedUrl(
         resourcePath,
         S3Action.PUT,
       );
@@ -329,6 +332,7 @@ export class LibraryService {
         LibraryItemOutput.API,
       )) as LibraryItem;
       apiResponse.url = url;
+      apiResponse.expires_in = expires_in;
       return apiResponse;
     } catch (err) {
       console.log(err.message);
@@ -588,10 +592,12 @@ export class LibraryService {
         LibraryItemOutput.API,
       )) as LibraryItem;
       if (withPresign) {
-        item.url = await this._storage.GetPresignedUrl(
+        const { url, expires_in } = await this._storage.GetPresignedUrl(
           `${user.email}/${itemDb.key}`,
           S3Action.GET,
         );
+        item.url = url;
+        item.expires_in = expires_in;
       }
       return item;
     } catch (err) {

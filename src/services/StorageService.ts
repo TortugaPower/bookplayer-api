@@ -9,6 +9,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { S3Action, StorageItem } from '../types/user';
+import moment from 'moment';
 
 @injectable()
 export class StorageService {
@@ -44,7 +45,13 @@ export class StorageService {
     }
   }
 
-  async GetPresignedUrl(key: string, type: S3Action): Promise<string> {
+  async GetPresignedUrl(
+    key: string,
+    type: S3Action,
+  ): Promise<{
+    url: string;
+    expires_in: number;
+  }> {
     try {
       let command;
       const obj = {
@@ -59,10 +66,12 @@ export class StorageService {
           command = new PutObjectCommand(obj);
           break;
       }
+      const seconds = 3600 * 24; // 1 hour * 24 = 1 day
+      const expires = moment().add(seconds, 'seconds').unix();
       const url = await getSignedUrl(this.clientObject, command, {
-        expiresIn: 3600,
+        expiresIn: seconds,
       });
-      return url;
+      return { url, expires_in: expires };
     } catch (error) {
       console.log(error.message);
       return null;
