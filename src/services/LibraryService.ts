@@ -260,7 +260,9 @@ export class LibraryService {
           speed: itemApi.speed,
           details: itemApi.details,
           actual_time: `${itemApi.currentTime}`,
-          duration: `${itemApi.duration}`,
+          duration: !!itemApi.duration
+            ? `${itemApi.duration}`
+            : undefined,
           percent_completed: itemApi.percentCompleted,
           order_rank: itemApi.orderRank,
           last_play_date: !!itemApi.lastPlayDateTimestamp
