@@ -16,6 +16,28 @@ export class StorageService {
   private client = new S3({ region: process.env.S3_REGION });
   private clientObject = new S3Client({ region: process.env.S3_REGION });
 
+  async fileExists(
+    key: string,
+  ): Promise<boolean> {
+    try {
+      const data = await this.client.headObject({
+        Bucket: process.env.S3_BUCKET,
+        Key: key,
+      });
+
+      return data.$metadata.httpStatusCode === 200;
+    } catch (error) {
+      if (error.$metadata?.httpStatusCode === 404) {
+        return false;
+      } else if (error.$metadata?.httpStatusCode === 403) {
+        return false;
+      } else {
+        console.log(error.message);
+        return null;
+      }
+    }
+  }
+
   async GetDirectoryContent(
     path: string,
     isFolder = true,

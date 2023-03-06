@@ -304,16 +304,26 @@ export class LibraryService {
   async PutObject(user: User, params: LibraryItem): Promise<LibraryItem> {
     try {
       const { relativePath } = params;
-      const cleanPath = relativePath.replace(`${user.email}/`, '');
-      const objectDB = await this.dbGetLibrary(user.id_user, cleanPath);
-      const itemDb = objectDB[0];
-      if (itemDb) {
-        throw Error('Item already exists');
-      }
+      // Parse incoming params into library object
       const libObj = (await this.ParseLibraryItemDbB(
         params,
         LibraryItemOutput.DB,
       )) as LibrarItemDB;
+
+      const cleanPath = relativePath.replace(`${user.email}/`, '');
+      const objectDB = await this.dbGetLibrary(user.id_user, cleanPath);
+      let itemDb = objectDB[0];
+      if (itemDb) {
+        const fileExists = await this._storage.fileExists(`${user.email}/${relativePath}`);
+        if (fileExists === true) {
+          return null;
+        }
+      } else {
+        itemDb = await this.dbInsertLibraryItem(
+          user.id_user,
+          libObj,
+        );
+      }
 
       // S3 needs the forward slash to create an empty folder
       const resourcePath =
@@ -325,12 +335,8 @@ export class LibraryService {
         resourcePath,
         S3Action.PUT,
       );
-      const itemDbInserted = await this.dbInsertLibraryItem(
-        user.id_user,
-        libObj,
-      );
       const apiResponse = (await this.ParseLibraryItemDbB(
-        itemDbInserted,
+        itemDb,
         LibraryItemOutput.API,
       )) as LibraryItem;
       apiResponse.url = url;

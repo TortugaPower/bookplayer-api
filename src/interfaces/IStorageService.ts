@@ -1,6 +1,9 @@
 import { S3Action, StorageItem } from '../types/user';
 
 export interface IStorageService {
+  fileExists(
+    key: string,
+  ): Promise<boolean>;
   GetDirectoryContent(path: string, isFolder?: boolean): Promise<StorageItem[]>;
   GetPresignedUrl(
     key: string,

@@ -95,7 +95,8 @@ export class LibraryController implements ILibraryController {
     try {
       const params = req.body;
       const user = req.user;
-      const content = await this._libraryService.PutObject(user, params);
+      /// If there's nothing to upload, content returned will be null
+      const content = await this._libraryService.PutObject(user, params) ?? {};
       return res.json({ content });
     } catch (err) {
       res.status(400).json({ message: err.message });
