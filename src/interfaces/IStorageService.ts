@@ -12,9 +12,11 @@ export interface IStorageService {
     url: string;
     expires_in: number;
   }>;
-  copyFile(
+  moveFile(
     sourceKey: string,
     targetKey: string,
-    move: boolean,
+  ): Promise<boolean>;
+  deleteFile(
+    sourceKey: string,
   ): Promise<boolean>;
 }

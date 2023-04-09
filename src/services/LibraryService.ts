@@ -80,6 +80,30 @@ export class LibraryService {
     }
   }
 
+  async dbNestedObjects(
+    user_id: number,
+    folderPath: string,
+    trx?: Knex.Transaction,
+  ): Promise<LibrarItemDB[]> {
+    try {
+      const db = trx || this.db;
+      const nestedObjects = await db
+        .raw(
+          `
+          select id_library_item, key, type
+          from library_items
+          where user_id=? and active=true and key like ?
+      `,
+          [user_id, `${folderPath}/%`],
+        )
+        .then((result) => result.rows);
+      return nestedObjects;
+    } catch (err) {
+      console.log(err.message);
+      return null;
+    }
+  }
+
   async dbMoveFilesUp(
     user_id: number,
     folderPath: string,
@@ -364,11 +388,8 @@ export class LibraryService {
       for (let index = 0; index < deletedObjects.length; index++) {
         const item = deletedObjects[index];
         const sourceKey = `${user.email}/${item.key}`;
-        const targetKey = `${user.email}_deleted/${item.key}`;
-        await this._storage.copyFile(
-          `${sourceKey}${item.type === LibraryItemType.BOOK ? '' : '/'}`,
-          targetKey,
-          item.type === LibraryItemType.BOOK,
+        await this._storage.deleteFile(
+          `${sourceKey}${item.type == LibraryItemType.BOOK ? '' : '/'}`,
         );
       }
       return deletedObjects.map((i) => i.key);
@@ -507,7 +528,7 @@ export class LibraryService {
 
       const sourceKey = `${user.email}/${originObj[0].key}`;
       const targetKey = `${user.email}/${dest}`;
-      const moved = await this._storage.copyFile(sourceKey, targetKey, true);
+      const moved = await this._storage.moveFile(sourceKey, targetKey);
 
       if (!moved) {
         throw Error('error moving the book');
@@ -543,7 +564,8 @@ export class LibraryService {
         trx,
       );
       if (!folderDB[0]) {
-        throw Error('folder not found');
+        // Folder no longer exists
+        return true;
       }
       const folderDeleted = await this.dbDeleteLibrary(
         user.id_user,
@@ -554,23 +576,32 @@ export class LibraryService {
       if (!folderDeleted) {
         throw Error('folder not deleted');
       }
-      const allFilesInside = await this.dbGetLibrary(
+      const allFilesInside = await this.dbNestedObjects(
         user.id_user,
-        `${folderPath}/`,
+        folderPath,
       );
       const dbMoved = await this.dbMoveFilesUp(user.id_user, folderPath, trx);
       for (let index = 0; index < dbMoved.length; index++) {
         const fileMoved = dbMoved[index];
-        if (`${fileMoved.type}` === LibraryItemType.BOOK) {
-          const prevFile = allFilesInside.find(
-            (preFile) => preFile.id_library_item === fileMoved.id_library_item,
-          );
-          const sourceKey = `${user.email}/${prevFile.key}`;
-          const targetKey = `${user.email}/${fileMoved.key}`;
-          await this._storage.copyFile(sourceKey, targetKey, true);
+        const prevFile = allFilesInside.find(
+          (preFile) => preFile.id_library_item === fileMoved.id_library_item,
+        );
+
+        if (prevFile) {
+          const suffix =
+            prevFile.type == LibraryItemType.BOOK
+              ? ''
+              : '/';
+          const sourceKey = `${user.email}/${prevFile.key}${suffix}`;
+          const targetKey = `${user.email}/${fileMoved.key}${suffix}`;
+          await this._storage.moveFile(sourceKey, targetKey);
         }
       }
-      // throw new Error('error');
+
+      await this._storage.deleteFile(
+        `${user.email}/${folderDB[0].key}/`,
+      );
+
       await trx.commit();
       return true;
     } catch (err) {

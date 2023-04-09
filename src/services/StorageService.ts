@@ -100,23 +100,46 @@ export class StorageService {
     }
   }
 
-  async copyFile(
+  async moveFile(
     sourceKey: string,
     targetKey: string,
-    move: boolean,
   ): Promise<boolean> {
     try {
       console.log('sourceKey', `${process.env.S3_BUCKET}/${sourceKey}`);
       console.log('targetKey', targetKey);
-      if (move) {
-        await this.clientObject.send(
-          new CopyObjectCommand({
-            Bucket: process.env.S3_BUCKET,
-            Key: targetKey,
-            CopySource: `${process.env.S3_BUCKET}/${sourceKey}`,
-          }),
-        );
-      }
+      await this.clientObject.send(
+        new CopyObjectCommand({
+          Bucket: process.env.S3_BUCKET,
+          Key: targetKey,
+          CopySource: `${process.env.S3_BUCKET}/${sourceKey}`,
+        }),
+      );
+      await this.clientObject.send(
+        new DeleteObjectCommand({
+          Bucket: process.env.S3_BUCKET,
+          Key: sourceKey,
+        }),
+      );
+      return true;
+    } catch (error) {
+      console.log(error.message);
+      return null;
+    }
+  }
+
+  async deleteFile(
+    sourceKey: string,
+  ): Promise<boolean> {
+    try {
+      console.log('sourceKey', `${process.env.S3_BUCKET}/deleted_${sourceKey}`);
+      /// Keep a copy for a week just in case for support purposes
+      await this.clientObject.send(
+        new CopyObjectCommand({
+          Bucket: process.env.S3_BUCKET,
+          Key: `deleted_${sourceKey}`,
+          CopySource: `${process.env.S3_BUCKET}/${sourceKey}`,
+        }),
+      );
       await this.clientObject.send(
         new DeleteObjectCommand({
           Bucket: process.env.S3_BUCKET,
