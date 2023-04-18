@@ -16,9 +16,7 @@ export class StorageService {
   private client = new S3({ region: process.env.S3_REGION });
   private clientObject = new S3Client({ region: process.env.S3_REGION });
 
-  async fileExists(
-    key: string,
-  ): Promise<boolean> {
+  async fileExists(key: string): Promise<boolean> {
     try {
       const data = await this.client.headObject({
         Bucket: process.env.S3_BUCKET,
@@ -43,8 +41,10 @@ export class StorageService {
     isFolder = true,
   ): Promise<StorageItem[]> {
     try {
-      const fixPath =
-        path[path.length - 1] === '/' || !isFolder ? path : path + '/';
+      let fixPath = path;
+      if (isFolder && path[path.length - 1] !== '/') {
+        fixPath = path + '/';
+      }
       const objects = await this.client.listObjectsV2({
         Bucket: process.env.S3_BUCKET,
         Delimiter: '/',
@@ -100,10 +100,7 @@ export class StorageService {
     }
   }
 
-  async moveFile(
-    sourceKey: string,
-    targetKey: string,
-  ): Promise<boolean> {
+  async moveFile(sourceKey: string, targetKey: string): Promise<boolean> {
     try {
       console.log('sourceKey', `${process.env.S3_BUCKET}/${sourceKey}`);
       console.log('targetKey', targetKey);
@@ -127,9 +124,7 @@ export class StorageService {
     }
   }
 
-  async deleteFile(
-    sourceKey: string,
-  ): Promise<boolean> {
+  async deleteFile(sourceKey: string): Promise<boolean> {
     try {
       console.log('sourceKey', `${process.env.S3_BUCKET}/deleted_${sourceKey}`);
       /// Keep a copy for a week just in case for support purposes

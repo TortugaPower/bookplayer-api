@@ -1,5 +1,6 @@
 import { inject, injectable } from 'inversify';
 import {
+  Bookmark,
   LibrarItemDB,
   LibraryItem,
   LibraryItemOutput,
@@ -284,9 +285,7 @@ export class LibraryService {
           speed: itemApi.speed,
           details: itemApi.details,
           actual_time: `${itemApi.currentTime}`,
-          duration: !!itemApi.duration
-            ? `${itemApi.duration}`
-            : undefined,
+          duration: !!itemApi.duration ? `${itemApi.duration}` : undefined,
           percent_completed: itemApi.percentCompleted,
           order_rank: itemApi.orderRank,
           last_play_date: !!itemApi.lastPlayDateTimestamp
@@ -338,15 +337,14 @@ export class LibraryService {
       const objectDB = await this.dbGetLibrary(user.id_user, cleanPath);
       let itemDb = objectDB[0];
       if (itemDb) {
-        const fileExists = await this._storage.fileExists(`${user.email}/${relativePath}`);
+        const fileExists = await this._storage.fileExists(
+          `${user.email}/${relativePath}`,
+        );
         if (fileExists === true) {
           return null;
         }
       } else {
-        itemDb = await this.dbInsertLibraryItem(
-          user.id_user,
-          libObj,
-        );
+        itemDb = await this.dbInsertLibraryItem(user.id_user, libObj);
       }
 
       // S3 needs the forward slash to create an empty folder
@@ -588,19 +586,14 @@ export class LibraryService {
         );
 
         if (prevFile) {
-          const suffix =
-            prevFile.type == LibraryItemType.BOOK
-              ? ''
-              : '/';
+          const suffix = prevFile.type == LibraryItemType.BOOK ? '' : '/';
           const sourceKey = `${user.email}/${prevFile.key}${suffix}`;
           const targetKey = `${user.email}/${fileMoved.key}${suffix}`;
           await this._storage.moveFile(sourceKey, targetKey);
         }
       }
 
-      await this._storage.deleteFile(
-        `${user.email}/${folderDB[0].key}/`,
-      );
+      await this._storage.deleteFile(`${user.email}/${folderDB[0].key}/`);
 
       await trx.commit();
       return true;
@@ -639,6 +632,66 @@ export class LibraryService {
         item.expires_in = expires_in;
       }
       return item;
+    } catch (err) {
+      console.log(err.message);
+      return null;
+    }
+  }
+
+  async getBookmarks(
+    params: {
+      key?: string;
+      user_id: number;
+    },
+    trx?: Knex.Transaction,
+  ): Promise<Bookmark[]> {
+    try {
+      const { key, user_id } = params;
+      const db = trx || this.db;
+      const filter: (number | string)[] = [user_id];
+      let whereFilter = '';
+      if (key) {
+        filter.push(key);
+        whereFilter += ' and li.key=? ';
+      }
+      const bookmarks = await db
+        .raw(
+          `
+        select li.title, li.key, b.note, b.time, b.active from library_items li
+        join bookmarks b on li.id_library_item = b.library_item_id and b.active=true
+        where li.user_id=? and li.active=true ${whereFilter}
+      `,
+          filter,
+        )
+        .then((result) => result.rows);
+
+      return bookmarks;
+    } catch (err) {
+      console.log(err.message);
+      return null;
+    }
+  }
+
+  async upsertBookmark(
+    bookmark: Bookmark,
+    trx?: Knex.Transaction,
+  ): Promise<Bookmark> {
+    try {
+      const db = trx || this.db;
+      const selectColumns = ['note', 'time', 'active'];
+      const updated = await db('bookmarks')
+        .insert({
+          note: bookmark.note,
+          time: bookmark.time,
+          library_item_id: bookmark.library_item_id,
+        })
+        .onConflict(['library_item_id', 'time'])
+        .merge({
+          note: bookmark.note,
+          active: bookmark.active,
+        })
+        .returning(selectColumns);
+      return updated[0];
     } catch (err) {
       console.log(err.message);
       return null;

@@ -169,3 +169,12 @@ export enum S3Action {
 export interface SocketDefaultEventsMap {
   [event: string]: (...args: unknown[]) => void;
 }
+
+export interface Bookmark {
+  title?: string;
+  key: string;
+  note?: string;
+  time: number;
+  library_item_id?: number;
+  active: boolean;
+}

@@ -34,6 +34,12 @@ export class LibraryRouter implements ILibraryRouter {
     router.get('/last_played', (req, res, next) =>
       this._controller.getLastPlayedItem(req, res, next).catch(next),
     );
+    router.post('/bookmarks', (req, res, next) =>
+      this._controller.getAllUserBookmarks(req, res, next).catch(next),
+    );
+    router.put('/bookmark', (req, res, next) =>
+      this._controller.upsertBookmark(req, res, next).catch(next),
+    );
     return router;
   }
 }

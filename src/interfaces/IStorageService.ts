@@ -1,9 +1,7 @@
 import { S3Action, StorageItem } from '../types/user';
 
 export interface IStorageService {
-  fileExists(
-    key: string,
-  ): Promise<boolean>;
+  fileExists(key: string): Promise<boolean>;
   GetDirectoryContent(path: string, isFolder?: boolean): Promise<StorageItem[]>;
   GetPresignedUrl(
     key: string,
@@ -12,11 +10,6 @@ export interface IStorageService {
     url: string;
     expires_in: number;
   }>;
-  moveFile(
-    sourceKey: string,
-    targetKey: string,
-  ): Promise<boolean>;
-  deleteFile(
-    sourceKey: string,
-  ): Promise<boolean>;
+  moveFile(sourceKey: string, targetKey: string): Promise<boolean>;
+  deleteFile(sourceKey: string): Promise<boolean>;
 }

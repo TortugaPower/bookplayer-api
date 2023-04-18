@@ -3,7 +3,7 @@ import { TYPES } from '../ContainerTypes';
 import { IRequest, IResponse } from '../interfaces/IRequest';
 import { ILibraryController } from '../interfaces/ILibraryController';
 import { ILibraryService } from '../interfaces/ILibraryService';
-import { LibraryItem } from '../types/user';
+import { Bookmark, LibraryItem } from '../types/user';
 
 @injectable()
 export class LibraryController implements ILibraryController {
@@ -96,7 +96,8 @@ export class LibraryController implements ILibraryController {
       const params = req.body;
       const user = req.user;
       /// If there's nothing to upload, content returned will be null
-      const content = await this._libraryService.PutObject(user, params) ?? {};
+      const content =
+        (await this._libraryService.PutObject(user, params)) ?? {};
       return res.json({ content });
     } catch (err) {
       res.status(400).json({ message: err.message });
@@ -168,6 +169,57 @@ export class LibraryController implements ILibraryController {
         relativePath,
       );
       return res.json({ success });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
+
+  public async getAllUserBookmarks(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const user = req.user;
+      const { relativePath } = req.body;
+      const bookmarks = await this._libraryService.getBookmarks({
+        user_id: user.id_user,
+        key: relativePath,
+      });
+      return res.json({ bookmarks });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
+
+  public async upsertBookmark(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const user = req.user;
+      const bookmark = req.body as Bookmark;
+      const itemDB = await this._libraryService.dbGetLibrary(
+        user.id_user,
+        bookmark.key,
+        { exactly: true },
+      );
+      if (!itemDB || !itemDB[0]) {
+        throw new Error('Invalid key');
+      }
+      bookmark.library_item_id = itemDB[0].id_library_item;
+      const inserted = await this._libraryService.upsertBookmark(bookmark);
+      if (!inserted) {
+        throw new Error('problem creating the bookmark');
+      }
+      return res.json({
+        bookmark: {
+          ...inserted,
+          title: itemDB[0].title,
+          relativePath: itemDB[0].key,
+        },
+      });
     } catch (err) {
       res.status(400).json({ message: err.message });
       return;

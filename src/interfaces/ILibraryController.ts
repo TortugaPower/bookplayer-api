@@ -33,4 +33,10 @@ export interface ILibraryController {
     res: IResponse,
     _: INext,
   ): Promise<IResponse>;
+  getAllUserBookmarks(
+    req: IRequest,
+    res: IResponse,
+    _: INext,
+  ): Promise<IResponse>;
+  upsertBookmark(req: IRequest, res: IResponse, _: INext): Promise<IResponse>;
 }
