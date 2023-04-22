@@ -1,4 +1,4 @@
-import { Bookmark, LibrarItemDB, LibraryItem, User } from '../types/user';
+import { Bookmark, LibrarItemDB, LibraryItemMovedDB, LibraryItem, User } from '../types/user';
 
 export interface ILibraryService {
   dbGetLibrary(
@@ -29,7 +29,7 @@ export interface ILibraryService {
       origin: string;
       destination: string;
     },
-  ): Promise<LibraryItem>;
+  ): Promise<LibraryItemMovedDB[]>;
   deleteFolderMoving(user: User, folderPath: string): Promise<boolean>;
   dbGetLastItemPlayed(user: User, withPresign?: boolean): Promise<LibraryItem>;
   getBookmarks(params: { key?: string; user_id: number }): Promise<Bookmark[]>;

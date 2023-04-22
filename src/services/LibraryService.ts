@@ -2,6 +2,7 @@ import { inject, injectable } from 'inversify';
 import {
   Bookmark,
   LibrarItemDB,
+  LibraryItemMovedDB,
   LibraryItem,
   LibraryItemOutput,
   LibraryItemType,
@@ -105,6 +106,47 @@ export class LibraryService {
     }
   }
 
+  async dbMoveFiles(
+    user_id: number,
+    origin: string,
+    destination: string,
+    trx?: Knex.Transaction,
+  ): Promise<LibraryItemMovedDB[]> {
+    try {
+      const destinationPath = destination !== ""
+      ? `${destination}/`
+      : '';
+      const db = trx || this.db;
+      const objectsMoved = await db
+        .raw(
+          `
+      update library_items ss
+      set key=filtro.newKey
+      from (select filtroKey.id_library_item,
+              concat(cast(? as text), array_to_string(removing[removeIndex:array_length(removing, 1)], '/')) as newKey,
+              filtroKey.old_key as old_key
+            from (
+                select id_library_item,
+                        string_to_array(key, '/') as removing,
+                        array_length(string_to_array(?, '/'), 1) as removeIndex,
+                        key as old_key
+                from library_items
+                where user_id=? and active=true and key like ?
+            ) as filtroKey) as filtro
+      where ss.id_library_item = filtro.id_library_item
+      returning ss.id_library_item, ss.key, ss.type, filtro.old_key;
+      `,
+          [destinationPath, origin, user_id, `${origin}%`],
+        )
+        .then((result) => result.rows);
+      return objectsMoved;
+    } catch (err) {
+      console.log(err.message);
+      return null;
+    }
+  }
+
+  /// TODO: replace this function in favor of `dbMoveFiles`
   async dbMoveFilesUp(
     user_id: number,
     folderPath: string,
@@ -494,20 +536,21 @@ export class LibraryService {
       origin: string;
       destination: string;
     },
-  ): Promise<LibraryItem> {
+  ): Promise<LibraryItemMovedDB[]> {
     try {
+      const trx = await this.db.transaction();
       const { origin, destination } = params;
-      const dest = destination.trim();
-      const destinationPathArray = dest.split('/');
+      const destinationPathFolder = destination.trim();
 
-      if (destinationPathArray.length > 1) {
-        destinationPathArray.pop();
-        const destinationPathFolder = destinationPathArray.join('/');
+      /// Verify destination folder if not moving to the library
+      if (destinationPathFolder !== "") {
         const destinationDB = await this.dbGetLibrary(
           user.id_user,
           destinationPathFolder,
           { exactly: true },
+          trx
         );
+  
         if (destinationDB.length !== 1) {
           throw Error('destination not found');
         }
@@ -519,33 +562,29 @@ export class LibraryService {
           throw Error('The destination is invalid');
         }
       }
-      const originObj = await this.dbGetLibrary(user.id_user, origin);
+      
+      const originObj = await this.dbGetLibrary(
+        user.id_user,
+        origin,
+        { exactly: true },
+        trx
+      );
       if (originObj.length !== 1) {
         throw Error('origin is invalid');
       }
 
-      const sourceKey = `${user.email}/${originObj[0].key}`;
-      const targetKey = `${user.email}/${dest}`;
-      const moved = await this._storage.moveFile(sourceKey, targetKey);
+      const dbMoved = await this.dbMoveFiles(user.id_user, origin, destinationPathFolder, trx);
 
-      if (!moved) {
-        throw Error('error moving the book');
+      for (let index = 0; index < dbMoved.length; index++) {
+        const fileMoved = dbMoved[index];
+        const suffix = fileMoved.type == LibraryItemType.BOOK ? '' : '/';
+        const sourceKey = `${user.email}/${fileMoved.old_key}${suffix}`;
+        const targetKey = `${user.email}/${fileMoved.key}${suffix}`;
+        await this._storage.moveFile(sourceKey, targetKey);
       }
 
-      const itemDbInserted = await this.dbUpdateLibraryItem(
-        user.id_user,
-        originObj[0].key,
-        {
-          ...originObj[0],
-          key: dest,
-        },
-      );
-      const item = (await this.ParseLibraryItemDbB(
-        itemDbInserted,
-        LibraryItemOutput.API,
-      )) as LibraryItem;
-
-      return item;
+      await trx.commit();
+      return dbMoved;
     } catch (err) {
       console.log(err.message);
       throw Error(err);

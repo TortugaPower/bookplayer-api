@@ -135,6 +135,13 @@ export interface LibraryItem {
   expires_in?: number;
 }
 
+export interface LibraryItemMovedDB {
+  id_library_item: number;
+  key: string;
+  old_key: string;
+  type: LibraryItemType;
+}
+
 export interface LibrarItemDB {
   id_library_item?: number;
   user_id?: number;
