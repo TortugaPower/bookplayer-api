@@ -113,9 +113,7 @@ export class LibraryService {
     trx?: Knex.Transaction,
   ): Promise<LibraryItemMovedDB[]> {
     try {
-      const destinationPath = destination !== ""
-      ? `${destination}/`
-      : '';
+      const destinationPath = destination !== '' ? `${destination}/` : '';
       const db = trx || this.db;
       const objectsMoved = await db
         .raw(
@@ -222,8 +220,18 @@ export class LibraryService {
   ): Promise<LibrarItemDB> {
     try {
       const db = trx || this.db;
+      const updateObject = Object.keys(item).reduce(
+        (cleanItem: { [k: string]: unknown }, column: string) => {
+          const itemUnknow = item as unknown as { [k: string]: unknown };
+          if (itemUnknow[column] !== null && itemUnknow[column] !== undefined) {
+            cleanItem[column] = itemUnknow[column];
+          }
+          return cleanItem;
+        },
+        {},
+      );
       const objects = await db('library_items')
-        .update(item)
+        .update(updateObject)
         .where({
           user_id,
           key: key,
@@ -326,7 +334,9 @@ export class LibraryService {
           original_filename: itemApi.originalFileName,
           speed: itemApi.speed,
           details: itemApi.details,
-          actual_time: `${itemApi.currentTime}`,
+          actual_time: itemApi.currentTime
+            ? `${itemApi.currentTime}`
+            : undefined,
           duration: !!itemApi.duration ? `${itemApi.duration}` : undefined,
           percent_completed: itemApi.percentCompleted,
           order_rank: itemApi.orderRank,
@@ -543,14 +553,14 @@ export class LibraryService {
       const destinationPathFolder = destination.trim();
 
       /// Verify destination folder if not moving to the library
-      if (destinationPathFolder !== "") {
+      if (destinationPathFolder !== '') {
         const destinationDB = await this.dbGetLibrary(
           user.id_user,
           destinationPathFolder,
           { exactly: true },
-          trx
+          trx,
         );
-  
+
         if (destinationDB.length !== 1) {
           throw Error('destination not found');
         }
@@ -562,18 +572,23 @@ export class LibraryService {
           throw Error('The destination is invalid');
         }
       }
-      
+
       const originObj = await this.dbGetLibrary(
         user.id_user,
         origin,
         { exactly: true },
-        trx
+        trx,
       );
       if (originObj.length !== 1) {
         throw Error('origin is invalid');
       }
 
-      const dbMoved = await this.dbMoveFiles(user.id_user, origin, destinationPathFolder, trx);
+      const dbMoved = await this.dbMoveFiles(
+        user.id_user,
+        origin,
+        destinationPathFolder,
+        trx,
+      );
 
       for (let index = 0; index < dbMoved.length; index++) {
         const fileMoved = dbMoved[index];
