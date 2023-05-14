@@ -386,7 +386,9 @@ export class LibraryService {
       )) as LibrarItemDB;
 
       const cleanPath = relativePath.replace(`${user.email}/`, '');
-      const objectDB = await this.dbGetLibrary(user.id_user, cleanPath);
+      const objectDB = await this.dbGetLibrary(user.id_user, cleanPath, {
+        exactly: true,
+      });
       let itemDb = objectDB[0];
       if (itemDb) {
         const fileExists = await this._storage.fileExists(
