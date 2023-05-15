@@ -670,6 +670,7 @@ export class LibraryService {
           user_id: user.id_user,
           active: true,
         })
+        .andWhereNot('type', 0)
         .andWhereRaw('last_play_date is not null')
         .orderBy('last_play_date', 'desc')
         .first()

@@ -1,4 +1,10 @@
-import { Bookmark, LibrarItemDB, LibraryItemMovedDB, LibraryItem, User } from '../types/user';
+import {
+  Bookmark,
+  LibrarItemDB,
+  LibraryItemMovedDB,
+  LibraryItem,
+  User,
+} from '../types/user';
 
 export interface ILibraryService {
   dbGetLibrary(
