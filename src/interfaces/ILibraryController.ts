@@ -39,4 +39,9 @@ export interface ILibraryController {
     _: INext,
   ): Promise<IResponse>;
   upsertBookmark(req: IRequest, res: IResponse, _: INext): Promise<IResponse>;
+  itemThumbnailPutRequest(
+    req: IRequest,
+    res: IResponse,
+    _: INext,
+  ): Promise<IResponse>;
 }

@@ -133,6 +133,7 @@ export interface LibraryItem {
   type: LibraryItemType;
   url: string | null | undefined;
   expires_in?: number;
+  thumbnail?: string;
 }
 
 export interface LibraryItemMovedDB {
@@ -157,6 +158,7 @@ export interface LibrarItemDB {
   last_play_date: number;
   type: LibraryItemType;
   is_finish: boolean;
+  thumbnail?: string;
   active?: boolean;
 }
 

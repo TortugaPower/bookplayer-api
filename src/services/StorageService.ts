@@ -70,6 +70,7 @@ export class StorageService {
   async GetPresignedUrl(
     key: string,
     type: S3Action,
+    bucket?: string,
   ): Promise<{
     url: string;
     expires_in: number;
@@ -77,7 +78,7 @@ export class StorageService {
     try {
       let command;
       const obj = {
-        Bucket: process.env.S3_BUCKET,
+        Bucket: bucket || process.env.S3_BUCKET,
         Key: key,
       };
       switch (type) {
@@ -88,7 +89,7 @@ export class StorageService {
           command = new PutObjectCommand(obj);
           break;
       }
-      const seconds = 3600 * 24; // 1 hour * 24 = 1 day
+      const seconds = 3600 * 24 * 7; // 1 hour * 24 * 7 = 7 days
       const expires = moment().add(seconds, 'seconds').unix();
       const url = await getSignedUrl(this.clientObject, command, {
         expiresIn: seconds,

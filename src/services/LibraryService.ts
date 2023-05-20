@@ -203,6 +203,7 @@ export class LibraryService {
             : null,
           type: item.type,
           is_finish: item.is_finish,
+          thumbnail: item.thumbnail || null,
         })
         .returning('*');
       return objects[0];
@@ -282,6 +283,7 @@ export class LibraryService {
               lastPlayDateTimestamp: itemDb.last_play_date,
               type: itemDb.type,
               url: null,
+              thumbnail: itemDb.thumbnail,
             };
             if (withPresign) {
               const { url, expires_in } = await this._storage.GetPresignedUrl(
@@ -290,6 +292,13 @@ export class LibraryService {
               );
               libObj.url = url;
               libObj.expires_in = expires_in;
+            }
+            if (libObj.thumbnail) {
+              const { url } = await this._storage.GetPresignedUrl(
+                `${user.email}_thumbnail/${itemDb.thumbnail}`,
+                S3Action.GET,
+              );
+              libObj.thumbnail = url;
             }
             library.push(libObj);
           }
@@ -323,6 +332,7 @@ export class LibraryService {
           orderRank: itemTemp.order_rank,
           lastPlayDateTimestamp: itemTemp.last_play_date,
           type: itemTemp.type,
+          thumbnail: itemTemp.thumbnail,
           url: '',
         };
         break;
@@ -345,6 +355,7 @@ export class LibraryService {
             : null,
           type: itemApi.type,
           is_finish: itemApi.isFinished,
+          thumbnail: itemTemp.thumbnail,
         };
         break;
     }
@@ -752,6 +763,46 @@ export class LibraryService {
     } catch (err) {
       console.log(err.message);
       return null;
+    }
+  }
+
+  async thumbailPutRequest(
+    user: User,
+    params: {
+      relativePath: string;
+      thumbnail_name: string;
+      uploaded?: boolean;
+    },
+  ): Promise<string | boolean> {
+    try {
+      const { relativePath, thumbnail_name, uploaded } = params;
+      const cleanPath = relativePath.replace(`${user.email}/`, '');
+      const objectDB = await this.dbGetLibrary(user.id_user, cleanPath, {
+        exactly: true,
+      });
+      const itemDb = objectDB[0];
+      if (!itemDb) {
+        throw new Error('Item not exists');
+      }
+      if (uploaded) {
+        const idUpdated = await this.db('library_items')
+          .update({
+            thumbnail: thumbnail_name,
+          })
+          .where({
+            id_library_item: itemDb.id_library_item,
+          })
+          .returning('id_library_item');
+        return !!idUpdated[0].id_library_item;
+      }
+      const { url } = await this._storage.GetPresignedUrl(
+        `${user.email}_thumbnail/${thumbnail_name}`,
+        S3Action.PUT,
+      );
+      return url;
+    } catch (err) {
+      console.log(err.message);
+      throw Error(err);
     }
   }
 }

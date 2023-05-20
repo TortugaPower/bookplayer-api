@@ -225,4 +225,36 @@ export class LibraryController implements ILibraryController {
       return;
     }
   }
+
+  public async itemThumbnailPutRequest(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const user = req.user;
+      const thumbnailData = req.body as {
+        thumbnail_name: string;
+        relativePath: string;
+        uploaded?: boolean;
+      };
+      if (!thumbnailData.thumbnail_name || !thumbnailData.relativePath) {
+        throw new Error('Invalid parameters');
+      }
+      const url = await this._libraryService.thumbailPutRequest(
+        user,
+        thumbnailData,
+      );
+      if (!url) {
+        throw new Error('problem creating the request url');
+      }
+      return res.json({
+        thumbnail_name: thumbnailData.thumbnail_name,
+        thumbnail_url: !thumbnailData.uploaded ? url : '',
+        uploaded: thumbnailData.uploaded && url,
+      });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
 }

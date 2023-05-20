@@ -40,6 +40,9 @@ export class LibraryRouter implements ILibraryRouter {
     router.put('/bookmark', (req, res, next) =>
       this._controller.upsertBookmark(req, res, next).catch(next),
     );
+    router.post('/thumbnail_set', (req, res, next) =>
+      this._controller.itemThumbnailPutRequest(req, res, next).catch(next),
+    );
     return router;
   }
 }

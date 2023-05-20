@@ -6,6 +6,7 @@ export interface IStorageService {
   GetPresignedUrl(
     key: string,
     type: S3Action,
+    bucket?: string,
   ): Promise<{
     url: string;
     expires_in: number;

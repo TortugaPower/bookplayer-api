@@ -40,4 +40,12 @@ export interface ILibraryService {
   dbGetLastItemPlayed(user: User, withPresign?: boolean): Promise<LibraryItem>;
   getBookmarks(params: { key?: string; user_id: number }): Promise<Bookmark[]>;
   upsertBookmark(bookmark: Bookmark): Promise<Bookmark>;
+  thumbailPutRequest(
+    user: User,
+    params: {
+      relativePath: string;
+      thumbnail_name: string;
+      uploaded?: boolean;
+    },
+  ): Promise<string | boolean>;
 }
