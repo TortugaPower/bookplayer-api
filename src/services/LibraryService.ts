@@ -355,7 +355,7 @@ export class LibraryService {
             : null,
           type: itemApi.type,
           is_finish: itemApi.isFinished,
-          thumbnail: itemTemp.thumbnail,
+          thumbnail: itemApi.thumbnail,
         };
         break;
     }
