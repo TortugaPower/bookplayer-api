@@ -79,6 +79,10 @@ export type RevenuecatEvent = {
   type: string;
 };
 
+export enum SubscriptionEventType {
+  EXPIRATION = 'EXPIRATION',
+}
+
 export type HTTPMethod =
   | 'get'
   | 'GET'

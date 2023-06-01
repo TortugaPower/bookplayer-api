@@ -13,6 +13,7 @@ const TYPES = {
   LibraryRouter: Symbol.for('LibraryRouter'),
   SocketService: Symbol.for('SocketService'),
   CacheService: Symbol.for('CacheService'),
+  SubscriptionMiddleware: Symbol.for('SubscriptionMiddleware'),
 };
 
 export { TYPES };

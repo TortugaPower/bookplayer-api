@@ -15,4 +15,5 @@ export interface IUserService {
   GetUserByAppleID(apple_id: string): Promise<AppleUser>;
   UpdateSubscription(user_id: number, subscription: string): Promise<boolean>;
   DeleteAccount(user_id: number): Promise<boolean>;
+  getUserSubscriptionState(user_id: number): Promise<string>;
 }

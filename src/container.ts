@@ -34,6 +34,8 @@ import { SocketService } from './services/SocketServer';
 import { ISocketService } from './interfaces/ISocketService';
 import { RedisService } from './services/RedisService';
 import { ICacheService } from './interfaces/ICacheService';
+import { ISubscriptionMiddleware } from './interfaces/ISubscriptionMiddleware';
+import { SubscriptionMiddleware } from './api/middlewares/subscription';
 
 const container = new Container();
 
@@ -60,4 +62,7 @@ container
 container.bind<ILibraryRouter>(TYPES.LibraryRouter).to(LibraryRouter);
 container.bind<ISocketService>(TYPES.SocketService).to(SocketService);
 container.bind<ICacheService>(TYPES.CacheService).to(RedisService);
+container
+  .bind<ISubscriptionMiddleware>(TYPES.SubscriptionMiddleware)
+  .to(SubscriptionMiddleware);
 export { container };

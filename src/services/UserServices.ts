@@ -240,4 +240,32 @@ export class UserServices {
       return false;
     }
   }
+
+  async getUserSubscriptionState(user_id: number): Promise<string> {
+    try {
+      const userState = await this.db
+        .raw(
+          `
+        select usr.id_user, usr.email, apple_id.value as apple_id,
+          subscription.period_type, subscription.type
+        from users usr
+        join lateral (
+          select * from user_params up where usr.id_user = up.user_id and param='apple_id'
+          order by up.id_param desc limit 1
+        ) as apple_id on true
+        join lateral (
+          select * from subscription_events sevent where sevent.original_app_user_id=apple_id.value
+          order by sevent.id_subscription_event desc limit 1
+        ) as subscription on true
+        where usr.id_user=?
+      `,
+          [user_id],
+        )
+        .then((res) => res.rows[0]);
+      return userState.type;
+    } catch (err) {
+      console.log(err.message);
+      return null;
+    }
+  }
 }
