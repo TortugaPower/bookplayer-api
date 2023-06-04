@@ -535,6 +535,7 @@ export class LibraryService {
   }
 
   async reOrderObject(user: User, params: LibraryItem): Promise<LibraryItem> {
+    let trx;
     try {
       const { relativePath, orderRank } = params;
       const cleanPath = relativePath.replace(`${user.email}/`, '');
@@ -556,7 +557,7 @@ export class LibraryService {
       const pathArray = relativePath.split('/');
       pathArray.pop();
       const path = pathArray.join('/');
-      const trx = await this.db.transaction();
+      trx = await this.db.transaction();
       await trx('library_items as li')
         .update({
           order_rank: trx.raw(`order_rank ${isGreater ? '-' : '+'} 1`),
@@ -590,6 +591,7 @@ export class LibraryService {
 
       return item;
     } catch (err) {
+      await trx?.rollback();
       console.log(err.message);
       throw Error(err);
     }
@@ -602,8 +604,8 @@ export class LibraryService {
       destination: string;
     },
   ): Promise<LibraryItemMovedDB[]> {
+    const trx = await this.db.transaction();
     try {
-      const trx = await this.db.transaction();
       const { origin, destination } = params;
       const destinationPathFolder = destination.trim();
 
@@ -656,14 +658,15 @@ export class LibraryService {
       await trx.commit();
       return dbMoved;
     } catch (err) {
+      await trx?.rollback();
       console.log(err.message);
       throw Error(err);
     }
   }
 
   async deleteFolderMoving(user: User, folderPath: string): Promise<boolean> {
+    const trx = await this.db.transaction();
     try {
-      const trx = await this.db.transaction();
       const folderDB = await this.dbGetLibrary(
         user.id_user,
         folderPath,
@@ -707,6 +710,7 @@ export class LibraryService {
       await trx.commit();
       return true;
     } catch (err) {
+      await trx?.rollback();
       throw Error(err.message);
     }
   }
@@ -855,8 +859,8 @@ export class LibraryService {
       newName: string;
     },
   ): Promise<LibraryItemMovedDB[]> {
+    const trx = await this.db.transaction();
     try {
-      const trx = await this.db.transaction();
       const { item, newName } = params;
       const itemDb = await trx('library_items')
         .update({
@@ -879,8 +883,9 @@ export class LibraryService {
       }
       const keyFolders = item.key.split('/');
       const samePrefix = keyFolders.slice(0, keyFolders.length - 1).join('/');
-
-      const destinationPathFolder = `${samePrefix.trim()}/${newName}`;
+      const destinationPathFolder = `${
+        samePrefix === '' ? '' : `${samePrefix}/`
+      }${newName}`;
       const destinationDB = await this.dbGetLibrary(
         user.id_user,
         destinationPathFolder,
@@ -898,7 +903,6 @@ export class LibraryService {
         destinationPathFolder,
         trx,
       );
-
       for (let index = 0; index < dbMoved.length; index++) {
         const fileMoved = dbMoved[index];
         const suffix = fileMoved.type == LibraryItemType.BOOK ? '' : '/';
@@ -910,6 +914,7 @@ export class LibraryService {
       await trx.commit();
       return dbMoved;
     } catch (err) {
+      await trx?.rollback();
       console.log(err.message);
       throw Error(err);
     }
