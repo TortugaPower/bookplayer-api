@@ -144,6 +144,48 @@ export class LibraryService {
     }
   }
 
+  async dbRenameFiles(
+    user_id: number,
+    origin: string,
+    destination: string,
+    trx?: Knex.Transaction,
+  ): Promise<LibraryItemMovedDB[]> {
+    try {
+      const db = trx || this.db;
+      const objectsMoved = await db
+        .raw(
+          `
+      update library_items ss
+      set key=filtro.newKey
+      from (select filtroKey.id_library_item,
+              concat(
+                cast(? as text),
+                case when array_to_string(removing[removeIndex::int + 1:array_length(removing, 1)], '') != '' then '/' else '' end,
+                array_to_string(removing[removeIndex::int + 1:array_length(removing, 1)], '/')
+              ) as newKey,
+              filtroKey.old_key as old_key
+            from (
+                select id_library_item,
+                        string_to_array(key, '/') as removing,
+                        array_length(string_to_array(?, '/'), 1) as removeIndex,
+                        key as old_key
+                from library_items
+                where user_id=? and active=true and key like ?
+            ) as filtroKey) as filtro
+      where ss.id_library_item = filtro.id_library_item
+      returning ss.id_library_item, ss.key, ss.type, filtro.old_key;
+      `,
+          [destination, origin, user_id, `${origin}%`],
+        )
+        .debug(true)
+        .then((result) => result.rows);
+      return objectsMoved;
+    } catch (err) {
+      console.log(err.message);
+      return null;
+    }
+  }
+
   /// TODO: replace this function in favor of `dbMoveFiles`
   async dbMoveFilesUp(
     user_id: number,
@@ -800,6 +842,73 @@ export class LibraryService {
         S3Action.PUT,
       );
       return url;
+    } catch (err) {
+      console.log(err.message);
+      throw Error(err);
+    }
+  }
+
+  async renameLibraryObject(
+    user: User,
+    params: {
+      item: LibrarItemDB;
+      newName: string;
+    },
+  ): Promise<LibraryItemMovedDB[]> {
+    try {
+      const trx = await this.db.transaction();
+      const { item, newName } = params;
+      const itemDb = await trx('library_items')
+        .update({
+          title: newName,
+        })
+        .where({
+          user_id: user.id_user,
+          id_library_item: item.id_library_item,
+        })
+        .returning('*');
+      if (item.type === LibraryItemType.BOOK) {
+        return [
+          {
+            id_library_item: itemDb[0].id_library_item,
+            key: itemDb[0].key,
+            old_key: itemDb[0].key,
+            type: itemDb[0].type,
+          },
+        ];
+      }
+      const keyFolders = item.key.split('/');
+      const samePrefix = keyFolders.slice(0, keyFolders.length - 1).join('/');
+
+      const destinationPathFolder = `${samePrefix.trim()}/${newName}`;
+      const destinationDB = await this.dbGetLibrary(
+        user.id_user,
+        destinationPathFolder,
+        { exactly: true },
+        trx,
+      );
+      /// Verify destination folder doesnt exists
+      if (!!destinationDB.length) {
+        throw new Error('There is a folder with the same name');
+      }
+
+      const dbMoved = await this.dbRenameFiles(
+        user.id_user,
+        item.key,
+        destinationPathFolder,
+        trx,
+      );
+
+      for (let index = 0; index < dbMoved.length; index++) {
+        const fileMoved = dbMoved[index];
+        const suffix = fileMoved.type == LibraryItemType.BOOK ? '' : '/';
+        const sourceKey = `${user.email}/${fileMoved.old_key}${suffix}`;
+        const targetKey = `${user.email}/${fileMoved.key}${suffix}`;
+        await this._storage.moveFile(sourceKey, targetKey);
+      }
+
+      await trx.commit();
+      return dbMoved;
     } catch (err) {
       console.log(err.message);
       throw Error(err);

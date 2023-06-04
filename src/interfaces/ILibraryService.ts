@@ -48,4 +48,11 @@ export interface ILibraryService {
       uploaded?: boolean;
     },
   ): Promise<string | boolean>;
+  renameLibraryObject(
+    user: User,
+    params: {
+      item: LibrarItemDB;
+      newName: string;
+    },
+  ): Promise<LibraryItemMovedDB[]>;
 }

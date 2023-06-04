@@ -35,6 +35,9 @@ export class LibraryRouter implements ILibraryRouter {
     router.post('/move', middleWareInit, (req, res, next) =>
       this._controller.moveLibraryObject(req, res, next).catch(next),
     );
+    router.post('/rename', middleWareInit, (req, res, next) =>
+      this._controller.renameLibraryObject(req, res, next).catch(next),
+    );
     router.delete('/folder_in_out', middleWareInit, (req, res, next) =>
       this._controller.deleteFolderMoving(req, res, next).catch(next),
     );

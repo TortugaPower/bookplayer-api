@@ -3,7 +3,7 @@ import { TYPES } from '../ContainerTypes';
 import { IRequest, IResponse } from '../interfaces/IRequest';
 import { ILibraryController } from '../interfaces/ILibraryController';
 import { ILibraryService } from '../interfaces/ILibraryService';
-import { Bookmark, LibraryItem } from '../types/user';
+import { Bookmark, LibraryItem, LibraryItemType } from '../types/user';
 
 @injectable()
 export class LibraryController implements ILibraryController {
@@ -252,6 +252,40 @@ export class LibraryController implements ILibraryController {
         thumbnail_url: !thumbnailData.uploaded ? url : '',
         uploaded: thumbnailData.uploaded && url,
       });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
+
+  public async renameLibraryObject(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const { relativePath, newName } = req.body;
+      if (!relativePath || !newName) {
+        throw new Error('Invalid parameters');
+      }
+      const user = req.user;
+      const cleanPath = relativePath.replace(`${user.email}/`, '');
+      const objectDB = await this._libraryService.dbGetLibrary(
+        user.id_user,
+        cleanPath,
+        {
+          exactly: true,
+        },
+      );
+      const itemDb = objectDB[0];
+      if (!itemDb) {
+        throw Error('Item not found');
+      }
+
+      const content = await this._libraryService.renameLibraryObject(user, {
+        item: itemDb,
+        newName,
+      });
+      return res.json({ content });
     } catch (err) {
       res.status(400).json({ message: err.message });
       return;
