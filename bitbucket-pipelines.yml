@@ -1,0 +1,48 @@
+image: atlassian/default-image:3
+
+pipelines:
+  custom:
+      prod_backend:
+        - step:
+            name: Install dependencies, Build, Zip
+            script:
+              - nvm install 16
+              - nvm use 16
+              - npm install -g yarn
+              - yarn install --production=false
+              - npm run build
+              - echo '{"NodeEnv":"'$NODE_ENV'","ApplicationIdentifier":"'$CONFIG_APP'","ConfigurationProfileIdentifier":"'$CONFIG_PROFILE'","EnvironmentIdentifier":"'$CONFIG_ENV'"}' > scripts/config.json
+              - zip -r ../production_api.zip * -x 'node_modules/*' -x 'test/*' -x 'src/*' -x '*.env'
+            artifacts:
+              - production_api.zip
+        - step:
+            name: Upload to S3
+            services:
+              - docker
+            script:
+              - pipe: atlassian/aws-code-deploy:0.3.2
+                variables:
+                  AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+                  AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+                  AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+                  S3_BUCKET: $S3_BUCKET
+                  COMMAND: "upload"
+                  APPLICATION_NAME: $APPLICATION_NAME
+                  ZIP_FILE: "production_api.zip"
+        - step:
+            name: Deploy with CodeDeploy
+            services:
+              - docker
+            script:
+              - pipe: atlassian/aws-code-deploy:0.3.2
+                variables:
+                  AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+                  AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
+                  AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+                  S3_BUCKET: $S3_BUCKET
+                  COMMAND: "deploy"
+                  APPLICATION_NAME: $APPLICATION_NAME
+                  DEPLOYMENT_GROUP: $DEPLOYMENT_GROUP
+                  IGNORE_APPLICATION_STOP_FAILURES: "true"
+                  FILE_EXISTS_BEHAVIOR: "OVERWRITE"
+                  WAIT: "true"

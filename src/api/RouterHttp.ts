@@ -10,6 +10,7 @@ export class RouterHttp {
 
   get(): express.Router {
     const router = express.Router();
+    router.get('/status', (req, res) => res.send('OK'));
     router.use('/user', this._authRouter.get());
     router.use('/library', this._libraryRouter.get());
 

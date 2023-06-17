@@ -7,7 +7,9 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsc-watch --noClear -p ./tsconfig.json --onSuccess \"node ./dist/main.js\"",
     "lint": "eslint src --ext .js,.ts",
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "setup_env": "node scripts/env.js",
+    "prod": "node dist/main.js"
   },
   "keywords": [
     "booklpayer ios backend"
