@@ -12,7 +12,7 @@ pipelines:
               - yarn install --production=false
               - npm run build
               - echo '{"NodeEnv":"'$NODE_ENV'","ApplicationIdentifier":"'$CONFIG_APP'","ConfigurationProfileIdentifier":"'$CONFIG_PROFILE'","EnvironmentIdentifier":"'$CONFIG_ENV'"}' > scripts/config.json
-              - zip -r ../production_api.zip * -x 'node_modules/*' -x 'test/*' -x 'src/*' -x '*.env'
+              - zip -r production_api.zip * -x 'node_modules/*' -x 'test/*' -x 'src/*' -x '*.env'
             artifacts:
               - production_api.zip
         - step:
