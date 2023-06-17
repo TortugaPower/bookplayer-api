@@ -2,7 +2,7 @@ version: 0.0
 os: linux 
 files:
   - source: /
-    destination: /home/ec2-user/api
+    destination: /home/ec2-user/bookplayer-api
 hooks:
   AfterInstall:
     - location: scripts/install.sh
