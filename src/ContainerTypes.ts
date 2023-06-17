@@ -14,6 +14,7 @@ const TYPES = {
   SocketService: Symbol.for('SocketService'),
   CacheService: Symbol.for('CacheService'),
   SubscriptionMiddleware: Symbol.for('SubscriptionMiddleware'),
+  LoggerService: Symbol.for('LoggerService'),
 };
 
 export { TYPES };

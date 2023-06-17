@@ -62,13 +62,11 @@ export class SocketService {
           };
           next();
         } else {
-          console.log('invalid');
           next(new Error('invalid'));
         }
       });
 
       this.socketServer.on(SocketStates.CONNECTION, (socket) => {
-        console.log('new connection', socket.id);
         new Promise(async (resolve) => {
           const previousSocket = await this._cacheService.getObject(
             `socket_${socket.data.id_user}`,
@@ -82,8 +80,8 @@ export class SocketService {
           resolve(null);
         });
 
-        socket.on(SocketStates.DISCONNECT, async (reason: any) => {
-          console.log('disconnect', reason);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        socket.on(SocketStates.DISCONNECT, async (_reason: any) => {
           const prevSockets = await this._cacheService.getObject(
             `socket_${socket.data.id_user}`,
           );
@@ -107,7 +105,6 @@ export class SocketService {
 
         socket.on(SocketEvents.TRACK_UPDATE, (itemData: any) => {
           const itemDataParsed = JSON.parse(itemData.data);
-          console.log(socket.data, itemDataParsed);
           new Promise(async (resolve) => {
             try {
               await this._libraryService.UpdateObject(

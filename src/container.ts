@@ -36,6 +36,8 @@ import { RedisService } from './services/RedisService';
 import { ICacheService } from './interfaces/ICacheService';
 import { ISubscriptionMiddleware } from './interfaces/ISubscriptionMiddleware';
 import { SubscriptionMiddleware } from './api/middlewares/subscription';
+import { ILoggerService } from './interfaces/ILoggerService';
+import { LoggerService } from './services/LoggerService';
 
 const container = new Container();
 
@@ -62,6 +64,7 @@ container
 container.bind<ILibraryRouter>(TYPES.LibraryRouter).to(LibraryRouter);
 container.bind<ISocketService>(TYPES.SocketService).to(SocketService);
 container.bind<ICacheService>(TYPES.CacheService).to(RedisService);
+container.bind<ILoggerService>(TYPES.LoggerService).to(LoggerService);
 container
   .bind<ISubscriptionMiddleware>(TYPES.SubscriptionMiddleware)
   .to(SubscriptionMiddleware);

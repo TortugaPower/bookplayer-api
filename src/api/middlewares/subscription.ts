@@ -29,7 +29,6 @@ export class SubscriptionMiddleware implements ISubscriptionMiddleware {
         return res.status(400).json({ message: 'the user is invalid' });
       }
     } catch (error) {
-      console.log('error', error.message);
       next(error);
     }
   }

@@ -41,7 +41,8 @@
     "reflect-metadata": "^0.1.13",
     "socket.io": "^4.5.1",
     "ts-node": "^10.5.0",
-    "verify-apple-id-token": "^2.1.0"
+    "verify-apple-id-token": "^2.1.0",
+    "winston": "^3.9.0"
   },
   "devDependencies": {
     "@types/compression": "^1.7.2",

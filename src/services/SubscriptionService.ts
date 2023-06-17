@@ -7,6 +7,7 @@ import JWT from 'jsonwebtoken';
 import { TYPES } from '../ContainerTypes';
 import { IRestClientService } from '../interfaces/IRestClientService';
 import { IUserService } from '../interfaces/IUserService';
+import { ILoggerService } from '../interfaces/ILoggerService';
 
 @injectable()
 export class SubscriptionService {
@@ -14,6 +15,8 @@ export class SubscriptionService {
   private _restClient: IRestClientService;
   @inject(TYPES.UserServices)
   private _user: IUserService;
+  @inject(TYPES.LoggerService)
+  private _logger: ILoggerService;
   private db = database;
 
   async ParseNewEvent(event: RevenuecatEvent): Promise<AppleUser> {
@@ -42,7 +45,11 @@ export class SubscriptionService {
       }
       return user;
     } catch (err) {
-      console.log(err);
+      this._logger.log({
+        origin: 'ParseNewEvent',
+        message: err.message,
+        data: { event },
+      });
       return null;
     }
   }
@@ -63,7 +70,11 @@ export class SubscriptionService {
       }
       return true;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'GetAndUpdateSubscription',
+        message: err.message,
+        data: { user },
+      });
       return false;
     }
   }

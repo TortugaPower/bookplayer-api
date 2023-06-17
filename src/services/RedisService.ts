@@ -1,9 +1,13 @@
 import { createClient } from 'redis';
-import { injectable } from 'inversify';
+import { inject, injectable } from 'inversify';
 import { RedisClientType } from '@redis/client';
+import { ILoggerService } from '../interfaces/ILoggerService';
+import { TYPES } from '../ContainerTypes';
 
 @injectable()
 export class RedisService {
+  @inject(TYPES.LoggerService)
+  private _logger: ILoggerService;
   private static client: RedisClientType;
 
   async connectCacheService() {
@@ -14,12 +18,23 @@ export class RedisService {
         });
       }
       RedisService.client.connect();
-      RedisService.client.on('error', (err) =>
-        console.log('Redis Client Error', err),
-      );
-      console.log('Cache is connected');
+      RedisService.client.on('error', (err) => {
+        this._logger.log({
+          origin: 'connectCacheService',
+          error: 'Redis client error connection',
+          err: err.message,
+        });
+      });
+      this._logger.log({
+        origin: 'connectCacheService',
+        message: 'Cache is connected',
+      });
     } catch (err) {
-      console.log('Redis client error connection', err);
+      this._logger.log({
+        origin: 'connectCacheService',
+        error: 'Redis client error connection',
+        err: err.message,
+      });
     }
   }
   async setObject(key: string, obj: object): Promise<string> {

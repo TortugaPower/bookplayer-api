@@ -1,4 +1,4 @@
-import { injectable } from 'inversify';
+import { inject, injectable } from 'inversify';
 import {
   AppleJWT,
   AppleUser,
@@ -13,10 +13,13 @@ import { Knex } from 'knex';
 import database from '../database';
 import JWT from 'jsonwebtoken';
 import moment from 'moment';
+import { ILoggerService } from '../interfaces/ILoggerService';
+import { TYPES } from '../ContainerTypes';
 @injectable()
 export class UserServices {
+  @inject(TYPES.LoggerService)
+  private _logger: ILoggerService;
   private db = database;
-
   async TokenUser(UserLogged: User): Promise<string> {
     const token = JWT.sign(
       JSON.stringify({ ...UserLogged, time: moment().unix() }),
@@ -34,7 +37,11 @@ export class UserServices {
 
       return decriptJWT;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'verifyToken',
+        message: err.message,
+        data: { token_id },
+      });
       return null;
     }
   }
@@ -68,7 +75,11 @@ export class UserServices {
         .first();
       return user;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'GetUser',
+        message: err.message,
+        data: { email, session },
+      });
       return null;
     }
   }
@@ -104,8 +115,12 @@ export class UserServices {
         params: newUser.params,
       };
     } catch (err) {
-      console.log(err.message);
       await tx.rollback();
+      this._logger.log({
+        origin: 'AddNewUser',
+        message: err.message,
+        data: { newUser },
+      });
       return null;
     }
   }
@@ -126,7 +141,11 @@ export class UserServices {
         .returning('id_user_device');
       return deviceCreated[0];
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'AddNewDevice',
+        message: err.message,
+        data: { userSession },
+      });
       return null;
     }
   }
@@ -159,7 +178,11 @@ export class UserServices {
         .debug(true);
       return user;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'GetUserByAppleID',
+        message: err.message,
+        data: { apple_id },
+      });
       return null;
     }
   }
@@ -189,7 +212,11 @@ export class UserServices {
         .returning('id_param');
       return true;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'UpdateSubscription',
+        message: err.message,
+        data: { user_id, subscription },
+      });
       return false;
     }
   }
@@ -235,8 +262,12 @@ export class UserServices {
       await tx.commit();
       return true;
     } catch (err) {
-      console.log(err.message);
       await tx.rollback();
+      this._logger.log({
+        origin: 'DeleteAccount',
+        message: err.message,
+        data: { user_id },
+      });
       return false;
     }
   }
@@ -264,7 +295,11 @@ export class UserServices {
         .then((res) => res.rows[0]);
       return userState.type;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'getUserSubscriptionState',
+        message: err.message,
+        data: { user_id },
+      });
       return null;
     }
   }

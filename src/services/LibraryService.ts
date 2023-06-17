@@ -13,11 +13,14 @@ import { Knex } from 'knex';
 import database from '../database';
 import { TYPES } from '../ContainerTypes';
 import { IStorageService } from '../interfaces/IStorageService';
+import { ILoggerService } from '../interfaces/ILoggerService';
 
 @injectable()
 export class LibraryService {
   @inject(TYPES.StorageService)
   private _storage: IStorageService;
+  @inject(TYPES.LoggerService)
+  private _logger: ILoggerService;
   private db = database;
 
   async dbGetLibrary(
@@ -52,7 +55,11 @@ export class LibraryService {
         .debug(false);
       return objects;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'dbGetLibrary',
+        message: err.message,
+        data: { user_id, path, filter },
+      });
       return null;
     }
   }
@@ -77,7 +84,11 @@ export class LibraryService {
         .returning('*');
       return objectsDeleted;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'dbDeleteLibrary',
+        message: err.message,
+        data: { user_id, path, exactly },
+      });
       return null;
     }
   }
@@ -101,7 +112,11 @@ export class LibraryService {
         .then((result) => result.rows);
       return nestedObjects;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'dbNestedObjects',
+        message: err.message,
+        data: { user_id, folderPath },
+      });
       return null;
     }
   }
@@ -139,7 +154,11 @@ export class LibraryService {
         .then((result) => result.rows);
       return objectsMoved;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'dbMoveFiles',
+        message: err.message,
+        data: { origin, destination },
+      });
       return null;
     }
   }
@@ -181,7 +200,11 @@ export class LibraryService {
         .then((result) => result.rows);
       return objectsMoved;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'dbRenameFiles',
+        message: err.message,
+        data: { user_id, origin, destination },
+      });
       return null;
     }
   }
@@ -216,7 +239,11 @@ export class LibraryService {
         .then((result) => result.rows);
       return objectsMoved;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'dbMoveFilesUp',
+        message: err.message,
+        data: { user_id, folderPath },
+      });
       return null;
     }
   }
@@ -250,7 +277,11 @@ export class LibraryService {
         .returning('*');
       return objects[0];
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'dbInsertLibraryItem',
+        message: err.message,
+        data: { user_id, item },
+      });
       return null;
     }
   }
@@ -282,7 +313,11 @@ export class LibraryService {
         .returning('*');
       return objects[0];
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'dbUpdateLibraryItem',
+        message: err.message,
+        data: { user_id, key, item },
+      });
       return null;
     }
   }
@@ -348,7 +383,11 @@ export class LibraryService {
       }
       return library;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'GetLibrary',
+        message: err.message,
+        data: { user, path },
+      });
       return null;
     }
   }
@@ -424,7 +463,11 @@ export class LibraryService {
       libObj.expires_in = expires_in;
       return libObj;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'GetObject',
+        message: err.message,
+        data: { user, path },
+      });
       return null;
     }
   }
@@ -472,7 +515,11 @@ export class LibraryService {
       apiResponse.expires_in = expires_in;
       return apiResponse;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'PutObject',
+        message: err.message,
+        data: { user, params },
+      });
       throw Error(err);
     }
   }
@@ -499,7 +546,11 @@ export class LibraryService {
       }
       return deletedObjects.map((i) => i.key);
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'DeleteObject',
+        message: err.message,
+        data: { user, params },
+      });
       throw Error(err);
     }
   }
@@ -529,7 +580,11 @@ export class LibraryService {
       )) as LibraryItem;
       return item;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'UpdateObject',
+        message: err.message,
+        data: { user, relativePath, params },
+      });
       throw Error(err);
     }
   }
@@ -592,7 +647,11 @@ export class LibraryService {
       return item;
     } catch (err) {
       await trx?.rollback();
-      console.log(err.message);
+      this._logger.log({
+        origin: 'reOrderObject',
+        message: err.message,
+        data: { user, params },
+      });
       throw Error(err);
     }
   }
@@ -659,7 +718,11 @@ export class LibraryService {
       return dbMoved;
     } catch (err) {
       await trx?.rollback();
-      console.log(err.message);
+      this._logger.log({
+        origin: 'moveLibraryObject',
+        message: err.message,
+        data: { user, params },
+      });
       throw Error(err);
     }
   }
@@ -711,6 +774,11 @@ export class LibraryService {
       return true;
     } catch (err) {
       await trx?.rollback();
+      this._logger.log({
+        origin: 'deleteFolderMoving',
+        message: err.message,
+        data: { user, folderPath },
+      });
       throw Error(err.message);
     }
   }
@@ -747,7 +815,11 @@ export class LibraryService {
       }
       return item;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'dbGetLastItemPlayed',
+        message: err.message,
+        data: { user },
+      });
       return null;
     }
   }
@@ -781,7 +853,11 @@ export class LibraryService {
 
       return bookmarks;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'getBookmarks',
+        message: err.message,
+        data: { params },
+      });
       return null;
     }
   }
@@ -807,7 +883,11 @@ export class LibraryService {
         .returning(selectColumns);
       return updated[0];
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'upsertBookmark',
+        message: err.message,
+        data: { bookmark },
+      });
       return null;
     }
   }
@@ -847,7 +927,11 @@ export class LibraryService {
       );
       return url;
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'thumbailPutRequest',
+        message: err.message,
+        data: { user, params },
+      });
       throw Error(err);
     }
   }
@@ -915,7 +999,11 @@ export class LibraryService {
       return dbMoved;
     } catch (err) {
       await trx?.rollback();
-      console.log(err.message);
+      this._logger.log({
+        origin: 'renameLibraryObject',
+        message: err.message,
+        data: { user, params },
+      });
       throw Error(err);
     }
   }

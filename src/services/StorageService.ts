@@ -1,4 +1,4 @@
-import { injectable } from 'inversify';
+import { inject, injectable } from 'inversify';
 import {
   S3,
   S3Client,
@@ -10,9 +10,13 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { S3Action, StorageItem } from '../types/user';
 import moment from 'moment';
+import { ILoggerService } from '../interfaces/ILoggerService';
+import { TYPES } from '../ContainerTypes';
 
 @injectable()
 export class StorageService {
+  @inject(TYPES.LoggerService)
+  private _logger: ILoggerService;
   private client = new S3({ region: process.env.S3_REGION });
   private clientObject = new S3Client({ region: process.env.S3_REGION });
 
@@ -30,7 +34,11 @@ export class StorageService {
       } else if (error.$metadata?.httpStatusCode === 403) {
         return false;
       } else {
-        console.log(error.message);
+        this._logger.log({
+          origin: 'fileExists',
+          message: error.message,
+          data: { key },
+        });
         return null;
       }
     }
@@ -62,7 +70,11 @@ export class StorageService {
       const content = files.concat(folders);
       return content.filter((item) => item.Key !== fixPath || !isFolder);
     } catch (err) {
-      console.log(err.message);
+      this._logger.log({
+        origin: 'GetDirectoryContent',
+        message: err.message,
+        data: { path },
+      });
       return null;
     }
   }
@@ -96,15 +108,17 @@ export class StorageService {
       });
       return { url, expires_in: expires };
     } catch (error) {
-      console.log(error.message);
+      this._logger.log({
+        origin: 'GetPresignedUrl',
+        message: error.message,
+        data: { key, type },
+      });
       return null;
     }
   }
 
   async moveFile(sourceKey: string, targetKey: string): Promise<boolean> {
     try {
-      console.log('sourceKey', `${process.env.S3_BUCKET}/${sourceKey}`);
-      console.log('targetKey', targetKey);
       await this.clientObject.send(
         new CopyObjectCommand({
           Bucket: process.env.S3_BUCKET,
@@ -120,14 +134,17 @@ export class StorageService {
       );
       return true;
     } catch (error) {
-      console.log(error.message);
+      this._logger.log({
+        origin: 'moveFile',
+        message: error.message,
+        data: { sourceKey, targetKey },
+      });
       return null;
     }
   }
 
   async deleteFile(sourceKey: string): Promise<boolean> {
     try {
-      console.log('sourceKey', `${process.env.S3_BUCKET}/deleted_${sourceKey}`);
       /// Keep a copy for a week just in case for support purposes
       await this.clientObject.send(
         new CopyObjectCommand({
@@ -144,7 +161,11 @@ export class StorageService {
       );
       return true;
     } catch (error) {
-      console.log(error.message);
+      this._logger.log({
+        origin: 'deleteFile',
+        message: error.message,
+        data: { sourceKey },
+      });
       return null;
     }
   }

@@ -12,6 +12,7 @@ import { handleError } from './api/middlewares/error';
 import { IRestClientService } from './interfaces/IRestClientService';
 import { ISocketService } from './interfaces/ISocketService';
 import { ICacheService } from './interfaces/ICacheService';
+import { ILoggerService } from './interfaces/ILoggerService';
 
 @injectable()
 export class Server {
@@ -19,6 +20,7 @@ export class Server {
   @inject(TYPES.RestClientService) private _restClient: IRestClientService;
   @inject(TYPES.SocketService) private _socketService: ISocketService;
   @inject(TYPES.CacheService) private _cacheService: ICacheService;
+  @inject(TYPES.LoggerService) private _logger: ILoggerService;
   run(): void {
     const app = express();
     app.use(bodyParser.json());
@@ -39,7 +41,7 @@ export class Server {
 
     const httpServer = createServer(app);
     httpServer.listen(process.env.API_PORT || 5000, () => {
-      console.log('todo proper logger');
+      this._logger.log({ origin: 'init app' });
       this._cacheService.connectCacheService();
       this._socketService.setupClient(httpServer);
     });
