@@ -9,7 +9,7 @@
     "lint": "eslint src --ext .js,.ts",
     "build": "tsc -b",
     "setup_env": "node scripts/env.js",
-    "prod": "node dist/main.js"
+    "prod": "NODE_ENV=production node dist/main.js"
   },
   "keywords": [
     "booklpayer ios backend"
