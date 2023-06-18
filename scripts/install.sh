@@ -24,5 +24,4 @@ pm2 delete all
 pm2 startup
 sudo env PATH=$PATH:/home/ec2-user/.nvm/versions/node/v16.20.0/bin /home/ec2-user/.nvm/versions/node/v16.20.0/lib/node_modules/pm2/bin/pm2 startup systemd -u ec2-user --hp /home/ec2-user
 pm2 start --name api -i max npm -- run prod
-pm2 start --name dashapi -i 1 npm -- run proddashbaord
 pm2 save

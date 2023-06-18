@@ -36,7 +36,7 @@ const setupEnv = async () => {
     Object.keys(configs).map((k) => {
       stringEnv += `${k}=${configs[k]}\n`;
     });
-    fs.writeFileSync(`.env`, stringEnv);
+    fs.writeFileSync(`.production.env`, stringEnv);
   } catch (err) {
     console.log(err.message);
   }

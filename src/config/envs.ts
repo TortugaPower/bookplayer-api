@@ -6,7 +6,9 @@ export const Envs = () => {
   const result = require('dotenv').config({
     path: path.join(
       __dirname,
-      `../../${process.env.NODE_ENV ?? 'development'}.env`,
+      `../../${
+        process.env.NODE_ENV ? `.${process.env.NODE_ENV}` : 'development'
+      }.env`,
     ),
   });
 
@@ -26,8 +28,6 @@ export const Envs = () => {
       .prop('DB_PASSWORD', S.string().required())
       .prop('DB_DATABASE', S.string().required())
       .prop('S3_BUCKET', S.string().required())
-      .prop('AWS_ACCESS_KEY_ID', S.string().required())
-      .prop('AWS_SECRET_ACCESS_KEY', S.string().required())
       .prop('S3_REGION', S.string().required())
       .prop('APPLE_CLIENT_ID', S.string().required())
       .prop('APP_SECRET', S.string().required())
