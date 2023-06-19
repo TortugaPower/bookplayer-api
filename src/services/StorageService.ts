@@ -6,6 +6,7 @@ import {
   PutObjectCommand,
   CopyObjectCommand,
   DeleteObjectCommand,
+  ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { S3Action, StorageItem } from '../types/user';
@@ -165,6 +166,29 @@ export class StorageService {
         origin: 'deleteFile',
         message: error.message,
         data: { sourceKey },
+      });
+      return null;
+    }
+  }
+  async calculateFolderSize(folderKey: string): Promise<number> {
+    try {
+      let totalSize = 0;
+      const command = new ListObjectsV2Command({
+        Bucket: process.env.S3_BUCKET,
+        Prefix: folderKey,
+      });
+      const response = await this.clientObject.send(command);
+      const objects = response.Contents;
+      objects?.forEach((object) => {
+        totalSize += object.Size;
+      });
+      return totalSize;
+    } catch (error) {
+      console.error(error);
+      this._logger.log({
+        origin: 'calculateFolderSize',
+        message: error.message,
+        data: { folderKey },
       });
       return null;
     }

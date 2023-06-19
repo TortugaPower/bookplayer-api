@@ -191,3 +191,13 @@ export interface Bookmark {
   library_item_id?: number;
   active: boolean;
 }
+
+export interface UserStats {
+  user_id: number;
+  email: string;
+  status: string;
+  books: number;
+  folders: number;
+  bounds: number;
+  size: number;
+}

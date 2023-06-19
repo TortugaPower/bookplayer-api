@@ -11,3 +11,7 @@ export interface IRouterHttp {
 export interface ILibraryRouter {
   get(): Router;
 }
+
+export interface IAdminRouter {
+  get(): Router;
+}

@@ -15,6 +15,9 @@ const TYPES = {
   CacheService: Symbol.for('CacheService'),
   SubscriptionMiddleware: Symbol.for('SubscriptionMiddleware'),
   LoggerService: Symbol.for('LoggerService'),
+  AdminService: Symbol.for('AdminService'),
+  AdminController: Symbol.for('AdminController'),
+  AdminRouter: Symbol.for('AdminRouter'),
 };
 
 export { TYPES };

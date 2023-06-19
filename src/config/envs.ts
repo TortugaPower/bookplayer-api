@@ -7,7 +7,7 @@ export const Envs = () => {
     path: path.join(
       __dirname,
       `../../${
-        process.env.NODE_ENV ? `.${process.env.NODE_ENV}` : 'development'
+        process.env.NODE_ENV ? `.${process.env.NODE_ENV}` : '.development'
       }.env`,
     ),
   });

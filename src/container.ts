@@ -16,6 +16,7 @@ import {
   IUserRouter,
   IRouterHttp,
   ILibraryRouter,
+  IAdminRouter,
 } from './interfaces/IRouters';
 import { SubscriptionController } from './controllers/SubscriptionController';
 import { ISubscriptionController } from './interfaces/ISubscriptionController';
@@ -38,6 +39,11 @@ import { ISubscriptionMiddleware } from './interfaces/ISubscriptionMiddleware';
 import { SubscriptionMiddleware } from './api/middlewares/subscription';
 import { ILoggerService } from './interfaces/ILoggerService';
 import { LoggerService } from './services/LoggerService';
+import { IAdminService } from './interfaces/IAdminService';
+import { AdminService } from './services/AdminService';
+import { AdminRouter } from './api/AdminRouter';
+import { IAdminController } from './interfaces/IAdminController';
+import { AdminController } from './controllers/AdminController';
 
 const container = new Container();
 
@@ -68,4 +74,7 @@ container.bind<ILoggerService>(TYPES.LoggerService).to(LoggerService);
 container
   .bind<ISubscriptionMiddleware>(TYPES.SubscriptionMiddleware)
   .to(SubscriptionMiddleware);
+container.bind<IAdminService>(TYPES.AdminService).to(AdminService);
+container.bind<IAdminController>(TYPES.AdminController).to(AdminController);
+container.bind<IAdminRouter>(TYPES.AdminRouter).to(AdminRouter);
 export { container };

@@ -13,4 +13,5 @@ export interface IStorageService {
   }>;
   moveFile(sourceKey: string, targetKey: string): Promise<boolean>;
   deleteFile(sourceKey: string): Promise<boolean>;
+  calculateFolderSize(folderKey: string): Promise<number>;
 }
