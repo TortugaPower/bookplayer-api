@@ -688,7 +688,6 @@ export class LibraryService {
           throw Error('The destination is invalid');
         }
       }
-
       const originObj = await this.dbGetLibrary(
         user.id_user,
         origin,
@@ -696,7 +695,18 @@ export class LibraryService {
         trx,
       );
       if (originObj.length !== 1) {
-        throw Error('origin is invalid');
+        const destinationObj = await this.dbGetLibrary(
+          user.id_user,
+          destination,
+          { exactly: true },
+          trx,
+        );
+        if (destinationObj.length !== 1) {
+          throw Error('origin is invalid');
+        } else {
+          await trx.commit();
+          return [];
+        }
       }
 
       const dbMoved = await this.dbMoveFiles(
