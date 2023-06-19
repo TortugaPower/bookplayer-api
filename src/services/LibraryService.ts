@@ -517,7 +517,7 @@ export class LibraryService {
     } catch (err) {
       this._logger.log({
         origin: 'PutObject',
-        message: err.message,
+        message: err.stack || err.message,
         data: { user, params },
       });
       throw Error(err);

@@ -286,6 +286,7 @@ export class UserServices {
         ) as apple_id on true
         join lateral (
           select * from subscription_events sevent where sevent.original_app_user_id=apple_id.value
+          or replace((sevent.json -> 'app_user_id')::varchar, '"', '') = apple_id.value
           order by sevent.id_subscription_event desc limit 1
         ) as subscription on true
         where usr.id_user=?
