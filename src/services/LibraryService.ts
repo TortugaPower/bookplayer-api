@@ -297,7 +297,7 @@ export class LibraryService {
       const updateObject = Object.keys(item).reduce(
         (cleanItem: { [k: string]: unknown }, column: string) => {
           const itemUnknow = item as unknown as { [k: string]: unknown };
-          if (itemUnknow[column] !== null && itemUnknow[column] !== undefined) {
+          if (itemUnknow[column] !== undefined) {
             cleanItem[column] = itemUnknow[column];
           }
           return cleanItem;
@@ -431,9 +431,11 @@ export class LibraryService {
           duration: !!itemApi.duration ? `${itemApi.duration}` : undefined,
           percent_completed: itemApi.percentCompleted,
           order_rank: itemApi.orderRank,
-          last_play_date: !!itemApi.lastPlayDateTimestamp
-            ? parseInt(`${itemApi.lastPlayDateTimestamp}`)
-            : null,
+          last_play_date:
+            !!itemApi.lastPlayDateTimestamp &&
+            `${itemApi.lastPlayDateTimestamp}`.trim() !== ''
+              ? parseInt(`${itemApi.lastPlayDateTimestamp}`)
+              : null,
           type: itemApi.type,
           is_finish: itemApi.isFinished,
           thumbnail: itemApi.thumbnail,
@@ -564,10 +566,12 @@ export class LibraryService {
       const cleanPath = relativePath.replace(`${user.email}/`, '');
 
       const libraryItem = (await this.ParseLibraryItemDbB(
-        params,
+        {
+          relativePath,
+          ...params,
+        },
         LibraryItemOutput.DB,
       )) as LibrarItemDB;
-
       const itemDbInserted = await this.dbUpdateLibraryItem(
         user.id_user,
         cleanPath,
