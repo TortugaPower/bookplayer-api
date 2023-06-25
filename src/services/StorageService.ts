@@ -102,7 +102,7 @@ export class StorageService {
           command = new PutObjectCommand(obj);
           break;
       }
-      const seconds = 3600 * 24 * 365 * 30; // 1 hour * 24 * 365 * 30 = 30 years
+      const seconds = 3600 * 24 * 7; // 1 hour * 24 * 365 * 30 = 30 years
       const expires = moment().add(seconds, 'seconds').unix();
       const url = await getSignedUrl(this.clientObject, command, {
         expiresIn: seconds,
