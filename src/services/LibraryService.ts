@@ -330,55 +330,55 @@ export class LibraryService {
     try {
       const cleanPath = path.replace(`${user.email}/`, '');
       const objectDB = await this.dbGetLibrary(user.id_user, cleanPath);
-      let isFolder = true;
-      if (objectDB?.length && objectDB[0].key === cleanPath) {
-        isFolder = false;
-      }
-      const storageObjects = await this._storage.GetDirectoryContent(
-        path,
-        isFolder,
-      );
+      // let isFolder = true;
+      // if (objectDB?.length && objectDB[0].key === cleanPath) {
+      //   isFolder = false;
+      // }
+      // const storageObjects = await this._storage.GetDirectoryContent(
+      //   path,
+      //   isFolder,
+      // );
       const library: LibraryItem[] = [];
       if (objectDB?.length) {
         for (let index = 0; index < objectDB.length; index++) {
           const itemDb = objectDB[index];
-          const storageObj = storageObjects.find(
-            (item) => item.Key.indexOf(itemDb.key) !== -1,
-          );
-          if (storageObj) {
-            const libObj: LibraryItem = {
-              relativePath: itemDb.key,
-              originalFileName: itemDb.original_filename,
-              title: itemDb.title,
-              details: itemDb.details,
-              speed: itemDb.speed,
-              currentTime: parseFloat(itemDb.actual_time),
-              duration: parseFloat(itemDb.duration),
-              percentCompleted: itemDb.percent_completed,
-              isFinished: itemDb.is_finish,
-              orderRank: itemDb.order_rank,
-              lastPlayDateTimestamp: itemDb.last_play_date,
-              type: itemDb.type,
-              url: null,
-              thumbnail: itemDb.thumbnail,
-            };
-            if (withPresign) {
-              const { url, expires_in } = await this._storage.GetPresignedUrl(
-                `${user.email}/${itemDb.key}`,
-                S3Action.GET,
-              );
-              libObj.url = url;
-              libObj.expires_in = expires_in;
-            }
-            if (libObj.thumbnail) {
-              const { url } = await this._storage.GetPresignedUrl(
-                `${user.email}_thumbnail/${itemDb.thumbnail}`,
-                S3Action.GET,
-              );
-              libObj.thumbnail = url;
-            }
-            library.push(libObj);
+          // const storageObj = storageObjects.find(
+          //   (item) => item.Key.indexOf(itemDb.key) !== -1,
+          // );
+          // if (storageObj) {
+          const libObj: LibraryItem = {
+            relativePath: itemDb.key,
+            originalFileName: itemDb.original_filename,
+            title: itemDb.title,
+            details: itemDb.details,
+            speed: itemDb.speed,
+            currentTime: parseFloat(itemDb.actual_time),
+            duration: parseFloat(itemDb.duration),
+            percentCompleted: itemDb.percent_completed,
+            isFinished: itemDb.is_finish,
+            orderRank: itemDb.order_rank,
+            lastPlayDateTimestamp: itemDb.last_play_date,
+            type: itemDb.type,
+            url: null,
+            thumbnail: itemDb.thumbnail,
+          };
+          if (withPresign) {
+            const { url, expires_in } = await this._storage.GetPresignedUrl(
+              `${user.email}/${itemDb.key}`,
+              S3Action.GET,
+            );
+            libObj.url = url;
+            libObj.expires_in = expires_in;
           }
+          if (libObj.thumbnail) {
+            const { url } = await this._storage.GetPresignedUrl(
+              `${user.email}_thumbnail/${itemDb.thumbnail}`,
+              S3Action.GET,
+            );
+            libObj.thumbnail = url;
+          }
+          library.push(libObj);
+          // }
         }
       }
       return library;
@@ -692,7 +692,7 @@ export class LibraryService {
               speed: 1,
               actual_time: null,
               details: name,
-              duration: null,
+              duration: `0`,
               percent_completed: 0,
               order_rank: 1,
               last_play_date: null,
