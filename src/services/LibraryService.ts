@@ -674,7 +674,7 @@ export class LibraryService {
 
       /// Verify destination folder if not moving to the library
       if (destinationPathFolder !== '') {
-        const destinationDB = await this.dbGetLibrary(
+        let destinationDB = await this.dbGetLibrary(
           user.id_user,
           destinationPathFolder,
           { exactly: true },
@@ -682,7 +682,32 @@ export class LibraryService {
         );
 
         if (destinationDB.length !== 1) {
-          throw Error('destination not found');
+          const name = destinationPathFolder.split('/').pop();
+          await this.dbInsertLibraryItem(
+            user.id_user,
+            {
+              key: destinationPathFolder,
+              title: name,
+              original_filename: name,
+              speed: 1,
+              actual_time: null,
+              details: name,
+              duration: null,
+              percent_completed: 0,
+              order_rank: 1,
+              last_play_date: null,
+              type: LibraryItemType.FOLDER,
+              is_finish: false,
+              thumbnail: null,
+            },
+            trx,
+          );
+          destinationDB = await this.dbGetLibrary(
+            user.id_user,
+            destinationPathFolder,
+            { exactly: true },
+            trx,
+          );
         }
         const destType = `${destinationDB[0].type}`;
         if (
