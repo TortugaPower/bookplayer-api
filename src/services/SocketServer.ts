@@ -8,6 +8,7 @@ import { ICacheService } from '../interfaces/ICacheService';
 import { Handshake } from 'socket.io/dist/socket';
 import loggedUser from '../api/middlewares/auth';
 import { ILibraryService } from '../interfaces/ILibraryService';
+import { ILoggerService } from '../interfaces/ILoggerService';
 
 enum SocketStates {
   CONNECTION = 'connection',
@@ -20,6 +21,7 @@ enum SocketEvents {
 export class SocketService {
   @inject(TYPES.CacheService) private _cacheService: ICacheService;
   @inject(TYPES.LibraryService) private _libraryService: ILibraryService;
+  @inject(TYPES.LoggerService) private _looger: ILoggerService;
   private socketServer: Server<
     SocketDefaultEventsMap,
     SocketDefaultEventsMap,
@@ -68,6 +70,10 @@ export class SocketService {
 
       this.socketServer.on(SocketStates.CONNECTION, (socket) => {
         new Promise(async (resolve) => {
+          this._looger.log({
+            origin: 'socket_on_connection',
+            id_user: socket.data.id_user,
+          });
           const previousSocket = await this._cacheService.getObject(
             `socket_${socket.data.id_user}`,
           );
@@ -117,6 +123,11 @@ export class SocketService {
               );
             } catch (err) {
               console.log('Socket update', err.message);
+              this._looger.log({
+                origin: 'socket_on_update',
+                id_user: socket.data.id_user,
+                error: err.message,
+              });
             }
             resolve(true);
           });
