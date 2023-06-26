@@ -223,7 +223,7 @@ export class LibraryService {
       update library_items ss
       set key=filtro.newKey
       from (select filtroKey.id_library_item,
-                  array_to_string(array_remove(removing, removing[removeIndex]), '/') as newKey
+                  array_to_string(removing[1:removeIndex-1] || removing[removeIndex+1:], '/') as newKey
             from (
                     select id_library_item,
                             string_to_array(key, '/') as removing,
