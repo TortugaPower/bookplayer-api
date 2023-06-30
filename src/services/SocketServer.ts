@@ -47,6 +47,7 @@ export class SocketService {
         email: req.user.email,
       };
     } catch (err) {
+      console.log(err.message);
       return null;
     }
   }
@@ -68,12 +69,8 @@ export class SocketService {
         }
       });
 
-      this.socketServer.on(SocketStates.CONNECTION, (socket) => {
-        new Promise(async (resolve) => {
-          this._looger.log({
-            origin: 'socket_on_connection',
-            id_user: socket.data.id_user,
-          });
+      this.socketServer.on(SocketStates.CONNECTION, async (socket) => {
+        await new Promise(async (resolve) => {
           const previousSocket = await this._cacheService.getObject(
             `socket_${socket.data.id_user}`,
           );
@@ -83,7 +80,12 @@ export class SocketService {
               ? (previousSocket as string[]).concat([socket.id])
               : [socket.id],
           );
-          resolve(null);
+          resolve(true);
+        }).catch((errSocket) => {
+          this._looger.log({
+            origin: 'errSocket',
+            errSocket: errSocket.message,
+          });
         });
 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -108,7 +110,6 @@ export class SocketService {
             );
           }
         });
-
         socket.on(SocketEvents.TRACK_UPDATE, (itemData: any) => {
           const itemDataParsed = JSON.parse(itemData.data);
           new Promise(async (resolve) => {
@@ -122,7 +123,6 @@ export class SocketService {
                 itemDataParsed,
               );
             } catch (err) {
-              console.log('Socket update', err.message);
               this._looger.log({
                 origin: 'socket_on_update',
                 id_user: socket.data.id_user,
