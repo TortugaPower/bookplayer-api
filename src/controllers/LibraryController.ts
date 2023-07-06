@@ -10,6 +10,20 @@ export class LibraryController implements ILibraryController {
   @inject(TYPES.LibraryService)
   private _libraryService: ILibraryService;
 
+  public async getUserLibraryKeys(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const user = req.user;
+      const content = await this._libraryService.dbGetAllKeys(user);
+      return res.json({ content });
+    } catch (err) {
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
+
   public async getLibraryContentPath(
     req: IRequest,
     res: IResponse,

@@ -23,6 +23,26 @@ export class LibraryService {
   private _logger: ILoggerService;
   private db = database;
 
+  async dbGetAllKeys(user_id: number): Promise<string[]> {
+    try {
+      const objects = await this.db('library_items as li')
+        .where({
+          user_id,
+          active: true,
+        })
+        .orderBy('key', 'asc')
+        .debug(false);
+      return objects.map((item) => item.key);
+    } catch (err) {
+      this._logger.log({
+        origin: 'dbGetAlKeys',
+        message: err.message,
+        data: { user_id },
+      });
+      return null;
+    }
+  }
+
   async dbGetLibrary(
     user_id: number,
     path: string,

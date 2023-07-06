@@ -49,4 +49,9 @@ export interface ILibraryController {
     res: IResponse,
     _: INext,
   ): Promise<IResponse>;
+  getUserLibraryKeys(
+    req: IRequest,
+    res: IResponse,
+    _: INext,
+  ): Promise<IResponse>;
 }

@@ -55,4 +55,5 @@ export interface ILibraryService {
       newName: string;
     },
   ): Promise<LibraryItemMovedDB[]>;
+  dbGetAllKeys(user_id: number): Promise<string[]>;
 }

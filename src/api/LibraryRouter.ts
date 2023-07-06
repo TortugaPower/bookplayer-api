@@ -53,6 +53,9 @@ export class LibraryRouter implements ILibraryRouter {
     router.post('/thumbnail_set', middleWareInit, (req, res, next) =>
       this._controller.itemThumbnailPutRequest(req, res, next).catch(next),
     );
+    router.get('/keys', middleWareInit, (req, res, next) =>
+      this._controller.getUserLibraryKeys(req, res, next).catch(next),
+    );
     return router;
   }
 }
