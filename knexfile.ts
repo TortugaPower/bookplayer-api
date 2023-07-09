@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 dotenv.config({
-  path: `${process.env.NODE_ENV || 'development'}.env`,
+  path: `${process.env.NODE_ENV || '.development'}.env`,
 });
 
 module.exports = {

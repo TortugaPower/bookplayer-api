@@ -36,4 +36,32 @@ export class AdminController implements IAdminController {
     );
     return res.json({ users });
   }
+
+  public async validateSyncBooks(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    const usersBooks = await this._adminService.getUserBooks();
+    await Promise.all(
+      usersBooks.map(async (userBook) => {
+        try {
+          const fileExist = await this._storageService.fileExists(
+            `${userBook.email}/${userBook.key}`,
+          );
+          if (fileExist !== userBook.synced) {
+            await this._adminService.updateSync(
+              userBook.id_library_item,
+              fileExist,
+            );
+          }
+        } catch (error) {
+          this._loggerService.log({
+            origin: 'SetUserUsage',
+            error: error.message,
+          });
+        }
+      }),
+    );
+    return res.json({ usersBooks: usersBooks.length });
+  }
 }

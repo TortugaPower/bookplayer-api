@@ -138,6 +138,7 @@ export interface LibraryItem {
   url: string | null | undefined;
   expires_in?: number;
   thumbnail?: string;
+  synced?: boolean;
 }
 
 export interface LibraryItemMovedDB {
@@ -164,6 +165,7 @@ export interface LibrarItemDB {
   is_finish: boolean;
   thumbnail?: string;
   active?: boolean;
+  synced: boolean;
 }
 
 export interface StorageItem {
@@ -200,4 +202,12 @@ export interface UserStats {
   folders: number;
   bounds: number;
   size: number;
+}
+
+export interface UserBooks {
+  user_id: number;
+  email: string;
+  key: string;
+  id_library_item: number;
+  synced: boolean;
 }

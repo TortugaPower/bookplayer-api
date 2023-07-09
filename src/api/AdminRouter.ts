@@ -14,7 +14,9 @@ export class AdminRouter implements IAdminRouter {
     router.get('/users_usage', (req, res, next) =>
       this._controller.SetUserUsage(req, res, next).catch(next),
     );
-
+    router.get('/validate_sync', (req, res, next) =>
+      this._controller.validateSyncBooks(req, res, next).catch(next),
+    );
     return router;
   }
 }

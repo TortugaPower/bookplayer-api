@@ -29,6 +29,7 @@ export class LibraryService {
         .where({
           user_id,
           active: true,
+          synced: true,
         })
         .orderBy('key', 'asc')
         .debug(false);
@@ -381,6 +382,7 @@ export class LibraryService {
             type: itemDb.type,
             url: null,
             thumbnail: itemDb.thumbnail,
+            synced: itemDb.synced,
           };
           if (withPresign) {
             const { url, expires_in } = await this._storage.GetPresignedUrl(
@@ -435,6 +437,7 @@ export class LibraryService {
           type: itemTemp.type,
           thumbnail: itemTemp.thumbnail,
           url: '',
+          synced: itemTemp.synced,
         };
         break;
       case LibraryItemOutput.DB:
@@ -459,6 +462,7 @@ export class LibraryService {
           type: itemApi.type,
           is_finish: itemApi.isFinished,
           thumbnail: itemApi.thumbnail,
+          synced: itemApi.synced !== undefined ? itemTemp.synced : undefined,
         };
         break;
     }
@@ -719,6 +723,7 @@ export class LibraryService {
               type: LibraryItemType.FOLDER,
               is_finish: false,
               thumbnail: null,
+              synced: true,
             },
             trx,
           );

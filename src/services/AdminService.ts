@@ -1,5 +1,5 @@
 import { inject, injectable } from 'inversify';
-import { UserStats } from '../types/user';
+import { LibraryItemType, UserBooks, UserStats } from '../types/user';
 import database from '../database';
 import { ILoggerService } from '../interfaces/ILoggerService';
 import { TYPES } from '../ContainerTypes';
@@ -32,6 +32,50 @@ export class AdminService {
     } catch (err) {
       this._logger.log({
         origin: 'GetUsersStats',
+        message: err.message,
+      });
+      return null;
+    }
+  }
+
+  async getUserBooks(): Promise<UserBooks[]> {
+    try {
+      const userBooks = await this.db
+        .raw(
+          `
+          select u.email, li.id_library_item, li.user_id, li.key from library_items li
+          join users u on li.user_id = u.id_user
+          where li.active=true and li.type=?
+        `,
+          [LibraryItemType.BOOK],
+        )
+        .then((res) => res.rows);
+      return userBooks;
+    } catch (err) {
+      this._logger.log({
+        origin: 'getUserBooks',
+        message: err.message,
+      });
+      return null;
+    }
+  }
+  async updateSync(
+    id_library_item: number,
+    synced: boolean,
+  ): Promise<UserBooks[]> {
+    try {
+      const userBooks = await this.db('library_items')
+        .update({
+          synced,
+        })
+        .where({
+          id_library_item,
+        })
+        .returning('id_library_item');
+      return userBooks[0].id_library_item;
+    } catch (err) {
+      this._logger.log({
+        origin: 'updateSync',
         message: err.message,
       });
       return null;
