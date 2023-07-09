@@ -16,7 +16,7 @@ export class LibraryController implements ILibraryController {
   ): Promise<IResponse> {
     try {
       const user = req.user;
-      const content = await this._libraryService.dbGetAllKeys(user);
+      const content = await this._libraryService.dbGetAllKeys(user.id_user);
       return res.json({ content });
     } catch (err) {
       res.status(400).json({ message: err.message });
