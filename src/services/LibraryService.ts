@@ -462,7 +462,7 @@ export class LibraryService {
           type: itemApi.type,
           is_finish: itemApi.isFinished,
           thumbnail: itemApi.thumbnail,
-          synced: itemApi.synced !== undefined ? itemTemp.synced : undefined,
+          synced: itemApi.synced !== undefined ? itemApi.synced : undefined,
         };
         break;
     }
