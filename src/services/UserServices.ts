@@ -278,18 +278,22 @@ export class UserServices {
         .raw(
           `
         select usr.id_user, usr.email, apple_id.value as apple_id,
-          subscription.period_type, subscription.type
+          coalesce(subscription_one.period_type, subscription_two.period_type) as period_type,
+          coalesce(subscription_one.type, subscription_two.type) as type
         from users usr
         join lateral (
           select * from user_params up where usr.id_user = up.user_id and param='apple_id'
           order by up.id_param desc limit 1
         ) as apple_id on true
-        join lateral (
+        left join lateral (
           select * from subscription_events sevent where sevent.original_app_user_id=apple_id.value
-          or replace((sevent.json -> 'app_user_id')::varchar, '"', '') = apple_id.value
           order by sevent.id_subscription_event desc limit 1
-        ) as subscription on true
-        where usr.id_user=?
+        ) as subscription_one on true
+        left join lateral (
+          select * from subscription_events sevent where replace((sevent.json -> 'app_user_id')::varchar, '"', '') = apple_id.value
+          order by sevent.id_subscription_event desc limit 1
+        ) as subscription_two on true
+        where usr.id_user=? and coalesce(subscription_one.type, subscription_two.type) is not null
       `,
           [user_id],
         )
