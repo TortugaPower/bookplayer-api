@@ -1,5 +1,6 @@
 export interface SignApple {
   token_id: string;
+  client_id?: string;
 }
 
 export type User = {

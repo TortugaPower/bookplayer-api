@@ -28,11 +28,12 @@ export class UserServices {
     return token;
   }
 
-  async verifyToken({ token_id }: SignApple): Promise<AppleJWT> {
+  async verifyToken({ token_id, client_id }: SignApple): Promise<AppleJWT> {
     try {
+      const defaultClientID = process.env.APPLE_CLIENT_ID;
       const decriptJWT = await verifyAppleToken({
         idToken: token_id,
-        clientId: process.env.APPLE_CLIENT_ID,
+        clientId: client_id || defaultClientID,
       });
 
       return decriptJWT;
@@ -304,6 +305,27 @@ export class UserServices {
         origin: 'getUserSubscriptionState',
         message: err.message,
         data: { user_id },
+      });
+      return null;
+    }
+  }
+
+  async getClientID(params: { origin: string }): Promise<string> {
+    try {
+      const { origin } = params;
+      const client = await this.db('apple_clients')
+        .where({
+          active: true,
+          origin,
+        })
+        .select('apple_id')
+        .first();
+      return client?.apple_id;
+    } catch (err) {
+      this._logger.log({
+        origin: 'getClientID',
+        message: err.message,
+        data: params,
       });
       return null;
     }

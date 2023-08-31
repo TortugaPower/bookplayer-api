@@ -17,11 +17,21 @@ export class UserController implements IUserController {
 
   public async InitLogin(req: IRequest, res: IResponse): Promise<IResponse> {
     const { token_id } = req.body;
+    const { origin } = req.headers;
     if (!token_id) {
       res.status(422).json({ message: 'The authentication is missing' });
       return;
     }
-    const appleAuth = await this._userService.verifyToken({ token_id });
+    let client_id = null;
+    if (origin) {
+      client_id = await this._userService.getClientID({
+        origin: origin.replace('https://', '').replace('http://', ''),
+      });
+    }
+    const appleAuth = await this._userService.verifyToken({
+      token_id,
+      client_id,
+    });
 
     if (!appleAuth?.email || !appleAuth?.sub) {
       res.status(422).json({ message: 'Invalid apple id' });
