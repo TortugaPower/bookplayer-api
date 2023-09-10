@@ -23,5 +23,5 @@ pm2 stop all
 pm2 delete all
 pm2 startup
 sudo env PATH=$PATH:/home/ec2-user/.nvm/versions/node/v16.20.0/bin /home/ec2-user/.nvm/versions/node/v16.20.0/lib/node_modules/pm2/bin/pm2 startup systemd -u ec2-user --hp /home/ec2-user
-pm2 start --name api -i max npm -- run prod
+NODE_ENV=production pm2 start --name api -i max dist/main.js
 pm2 save
