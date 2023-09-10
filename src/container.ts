@@ -44,6 +44,8 @@ import { AdminService } from './services/AdminService';
 import { AdminRouter } from './api/AdminRouter';
 import { IAdminController } from './interfaces/IAdminController';
 import { AdminController } from './controllers/AdminController';
+import { IUserAdminMiddleware } from './interfaces/IUserAdminMiddleware';
+import { UserAdminMiddleware } from './api/middlewares/admin';
 
 const container = new Container();
 
@@ -74,6 +76,9 @@ container.bind<ILoggerService>(TYPES.LoggerService).to(LoggerService);
 container
   .bind<ISubscriptionMiddleware>(TYPES.SubscriptionMiddleware)
   .to(SubscriptionMiddleware);
+container
+  .bind<IUserAdminMiddleware>(TYPES.UserAdminMiddleware)
+  .to(UserAdminMiddleware);
 container.bind<IAdminService>(TYPES.AdminService).to(AdminService);
 container.bind<IAdminController>(TYPES.AdminController).to(AdminController);
 container.bind<IAdminRouter>(TYPES.AdminRouter).to(AdminRouter);

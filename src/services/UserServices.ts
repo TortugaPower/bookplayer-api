@@ -191,7 +191,6 @@ export class UserServices {
   async UpdateSubscription(
     user_id: number,
     subscription: string,
-    trx?: Knex.Transaction,
   ): Promise<boolean> {
     try {
       await this.db('user_params')
@@ -326,6 +325,25 @@ export class UserServices {
         origin: 'getClientID',
         message: err.message,
         data: params,
+      });
+      return null;
+    }
+  }
+
+  async checkIfAdmin(user_id: number): Promise<boolean> {
+    try {
+      const isAdmin = await this.db('admin_users')
+        .where({
+          user_id,
+          active: true,
+        })
+        .first();
+      return !!isAdmin;
+    } catch (err) {
+      this._logger.log({
+        origin: 'checkIfAdmin',
+        message: err.message,
+        data: { user_id },
       });
       return null;
     }

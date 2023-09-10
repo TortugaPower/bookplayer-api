@@ -14,6 +14,7 @@ const TYPES = {
   SocketService: Symbol.for('SocketService'),
   CacheService: Symbol.for('CacheService'),
   SubscriptionMiddleware: Symbol.for('SubscriptionMiddleware'),
+  UserAdminMiddleware: Symbol.for('UserAdminMiddleware'),
   LoggerService: Symbol.for('LoggerService'),
   AdminService: Symbol.for('AdminService'),
   AdminController: Symbol.for('AdminController'),

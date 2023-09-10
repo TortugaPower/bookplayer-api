@@ -17,4 +17,5 @@ export interface IUserService {
   DeleteAccount(user_id: number): Promise<boolean>;
   getUserSubscriptionState(user_id: number): Promise<string>;
   getClientID(p: { origin: string }): Promise<string>;
+  checkIfAdmin(user_id: number): Promise<boolean>;
 }
