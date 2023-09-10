@@ -27,7 +27,6 @@ export class Server {
     app.use(bodyParser.urlencoded({ extended: true }));
     app.use(compress());
     app.use(helmet());
-    app.use(helmet());
     app.use(authMiddleware);
     app.use(
       cors({
