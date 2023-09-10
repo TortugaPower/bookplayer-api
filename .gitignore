@@ -20,3 +20,5 @@ dist
 .env
 development.env
 store/*
+.development.env
+dump.rdb
