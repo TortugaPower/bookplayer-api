@@ -19,10 +19,8 @@ export class SubscriptionMiddleware implements ISubscriptionMiddleware {
         const state = await this._userService.getUserSubscriptionState(
           user.id_user,
         );
-        if (state === SubscriptionEventType.EXPIRATION) {
-          return res
-            .status(400)
-            .json({ message: 'The subscription of the user is Expired' });
+        if (!state || state === SubscriptionEventType.EXPIRATION) {
+          return res.status(400).json({ message: 'You are not suscribed' });
         }
         next();
       } else {
