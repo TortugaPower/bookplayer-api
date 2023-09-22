@@ -381,7 +381,7 @@ export class LibraryService {
             lastPlayDateTimestamp: itemDb.last_play_date,
             type: itemDb.type,
             url: null,
-            thumbnail: itemDb.thumbnail,
+            thumbnail: null,
             synced: itemDb.synced,
           };
           if (withPresign) {
@@ -391,13 +391,14 @@ export class LibraryService {
             );
             libObj.url = url;
             libObj.expires_in = expires_in;
-          }
-          if (libObj.thumbnail) {
-            const { url } = await this._storage.GetPresignedUrl(
-              `${user.email}_thumbnail/${itemDb.thumbnail}`,
-              S3Action.GET,
-            );
-            libObj.thumbnail = url;
+
+            if (itemDb.thumbnail) {
+              const { url } = await this._storage.GetPresignedUrl(
+                `${user.email}_thumbnail/${itemDb.thumbnail}`,
+                S3Action.GET,
+              );
+              libObj.thumbnail = url;
+            }
           }
           library.push(libObj);
           // }
