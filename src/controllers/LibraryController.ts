@@ -200,7 +200,16 @@ export class LibraryController implements ILibraryController {
         user_id: user.id_user,
         key: relativePath,
       });
-      return res.json({ bookmarks });
+      const response: { bookmarks: Bookmark[]; warning?: string } = {
+        bookmarks,
+      };
+      if (req.method === 'POST') {
+        response.warning =
+          'DEPRECATED: Using POST for /library/bookmarks is deprecated and ' +
+          'will be removed in the future. Please use GET.';
+        console.error(response.warning, user.id_user);
+      }
+      return res.json(response);
     } catch (err) {
       res.status(400).json({ message: err.message });
       return;
