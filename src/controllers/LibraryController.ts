@@ -29,12 +29,15 @@ export class LibraryController implements ILibraryController {
     res: IResponse,
   ): Promise<IResponse> {
     try {
-      const { relativePath, sign } = req.query;
+      const { relativePath, sign, noLastItemPlayed } = req.query;
       const user = req.user;
       const path = `${user.email}/${relativePath ? relativePath : ''}`;
       const content = await this._libraryService.GetLibrary(user, path, sign);
       let lastItemPlayed;
-      if (!relativePath || relativePath === '/' || relativePath === '') {
+      if (
+        (!relativePath || relativePath === '/' || relativePath === '') &&
+        !noLastItemPlayed
+      ) {
         lastItemPlayed = await this._libraryService.dbGetLastItemPlayed(
           user,
           sign,
