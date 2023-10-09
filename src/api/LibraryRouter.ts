@@ -47,6 +47,9 @@ export class LibraryRouter implements ILibraryRouter {
     router.post('/bookmarks', middleWareInit, (req, res, next) =>
       this._controller.getAllUserBookmarks(req, res, next).catch(next),
     );
+    router.get('/bookmarks', middleWareInit, (req, res, next) =>
+      this._controller.getAllUserBookmarks(req, res, next).catch(next),
+    );
     router.put('/bookmark', middleWareInit, (req, res, next) =>
       this._controller.upsertBookmark(req, res, next).catch(next),
     );
