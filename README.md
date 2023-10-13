@@ -15,7 +15,7 @@ We're currently using AWS to host our servers:
 ## Local setup
 
 Requirements:
-* NodeJS (v14)
+* NodeJS (v16)
   * Yarn
 * PostgresSQL
 * Redis
