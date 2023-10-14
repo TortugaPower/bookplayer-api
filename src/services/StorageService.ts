@@ -1,194 +1,214 @@
 import { inject, injectable } from 'inversify';
 import {
-  S3,
-  S3Client,
-  GetObjectCommand,
-  PutObjectCommand,
-  CopyObjectCommand,
-  DeleteObjectCommand,
-  ListObjectsV2Command,
-} from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { S3Action, StorageItem } from '../types/user';
-import moment from 'moment';
+  S3ClientHeaders,
+  StorageAction,
+  StorageItem,
+  StorageOrigin,
+} from '../types/user';
 import { ILoggerService } from '../interfaces/ILoggerService';
 import { TYPES } from '../ContainerTypes';
-
+import { IS3Service } from '../interfaces/IS3Service';
+import { Readable } from 'stream';
 @injectable()
 export class StorageService {
   @inject(TYPES.LoggerService)
   private _logger: ILoggerService;
-  private client = new S3({ region: process.env.S3_REGION });
-  private clientObject = new S3Client({ region: process.env.S3_REGION });
+  @inject(TYPES.S3Service)
+  private _s3Service: IS3Service;
 
-  async fileExists(key: string): Promise<boolean> {
+  async fileExists(params: {
+    key: string;
+    origin?: StorageOrigin;
+  }): Promise<boolean> {
     try {
-      const data = await this.client.headObject({
-        Bucket: process.env.S3_BUCKET,
-        Key: key,
-      });
-
-      return data.$metadata.httpStatusCode === 200;
+      const { key, origin } = params;
+      const storageOrigin = origin || StorageOrigin.S3;
+      let exist = false;
+      switch (storageOrigin) {
+        case StorageOrigin.S3:
+          exist = await this._s3Service.fileExists(key);
+          break;
+        default:
+          break;
+      }
+      return exist;
     } catch (error) {
-      if (error.$metadata?.httpStatusCode === 404) {
-        return false;
-      } else if (error.$metadata?.httpStatusCode === 403) {
-        return false;
-      } else {
-        this._logger.log({
-          origin: 'fileExists',
-          message: error.message,
-          data: { key },
-        });
-        return null;
-      }
-    }
-  }
-
-  async GetDirectoryContent(
-    path: string,
-    isFolder = true,
-  ): Promise<StorageItem[]> {
-    try {
-      let fixPath = path;
-      if (isFolder && path[path.length - 1] !== '/') {
-        fixPath = path + '/';
-      }
-      const objects = await this.client.listObjectsV2({
-        Bucket: process.env.S3_BUCKET,
-        Delimiter: '/',
-        Prefix: fixPath,
-      });
-      const files = objects?.Contents || [];
-      const folders =
-        objects.CommonPrefixes?.map((pre) => {
-          return {
-            Key: pre.Prefix,
-            Size: 0,
-            isFolder: true,
-          };
-        }) || [];
-      const content = files.concat(folders);
-      return content.filter((item) => item.Key !== fixPath || !isFolder);
-    } catch (err) {
       this._logger.log({
-        origin: 'GetDirectoryContent',
-        message: err.message,
-        data: { path },
+        origin: 'Storage: fileExists',
+        message: error.message,
+        data: params,
       });
       return null;
     }
   }
 
-  async GetPresignedUrl(
-    key: string,
-    type: S3Action,
-    bucket?: string,
-  ): Promise<{
+  async GetDirectoryContent(params: {
+    path: string;
+    isFolder: boolean;
+    origin?: StorageOrigin;
+  }): Promise<StorageItem[]> {
+    try {
+      const { path, isFolder, origin } = params;
+      const storageOrigin = origin || StorageOrigin.S3;
+      let content: StorageItem[] = [];
+      switch (storageOrigin) {
+        case StorageOrigin.S3:
+          content = await this._s3Service.GetDirectoryContent(path, isFolder);
+          break;
+        default:
+          break;
+      }
+      return content;
+    } catch (err) {
+      this._logger.log({
+        origin: 'Storage: GetDirectoryContent',
+        message: err.message,
+        data: params,
+      });
+      return null;
+    }
+  }
+
+  async GetPresignedUrl(params: {
+    key: string;
+    type: StorageAction;
+    bucket?: string;
+    origin?: StorageOrigin;
+  }): Promise<{
     url: string;
     expires_in: number;
   }> {
+    const { key, type, bucket, origin } = params;
+    const storageOrigin = origin || StorageOrigin.S3;
     try {
-      let command;
-      const obj = {
-        Bucket: bucket || process.env.S3_BUCKET,
-        Key: key,
+      let response: {
+        url: string;
+        expires_in: number;
       };
-      switch (type) {
-        case S3Action.GET:
-          command = new GetObjectCommand(obj);
+      switch (storageOrigin) {
+        case StorageOrigin.S3:
+          response = await this._s3Service.GetPresignedUrl(key, type, bucket);
           break;
-        case S3Action.PUT:
-          command = new PutObjectCommand(obj);
+        default:
           break;
       }
-      const seconds = 3600 * 24 * 7; // 1 hour * 24 * 365 * 30 = 30 years
-      const expires = moment().add(seconds, 'seconds').unix();
-      const url = await getSignedUrl(this.clientObject, command, {
-        expiresIn: seconds,
-      });
-      return { url, expires_in: expires };
+      return response;
     } catch (error) {
       this._logger.log({
-        origin: 'GetPresignedUrl',
+        origin: 'Storage: GetPresignedUrl',
         message: error.message,
-        data: { key, type },
+        data: params,
       });
       return null;
     }
   }
 
-  async moveFile(sourceKey: string, targetKey: string): Promise<boolean> {
+  async moveFile(params: {
+    sourceKey: string;
+    targetKey: string;
+    origin?: StorageOrigin;
+  }): Promise<boolean> {
     try {
-      await this.clientObject.send(
-        new CopyObjectCommand({
-          Bucket: process.env.S3_BUCKET,
-          Key: targetKey,
-          CopySource: `${process.env.S3_BUCKET}/${sourceKey}`,
-        }),
-      );
-      await this.clientObject.send(
-        new DeleteObjectCommand({
-          Bucket: process.env.S3_BUCKET,
-          Key: sourceKey,
-        }),
-      );
-      return true;
+      const { sourceKey, targetKey, origin } = params;
+      const storageOrigin = origin || StorageOrigin.S3;
+      let moved = false;
+      switch (storageOrigin) {
+        case StorageOrigin.S3:
+          moved = await this._s3Service.moveFile(sourceKey, targetKey);
+          break;
+        default:
+          break;
+      }
+      return moved;
     } catch (error) {
       this._logger.log({
-        origin: 'moveFile',
+        origin: 'Storage: moveFile',
         message: error.message,
-        data: { sourceKey, targetKey },
+        data: params,
       });
       return null;
     }
   }
 
-  async deleteFile(sourceKey: string): Promise<boolean> {
+  async deleteFile(params: {
+    sourceKey: string;
+    origin?: StorageOrigin;
+  }): Promise<boolean> {
     try {
       /// Keep a copy for a week just in case for support purposes
-      await this.clientObject.send(
-        new CopyObjectCommand({
-          Bucket: process.env.S3_BUCKET,
-          Key: `deleted_${sourceKey}`,
-          CopySource: `${process.env.S3_BUCKET}/${sourceKey}`,
-        }),
-      );
-      await this.clientObject.send(
-        new DeleteObjectCommand({
-          Bucket: process.env.S3_BUCKET,
-          Key: sourceKey,
-        }),
-      );
-      return true;
+      const { sourceKey, origin } = params;
+      const storageOrigin = origin || StorageOrigin.S3;
+      let deleted = false;
+      switch (storageOrigin) {
+        case StorageOrigin.S3:
+          deleted = await this._s3Service.deleteFile(sourceKey);
+          break;
+        default:
+          break;
+      }
+      return deleted;
     } catch (error) {
       this._logger.log({
-        origin: 'deleteFile',
+        origin: 'Storage: deleteFile',
         message: error.message,
-        data: { sourceKey },
+        data: params,
       });
       return null;
     }
   }
-  async calculateFolderSize(folderKey: string): Promise<number> {
+  async calculateFolderSize(params: {
+    folderKey: string;
+    origin?: StorageOrigin;
+  }): Promise<number> {
     try {
+      const { folderKey, origin } = params;
+      const storageOrigin = origin || StorageOrigin.S3;
       let totalSize = 0;
-      const command = new ListObjectsV2Command({
-        Bucket: process.env.S3_BUCKET,
-        Prefix: folderKey,
-      });
-      const response = await this.clientObject.send(command);
-      const objects = response.Contents;
-      objects?.forEach((object) => {
-        totalSize += object.Size;
-      });
+      switch (storageOrigin) {
+        case StorageOrigin.S3:
+          totalSize = await this._s3Service.calculateFolderSize(folderKey);
+          break;
+        default:
+          break;
+      }
       return totalSize;
     } catch (error) {
       console.error(error);
       this._logger.log({
-        origin: 'calculateFolderSize',
+        origin: 'Storage: calculateFolderSize',
         message: error.message,
-        data: { folderKey },
+        data: params,
+      });
+      return null;
+    }
+  }
+
+  async GetObjectStream(params: {
+    key: string;
+    origin?: StorageOrigin;
+    clientHeaders?: S3ClientHeaders;
+  }): Promise<{
+    statusCode: number;
+    body: Readable;
+    headers: { [k: string]: string | number };
+  }> {
+    const { key, origin, clientHeaders } = params;
+    const storageOrigin = origin || StorageOrigin.S3;
+    try {
+      let response = null;
+      switch (storageOrigin) {
+        case StorageOrigin.S3:
+          response = await this._s3Service.GetObjectStream(key, clientHeaders);
+          break;
+        default:
+          break;
+      }
+      return response;
+    } catch (error) {
+      this._logger.log({
+        origin: 'Storage: GetObjectStream',
+        message: error.message,
+        data: params,
       });
       return null;
     }

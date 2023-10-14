@@ -33,7 +33,9 @@ export const Envs = () => {
       .prop('APP_SECRET', S.string().required())
       .prop('REVENUECAT_HEADER', S.string().required())
       .prop('REVENUECAT_API', S.string().required())
-      .prop('REVENUECAT_KEY', S.string().required()),
+      .prop('REVENUECAT_KEY', S.string().required())
+      .prop('PROXY_FILE_URL', S.string().required())
+      .prop('APP_VERSION', S.string().required()),
   };
   envSchema(scheme);
 };

@@ -32,9 +32,14 @@ const setupEnv = async () => {
       );
     });
     const configs = JSON.parse(Configuration.toString('utf8'));
+    const formattedDate = new Date().toISOString().substring(0, 10);
     let stringEnv = '';
     Object.keys(configs).map((k) => {
-      stringEnv += `${k}=${configs[k]}\n`;
+      if (k === 'APP_VERSION') {
+        stringEnv += `${k}=${formattedDate}\n`;
+      } else {
+        stringEnv += `${k}=${configs[k]}\n`;
+      }
     });
     fs.writeFileSync(`.production.env`, stringEnv);
   } catch (err) {

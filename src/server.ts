@@ -13,6 +13,8 @@ import { IRestClientService } from './interfaces/IRestClientService';
 import { ISocketService } from './interfaces/ISocketService';
 import { ICacheService } from './interfaces/ICacheService';
 import { ILoggerService } from './interfaces/ILoggerService';
+import { IVersionMiddleware } from './interfaces/IVersionMiddleware';
+import { IResponse, IRequest, INext } from './interfaces/IRequest';
 
 @injectable()
 export class Server {
@@ -21,6 +23,7 @@ export class Server {
   @inject(TYPES.SocketService) private _socketService: ISocketService;
   @inject(TYPES.CacheService) private _cacheService: ICacheService;
   @inject(TYPES.LoggerService) private _logger: ILoggerService;
+  @inject(TYPES.VersionMiddleware) private version: IVersionMiddleware;
   run(): void {
     const app = express();
     app.use(bodyParser.json());
@@ -28,9 +31,13 @@ export class Server {
     app.use(compress());
     app.use(helmet());
     app.use(authMiddleware);
+    app.use((req: IResponse, res: IRequest, next: INext) => {
+      return this.version.checkVersion(req, res, next);
+    });
     app.use(
       cors({
         credentials: true,
+        exposedHeaders: ['Content-Range'],
       }),
     );
 

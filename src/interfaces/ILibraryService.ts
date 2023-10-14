@@ -15,10 +15,14 @@ export interface ILibraryService {
       exactly?: boolean;
     },
   ): Promise<LibrarItemDB[]>;
+  getItemByThumbnail(user_id: number, thumbnail: string): Promise<LibrarItemDB>;
   GetLibrary(
     user: User,
     path: string,
-    withPresign?: boolean,
+    options: {
+      withPresign?: boolean; // deprecated
+      appVersion: string;
+    },
   ): Promise<LibraryItem[]>;
   GetObject(user: User, path: string): Promise<LibraryItem>;
   PutObject(user: User, params: LibraryItem): Promise<LibraryItem>;
@@ -37,7 +41,13 @@ export interface ILibraryService {
     },
   ): Promise<LibraryItemMovedDB[]>;
   deleteFolderMoving(user: User, folderPath: string): Promise<boolean>;
-  dbGetLastItemPlayed(user: User, withPresign?: boolean): Promise<LibraryItem>;
+  dbGetLastItemPlayed(
+    user: User,
+    options: {
+      withPresign?: boolean; // deprecated
+      appVersion: string;
+    },
+  ): Promise<LibraryItem>;
   getBookmarks(params: { key?: string; user_id: number }): Promise<Bookmark[]>;
   upsertBookmark(bookmark: Bookmark): Promise<Bookmark>;
   thumbailPutRequest(

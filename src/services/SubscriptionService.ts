@@ -38,9 +38,8 @@ export class SubscriptionService {
           json: JSON.stringify(event),
         })
         .returning('id_subscription_event');
-      const appleIds = aliases;
       const user = await this._user.GetUserByAppleID(
-        appleIds || [original_app_user_id],
+        aliases || [original_app_user_id],
       );
       if (!user) {
         return null;

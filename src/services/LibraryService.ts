@@ -6,7 +6,7 @@ import {
   LibraryItem,
   LibraryItemOutput,
   LibraryItemType,
-  S3Action,
+  StorageAction,
   User,
 } from '../types/user';
 import { Knex } from 'knex';
@@ -80,6 +80,31 @@ export class LibraryService {
         origin: 'dbGetLibrary',
         message: err.message,
         data: { user_id, path, filter },
+      });
+      return null;
+    }
+  }
+
+  async getItemByThumbnail(
+    user_id: number,
+    thumbnail: string,
+    trx?: Knex.Transaction,
+  ): Promise<LibrarItemDB> {
+    try {
+      const db = trx || this.db;
+      const item = await db('library_items as li')
+        .where({
+          user_id,
+          active: true,
+          thumbnail,
+        })
+        .first();
+      return item;
+    } catch (err) {
+      this._logger.log({
+        origin: 'getItemByThumbnail',
+        message: err.message,
+        data: { user_id, thumbnail },
       });
       return null;
     }
@@ -346,27 +371,54 @@ export class LibraryService {
   async GetLibrary(
     user: User,
     path: string,
-    withPresign?: boolean,
+    options: {
+      withPresign?: boolean; // deprecated
+      appVersion: string;
+    },
   ): Promise<LibraryItem[]> {
     try {
       const cleanPath = path.replace(`${user.email}/`, '');
       const objectDB = await this.dbGetLibrary(user.id_user, cleanPath);
-      // let isFolder = true;
-      // if (objectDB?.length && objectDB[0].key === cleanPath) {
-      //   isFolder = false;
-      // }
-      // const storageObjects = await this._storage.GetDirectoryContent(
-      //   path,
-      //   isFolder,
-      // );
       const library: LibraryItem[] = [];
       if (objectDB?.length) {
         for (let index = 0; index < objectDB.length; index++) {
           const itemDb = objectDB[index];
-          // const storageObj = storageObjects.find(
-          //   (item) => item.Key.indexOf(itemDb.key) !== -1,
-          // );
-          // if (storageObj) {
+          let fileUrl: string = null;
+          let thumbnail: string = null;
+          switch (options.appVersion) {
+            case '2023-10-29':
+            case 'latest':
+              fileUrl =
+                parseInt(itemDb.type) === parseInt(LibraryItemType.BOOK)
+                  ? `${process.env.PROXY_FILE_URL}/${encodeURIComponent(
+                      itemDb.key,
+                    )}`
+                  : null;
+              thumbnail = itemDb.thumbnail
+                ? `${
+                    process.env.PROXY_FILE_URL
+                  }/_thumbnail/${encodeURIComponent(itemDb.thumbnail)}`
+                : null;
+              break;
+            default: // deprecated old part
+              if (options.withPresign) {
+                const { url } = await this._storage.GetPresignedUrl({
+                  key: `${user.email}/${itemDb.key}`,
+                  type: StorageAction.GET,
+                });
+                fileUrl = url;
+
+                if (itemDb.thumbnail) {
+                  const { url } = await this._storage.GetPresignedUrl({
+                    key: `${user.email}_thumbnail/${itemDb.thumbnail}`,
+                    type: StorageAction.GET,
+                  });
+                  thumbnail = url;
+                }
+              }
+              break;
+          }
+
           const libObj: LibraryItem = {
             relativePath: itemDb.key,
             originalFileName: itemDb.original_filename,
@@ -380,28 +432,11 @@ export class LibraryService {
             orderRank: itemDb.order_rank,
             lastPlayDateTimestamp: itemDb.last_play_date,
             type: itemDb.type,
-            url: null,
-            thumbnail: null,
+            url: fileUrl,
+            thumbnail,
             synced: itemDb.synced,
           };
-          if (withPresign) {
-            const { url, expires_in } = await this._storage.GetPresignedUrl(
-              `${user.email}/${itemDb.key}`,
-              S3Action.GET,
-            );
-            libObj.url = url;
-            libObj.expires_in = expires_in;
-
-            if (itemDb.thumbnail) {
-              const { url } = await this._storage.GetPresignedUrl(
-                `${user.email}_thumbnail/${itemDb.thumbnail}`,
-                S3Action.GET,
-              );
-              libObj.thumbnail = url;
-            }
-          }
           library.push(libObj);
-          // }
         }
       }
       return library;
@@ -478,10 +513,10 @@ export class LibraryService {
       if (!itemDb) {
         throw Error('Item not found');
       }
-      const { url, expires_in } = await this._storage.GetPresignedUrl(
-        `${user.email}/${itemDb.key}`,
-        S3Action.GET,
-      );
+      const { url, expires_in } = await this._storage.GetPresignedUrl({
+        key: `${user.email}/${itemDb.key}`,
+        type: StorageAction.GET,
+      });
       const libObj = (await this.ParseLibraryItemDbB(
         itemDb,
         LibraryItemOutput.API,
@@ -514,9 +549,9 @@ export class LibraryService {
       });
       let itemDb = objectDB[0];
       if (itemDb) {
-        const fileExists = await this._storage.fileExists(
-          `${user.email}/${relativePath}`,
-        );
+        const fileExists = await this._storage.fileExists({
+          key: `${user.email}/${relativePath}`,
+        });
         if (fileExists === true) {
           return null;
         }
@@ -526,14 +561,14 @@ export class LibraryService {
 
       // S3 needs the forward slash to create an empty folder
       const resourcePath =
-        parseInt(libObj.type) == parseInt(LibraryItemType.BOOK)
+        parseInt(libObj.type) === parseInt(LibraryItemType.BOOK)
           ? `${user.email}/${relativePath}`
           : `${user.email}/${relativePath}/`;
 
-      const { url, expires_in } = await this._storage.GetPresignedUrl(
-        resourcePath,
-        S3Action.PUT,
-      );
+      const { url, expires_in } = await this._storage.GetPresignedUrl({
+        key: resourcePath,
+        type: StorageAction.PUT,
+      });
       const apiResponse = (await this.ParseLibraryItemDbB(
         itemDb,
         LibraryItemOutput.API,
@@ -567,11 +602,11 @@ export class LibraryService {
       for (let index = 0; index < deletedObjects.length; index++) {
         const item = deletedObjects[index];
         const sourceKey = `${user.email}/${item.key}`;
-        await this._storage.deleteFile(
-          `${sourceKey}${
-            parseInt(item.type) == parseInt(LibraryItemType.BOOK) ? '' : '/'
+        await this._storage.deleteFile({
+          sourceKey: `${sourceKey}${
+            parseInt(item.type) === parseInt(LibraryItemType.BOOK) ? '' : '/'
           }`,
-        );
+        });
       }
       return deletedObjects.map((i) => i.key);
     } catch (err) {
@@ -776,10 +811,15 @@ export class LibraryService {
       for (let index = 0; index < dbMoved.length; index++) {
         const fileMoved = dbMoved[index];
         const suffix =
-          parseInt(fileMoved.type) == parseInt(LibraryItemType.BOOK) ? '' : '/';
+          parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
+            ? ''
+            : '/';
         const sourceKey = `${user.email}/${fileMoved.old_key}${suffix}`;
         const targetKey = `${user.email}/${fileMoved.key}${suffix}`;
-        await this._storage.moveFile(sourceKey, targetKey);
+        await this._storage.moveFile({
+          sourceKey,
+          targetKey,
+        });
       }
 
       await trx.commit();
@@ -830,16 +870,21 @@ export class LibraryService {
 
         if (prevFile) {
           const suffix =
-            parseInt(prevFile.type) == parseInt(LibraryItemType.BOOK)
+            parseInt(prevFile.type) === parseInt(LibraryItemType.BOOK)
               ? ''
               : '/';
           const sourceKey = `${user.email}/${prevFile.key}${suffix}`;
           const targetKey = `${user.email}/${fileMoved.key}${suffix}`;
-          await this._storage.moveFile(sourceKey, targetKey);
+          await this._storage.moveFile({
+            sourceKey,
+            targetKey,
+          });
         }
       }
 
-      await this._storage.deleteFile(`${user.email}/${folderDB[0].key}/`);
+      await this._storage.deleteFile({
+        sourceKey: `${user.email}/${folderDB[0].key}/`,
+      });
 
       await trx.commit();
       return true;
@@ -856,7 +901,10 @@ export class LibraryService {
 
   async dbGetLastItemPlayed(
     user: User,
-    withPresign?: boolean,
+    options: {
+      withPresign?: boolean; // deprecated
+      appVersion: string;
+    },
     trx?: Knex.Transaction,
   ): Promise<LibraryItem> {
     try {
@@ -876,13 +924,31 @@ export class LibraryService {
         itemDb,
         LibraryItemOutput.API,
       )) as LibraryItem;
-      if (withPresign) {
-        const { url, expires_in } = await this._storage.GetPresignedUrl(
-          `${user.email}/${itemDb.key}`,
-          S3Action.GET,
-        );
-        item.url = url;
-        item.expires_in = expires_in;
+      switch (options.appVersion) {
+        case '2023-10-29':
+        case 'latest':
+          item.url =
+            parseInt(itemDb.type) === parseInt(LibraryItemType.BOOK)
+              ? `${process.env.PROXY_FILE_URL}/${encodeURIComponent(
+                  itemDb.key,
+                )}`
+              : null;
+          item.thumbnail = itemDb.thumbnail
+            ? `${process.env.PROXY_FILE_URL}/_thumbnail/${encodeURIComponent(
+                itemDb.thumbnail,
+              )}`
+            : null;
+          break;
+        default: // deprecated old part
+          if (options.withPresign) {
+            const { url, expires_in } = await this._storage.GetPresignedUrl({
+              key: `${user.email}/${itemDb.key}`,
+              type: StorageAction.GET,
+            });
+            item.url = url;
+            item.expires_in = expires_in;
+          }
+          break;
       }
       return item;
     } catch (err) {
@@ -992,10 +1058,10 @@ export class LibraryService {
           .returning('id_library_item');
         return !!idUpdated[0].id_library_item;
       }
-      const { url } = await this._storage.GetPresignedUrl(
-        `${user.email}_thumbnail/${thumbnail_name}`,
-        S3Action.PUT,
-      );
+      const { url } = await this._storage.GetPresignedUrl({
+        key: `${user.email}_thumbnail/${thumbnail_name}`,
+        type: StorageAction.PUT,
+      });
       return url;
     } catch (err) {
       this._logger.log({
@@ -1026,7 +1092,7 @@ export class LibraryService {
           id_library_item: item.id_library_item,
         })
         .returning('*');
-      if (parseInt(item.type) == parseInt(LibraryItemType.BOOK)) {
+      if (parseInt(item.type) === parseInt(LibraryItemType.BOOK)) {
         return [
           {
             id_library_item: itemDb[0].id_library_item,
@@ -1061,10 +1127,15 @@ export class LibraryService {
       for (let index = 0; index < dbMoved.length; index++) {
         const fileMoved = dbMoved[index];
         const suffix =
-          parseInt(fileMoved.type) == parseInt(LibraryItemType.BOOK) ? '' : '/';
+          parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
+            ? ''
+            : '/';
         const sourceKey = `${user.email}/${fileMoved.old_key}${suffix}`;
         const targetKey = `${user.email}/${fileMoved.key}${suffix}`;
-        await this._storage.moveFile(sourceKey, targetKey);
+        await this._storage.moveFile({
+          sourceKey,
+          targetKey,
+        });
       }
 
       await trx.commit();

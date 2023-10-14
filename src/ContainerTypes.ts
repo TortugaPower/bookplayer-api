@@ -8,6 +8,7 @@ const TYPES = {
   SubscriptionService: Symbol.for('SubscriptionService'),
   RestClientService: Symbol.for('RestClientService'),
   StorageService: Symbol.for('StorageService'),
+  S3Service: Symbol.for('S3Service'),
   LibraryService: Symbol.for('LibraryService'),
   LibraryController: Symbol.for('LibraryController'),
   LibraryRouter: Symbol.for('LibraryRouter'),
@@ -19,6 +20,9 @@ const TYPES = {
   AdminService: Symbol.for('AdminService'),
   AdminController: Symbol.for('AdminController'),
   AdminRouter: Symbol.for('AdminRouter'),
+  StorageController: Symbol.for('StorageController'),
+  StorageRouter: Symbol.for('StorageRouter'),
+  VersionMiddleware: Symbol.for('VersionMiddleware'),
 };
 
 export { TYPES };

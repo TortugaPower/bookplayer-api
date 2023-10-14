@@ -311,7 +311,10 @@ export class UserServices {
     }
   }
 
-  async getClientID(params: { origin: string }): Promise<string> {
+  async getClientID(params: { origin: string }): Promise<{
+    apple_id: string;
+    app_version: string;
+  }> {
     try {
       const { origin } = params;
       const client = await this.db('apple_clients')
@@ -319,9 +322,9 @@ export class UserServices {
           active: true,
           origin,
         })
-        .select('apple_id')
+        .select(['apple_id', 'app_version'])
         .first();
-      return client?.apple_id;
+      return client;
     } catch (err) {
       this._logger.log({
         origin: 'getClientID',
