@@ -198,7 +198,7 @@ export class LibraryController implements ILibraryController {
   ): Promise<IResponse> {
     try {
       const user = req.user;
-      const { relativePath } = req.body;
+      const { relativePath } = req.method === 'POST' ? req.body : req.query;
       const bookmarks = await this._libraryService.getBookmarks({
         user_id: user.id_user,
         key: relativePath,
