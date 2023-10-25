@@ -526,7 +526,7 @@ export class LibraryService {
 
       // S3 needs the forward slash to create an empty folder
       const resourcePath =
-        libObj.type == LibraryItemType.BOOK
+        parseInt(libObj.type) == parseInt(LibraryItemType.BOOK)
           ? `${user.email}/${relativePath}`
           : `${user.email}/${relativePath}/`;
 
@@ -568,7 +568,9 @@ export class LibraryService {
         const item = deletedObjects[index];
         const sourceKey = `${user.email}/${item.key}`;
         await this._storage.deleteFile(
-          `${sourceKey}${item.type == LibraryItemType.BOOK ? '' : '/'}`,
+          `${sourceKey}${
+            parseInt(item.type) == parseInt(LibraryItemType.BOOK) ? '' : '/'
+          }`,
         );
       }
       return deletedObjects.map((i) => i.key);
@@ -773,7 +775,8 @@ export class LibraryService {
 
       for (let index = 0; index < dbMoved.length; index++) {
         const fileMoved = dbMoved[index];
-        const suffix = fileMoved.type == LibraryItemType.BOOK ? '' : '/';
+        const suffix =
+          parseInt(fileMoved.type) == parseInt(LibraryItemType.BOOK) ? '' : '/';
         const sourceKey = `${user.email}/${fileMoved.old_key}${suffix}`;
         const targetKey = `${user.email}/${fileMoved.key}${suffix}`;
         await this._storage.moveFile(sourceKey, targetKey);
@@ -826,7 +829,10 @@ export class LibraryService {
         );
 
         if (prevFile) {
-          const suffix = prevFile.type == LibraryItemType.BOOK ? '' : '/';
+          const suffix =
+            parseInt(prevFile.type) == parseInt(LibraryItemType.BOOK)
+              ? ''
+              : '/';
           const sourceKey = `${user.email}/${prevFile.key}${suffix}`;
           const targetKey = `${user.email}/${fileMoved.key}${suffix}`;
           await this._storage.moveFile(sourceKey, targetKey);
@@ -1020,7 +1026,7 @@ export class LibraryService {
           id_library_item: item.id_library_item,
         })
         .returning('*');
-      if (item.type === LibraryItemType.BOOK) {
+      if (parseInt(item.type) == parseInt(LibraryItemType.BOOK)) {
         return [
           {
             id_library_item: itemDb[0].id_library_item,
@@ -1054,7 +1060,8 @@ export class LibraryService {
       );
       for (let index = 0; index < dbMoved.length; index++) {
         const fileMoved = dbMoved[index];
-        const suffix = fileMoved.type == LibraryItemType.BOOK ? '' : '/';
+        const suffix =
+          parseInt(fileMoved.type) == parseInt(LibraryItemType.BOOK) ? '' : '/';
         const sourceKey = `${user.email}/${fileMoved.old_key}${suffix}`;
         const targetKey = `${user.email}/${fileMoved.key}${suffix}`;
         await this._storage.moveFile(sourceKey, targetKey);
