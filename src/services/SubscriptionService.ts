@@ -21,7 +21,7 @@ export class SubscriptionService {
 
   async ParseNewEvent(event: RevenuecatEvent): Promise<AppleUser> {
     try {
-      const { original_app_user_id } = event;
+      const { original_app_user_id, aliases } = event;
       await this.db('subscription_events')
         .insert({
           id: event.id,
@@ -38,8 +38,10 @@ export class SubscriptionService {
           json: JSON.stringify(event),
         })
         .returning('id_subscription_event');
-
-      const user = await this._user.GetUserByAppleID(original_app_user_id);
+      const appleIds = aliases;
+      const user = await this._user.GetUserByAppleID(
+        appleIds || [original_app_user_id],
+      );
       if (!user) {
         return null;
       }

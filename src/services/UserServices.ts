@@ -152,7 +152,7 @@ export class UserServices {
   }
 
   async GetUserByAppleID(
-    apple_id: string,
+    apple_id: string[],
     trx?: Knex.Transaction,
   ): Promise<AppleUser> {
     try {
@@ -171,10 +171,12 @@ export class UserServices {
           );
         })
         .where({
-          'user_params.value': apple_id,
-          'user_params.param': TypeUserParams.apple_id,
           'user_params.active': true,
         })
+        .whereRaw('user_params.param = ? and user_params.value = ANY(?)', [
+          TypeUserParams.apple_id,
+          apple_id,
+        ])
         .first()
         .debug(true);
       return user;

@@ -78,6 +78,7 @@ export type RevenuecatEvent = {
   purchased_at_ms: number;
   takehome_percentage: number;
   type: string;
+  aliases: string[];
 };
 
 export enum SubscriptionEventType {
