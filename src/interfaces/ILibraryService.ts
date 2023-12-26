@@ -24,7 +24,11 @@ export interface ILibraryService {
       appVersion: string;
     },
   ): Promise<LibraryItem[]>;
-  GetObject(user: User, path: string): Promise<LibraryItem>;
+  GetObject(
+    user: User,
+    path: string,
+    appVersion?: string,
+  ): Promise<LibraryItem>;
   PutObject(user: User, params: LibraryItem): Promise<LibraryItem>;
   DeleteObject(user: User, params: LibraryItem): Promise<string[]>;
   UpdateObject(

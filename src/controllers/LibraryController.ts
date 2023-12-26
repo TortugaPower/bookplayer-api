@@ -102,7 +102,11 @@ export class LibraryController implements ILibraryController {
         );
       }
 
-      const content = await this._libraryService.GetObject(user, pathKey);
+      const content = await this._libraryService.GetObject(
+        user,
+        pathKey,
+        req.app_version,
+      );
 
       return res.json({ content });
     } catch (err) {

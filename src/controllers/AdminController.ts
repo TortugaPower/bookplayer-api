@@ -50,8 +50,9 @@ export class AdminController implements IAdminController {
     await Promise.all(
       usersBooks.map(async (userBook) => {
         try {
+          const source = userBook.source_path || userBook.key;
           const fileExist = await this._storageService.fileExists({
-            key: `${userBook.email}/${userBook.key}`,
+            key: `${userBook.email}/${source}`,
           });
           if (fileExist !== userBook.synced) {
             await this._adminService.updateSync(

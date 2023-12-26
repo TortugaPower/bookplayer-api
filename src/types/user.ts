@@ -141,6 +141,7 @@ export interface LibraryItem {
   expires_in?: number;
   thumbnail?: string;
   synced?: boolean;
+  source_path?: string;
 }
 
 export interface LibraryItemMovedDB {
@@ -148,6 +149,8 @@ export interface LibraryItemMovedDB {
   key: string;
   old_key: string;
   type: LibraryItemType;
+  original_filename: string;
+  source_path?: string;
 }
 
 export interface LibrarItemDB {
@@ -168,6 +171,7 @@ export interface LibrarItemDB {
   thumbnail?: string;
   active?: boolean;
   synced: boolean;
+  source_path?: string;
 }
 
 export interface StorageItem {
@@ -215,6 +219,7 @@ export interface UserBooks {
   key: string;
   id_library_item: number;
   synced: boolean;
+  source_path?: string;
 }
 export enum S3ValidHeader {
   'range' = 'Range',

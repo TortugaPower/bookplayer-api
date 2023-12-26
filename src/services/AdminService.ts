@@ -43,7 +43,7 @@ export class AdminService {
       const userBooks = await this.db
         .raw(
           `
-          select u.email, li.id_library_item, li.user_id, li.key from library_items li
+          select u.email, li.id_library_item, li.user_id, li.key, li.original_filename, li.source_path from library_items li
           join users u on li.user_id = u.id_user
           where li.active=true and li.type=?
         `,
