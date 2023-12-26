@@ -3,7 +3,7 @@ import { IRequest, IResponse, INext } from '../../interfaces/IRequest';
 import { ISubscriptionMiddleware } from '../../interfaces/ISubscriptionMiddleware';
 import { TYPES } from '../../ContainerTypes';
 import { IUserService } from '../../interfaces/IUserService';
-import { SubscriptionEventType } from '../../types/user';
+import { SubscriptionEventType, TypeUserParams } from '../../types/user';
 
 @injectable()
 export class SubscriptionMiddleware implements ISubscriptionMiddleware {
@@ -21,6 +21,13 @@ export class SubscriptionMiddleware implements ISubscriptionMiddleware {
         );
         if (!state || state === SubscriptionEventType.EXPIRATION) {
           return res.status(400).json({ message: 'You are not suscribed' });
+        }
+        const betaUser = await this._userService.getUserParam({
+          user_id: user.id_user,
+          param: TypeUserParams.beta_user,
+        });
+        if (!!parseInt(betaUser || '0')) {
+          req.beta_user = true;
         }
         next();
       } else {

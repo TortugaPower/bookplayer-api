@@ -14,11 +14,9 @@ import database from '../database';
 import { TYPES } from '../ContainerTypes';
 import { IStorageService } from '../interfaces/IStorageService';
 import { ILoggerService } from '../interfaces/ILoggerService';
-import moment from 'moment-timezone';
-import { splitArrayGroups } from '../utils';
 
 @injectable()
-export class LibraryService {
+export class LibraryServiceDeprecated {
   @inject(TYPES.StorageService)
   private _storage: IStorageService;
   @inject(TYPES.LoggerService)
@@ -195,7 +193,7 @@ export class LibraryService {
                 where user_id=? and active=true and key like ?
             ) as filtroKey) as filtro
       where ss.id_library_item = filtro.id_library_item
-      returning ss.id_library_item, ss.key, ss.type, filtro.old_key, ss.original_filename, ss.source_path;
+      returning ss.id_library_item, ss.key, ss.type, filtro.old_key;
       `,
           [destinationPath, origin, user_id, `${origin}%`],
         )
@@ -240,11 +238,11 @@ export class LibraryService {
                 where user_id=? and active=true and key like ?
             ) as filtroKey) as filtro
       where ss.id_library_item = filtro.id_library_item
-      returning ss.id_library_item, ss.key, ss.type, filtro.old_key, ss.source_path, ss.original_filename;
+      returning ss.id_library_item, ss.key, ss.type, filtro.old_key;
       `,
           [destination, origin, user_id, `${origin}%`],
         )
-        .debug(false)
+        .debug(true)
         .then((result) => result.rows);
       return objectsMoved;
     } catch (err) {
@@ -280,7 +278,7 @@ export class LibraryService {
                     where user_id=? and active=true and key like ?
                 ) as filtroKey) as filtro
       where ss.id_library_item = filtro.id_library_item
-      returning ss.id_library_item, ss.key, ss.type, ss.original_filename, ss.source_path;
+      returning ss.id_library_item, ss.key, ss.type;
       `,
           [folderPath, user_id, `${folderPath}/%`],
         )
@@ -321,7 +319,6 @@ export class LibraryService {
           type: item.type,
           is_finish: item.is_finish,
           thumbnail: item.thumbnail || null,
-          source_path: item.source_path,
         })
         .returning('*');
       return objects[0];
@@ -405,9 +402,8 @@ export class LibraryService {
               break;
             default: // deprecated old part
               if (options.withPresign) {
-                const originalFile = itemDb.source_path || itemDb.key;
                 const { url } = await this._storage.GetPresignedUrl({
-                  key: `${user.email}/${originalFile}`,
+                  key: `${user.email}/${itemDb.key}`,
                   type: StorageAction.GET,
                 });
                 fileUrl = url;
@@ -478,7 +474,6 @@ export class LibraryService {
           thumbnail: itemTemp.thumbnail,
           url: '',
           synced: itemTemp.synced,
-          source_path: itemTemp.source_path,
         };
         break;
       case LibraryItemOutput.DB:
@@ -487,16 +482,14 @@ export class LibraryService {
           key: itemApi.relativePath,
           title: itemApi.title,
           original_filename: itemApi.originalFileName,
-          speed: parseFloat(`${itemApi.speed || 1}`),
+          speed: itemApi.speed,
           details: itemApi.details,
           actual_time: itemApi.currentTime
             ? `${itemApi.currentTime}`
             : undefined,
           duration: !!itemApi.duration ? `${itemApi.duration}` : undefined,
-          percent_completed: parseFloat(`${itemApi.percentCompleted || 0}`),
-          order_rank: itemApi.orderRank
-            ? parseInt(`${itemApi.orderRank}`)
-            : undefined,
+          percent_completed: itemApi.percentCompleted,
+          order_rank: itemApi.orderRank,
           last_play_date:
             !!itemApi.lastPlayDateTimestamp &&
             `${itemApi.lastPlayDateTimestamp}`.trim() !== ''
@@ -506,18 +499,13 @@ export class LibraryService {
           is_finish: itemApi.isFinished,
           thumbnail: itemApi.thumbnail,
           synced: itemApi.synced !== undefined ? itemApi.synced : undefined,
-          source_path: itemApi.source_path,
         };
         break;
     }
     return parsed;
   }
 
-  async GetObject(
-    user: User,
-    path: string,
-    appVersion?: string,
-  ): Promise<LibraryItem> {
+  async GetObject(user: User, path: string): Promise<LibraryItem> {
     try {
       const cleanPath = path.replace(`${user.email}/`, '');
       const objectDB = await this.dbGetLibrary(user.id_user, cleanPath);
@@ -525,32 +513,16 @@ export class LibraryService {
       if (!itemDb) {
         throw Error('Item not found');
       }
+      const { url, expires_in } = await this._storage.GetPresignedUrl({
+        key: `${user.email}/${itemDb.key}`,
+        type: StorageAction.GET,
+      });
       const libObj = (await this.ParseLibraryItemDbB(
         itemDb,
         LibraryItemOutput.API,
       )) as LibraryItem;
-      let fileUrl = null;
-      switch (appVersion) {
-        case '2023-10-29':
-        case 'latest':
-          fileUrl =
-            parseInt(itemDb.type) === parseInt(LibraryItemType.BOOK)
-              ? `${process.env.PROXY_FILE_URL}/${encodeURIComponent(
-                  itemDb.key,
-                )}`
-              : null;
-          break;
-        default: // deprecated old part
-          const originalFile = itemDb.source_path || itemDb.key;
-          const { url, expires_in } = await this._storage.GetPresignedUrl({
-            key: `${user.email}/${originalFile}`,
-            type: StorageAction.GET,
-          });
-          fileUrl = url;
-          libObj.expires_in = expires_in;
-          break;
-      }
-      libObj.url = fileUrl;
+      libObj.url = url;
+      libObj.expires_in = expires_in;
       return libObj;
     } catch (err) {
       this._logger.log({
@@ -576,12 +548,9 @@ export class LibraryService {
         exactly: true,
       });
       let itemDb = objectDB[0];
-      libObj.source_path = `${process.env.ROOT_FOLDER}/${moment().format(
-        'YYYYMMDDHHmmss',
-      )}_${libObj.original_filename}`;
       if (itemDb) {
         const fileExists = await this._storage.fileExists({
-          key: `${user.email}/${itemDb.source_path || itemDb.key}`,
+          key: `${user.email}/${relativePath}`,
         });
         if (fileExists === true) {
           return null;
@@ -589,7 +558,12 @@ export class LibraryService {
       } else {
         itemDb = await this.dbInsertLibraryItem(user.id_user, libObj);
       }
-      const resourcePath = `${user.email}/${libObj.source_path}`;
+
+      // S3 needs the forward slash to create an empty folder
+      const resourcePath =
+        parseInt(libObj.type) === parseInt(LibraryItemType.BOOK)
+          ? `${user.email}/${relativePath}`
+          : `${user.email}/${relativePath}/`;
 
       const { url, expires_in } = await this._storage.GetPresignedUrl({
         key: resourcePath,
@@ -627,7 +601,7 @@ export class LibraryService {
 
       for (let index = 0; index < deletedObjects.length; index++) {
         const item = deletedObjects[index];
-        const sourceKey = `${user.email}/${item.source_path || item.key}`;
+        const sourceKey = `${user.email}/${item.key}`;
         await this._storage.deleteFile({
           sourceKey: `${sourceKey}${
             parseInt(item.type) === parseInt(LibraryItemType.BOOK) ? '' : '/'
@@ -791,7 +765,6 @@ export class LibraryService {
             },
             trx,
           );
-
           destinationDB = await this.dbGetLibrary(
             user.id_user,
             destinationPathFolder,
@@ -827,52 +800,27 @@ export class LibraryService {
           return [];
         }
       }
+
       const dbMoved = await this.dbMoveFiles(
         user.id_user,
         origin,
         destinationPathFolder,
         trx,
       );
-      const groupCounts = parseInt(`${dbMoved.length / 10}`);
-      const groups =
-        groupCounts > 1 ? splitArrayGroups(dbMoved, groupCounts) : [dbMoved];
-      await Promise.all(
-        groups.map(async (group: LibraryItemMovedDB[]) => {
-          for (let indexTrx = 0; indexTrx < group.length; indexTrx++) {
-            const fileMoved = group[indexTrx];
-            if (
-              !fileMoved.source_path &&
-              parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
-            ) {
-              const suffix =
-                parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
-                  ? ''
-                  : '/';
-              const sourceKey = `${user.email}/${fileMoved.old_key}${suffix}`;
-              const original_filename = `${
-                process.env.ROOT_FOLDER
-              }/${moment().format('YYYYMMDDHHmmss')}_${
-                fileMoved.original_filename
-              }`;
-              const targetKey = `${user.email}/${original_filename}`;
-              const isMoved = await this._storage.moveFile({
-                sourceKey,
-                targetKey,
-              });
-              if (isMoved) {
-                await trx('library_items')
-                  .update({
-                    source_path: original_filename,
-                  })
-                  .where({
-                    user_id: user.id_user,
-                    key: fileMoved.key,
-                  });
-              }
-            }
-          }
-        }),
-      );
+
+      for (let index = 0; index < dbMoved.length; index++) {
+        const fileMoved = dbMoved[index];
+        const suffix =
+          parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
+            ? ''
+            : '/';
+        const sourceKey = `${user.email}/${fileMoved.old_key}${suffix}`;
+        const targetKey = `${user.email}/${fileMoved.key}${suffix}`;
+        await this._storage.moveFile({
+          sourceKey,
+          targetKey,
+        });
+      }
 
       await trx.commit();
       return dbMoved;
@@ -914,63 +862,29 @@ export class LibraryService {
         folderPath,
       );
       const dbMoved = await this.dbMoveFilesUp(user.id_user, folderPath, trx);
-      const groupCounts = parseInt(`${dbMoved.length / 10}`);
-      const groups =
-        groupCounts > 1 ? splitArrayGroups(dbMoved, groupCounts) : [dbMoved];
-      await Promise.all(
-        groups.map(async (group: LibraryItemMovedDB[]) => {
-          for (let indexTrx = 0; indexTrx < group.length; indexTrx++) {
-            const fileMoved = group[indexTrx];
-            const prevFile = allFilesInside.find(
-              (preFile) =>
-                preFile.id_library_item === fileMoved.id_library_item,
-            );
+      for (let index = 0; index < dbMoved.length; index++) {
+        const fileMoved = dbMoved[index];
+        const prevFile = allFilesInside.find(
+          (preFile) => preFile.id_library_item === fileMoved.id_library_item,
+        );
 
-            if (
-              prevFile &&
-              !fileMoved.source_path &&
-              parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
-            ) {
-              const suffix =
-                parseInt(prevFile.type) === parseInt(LibraryItemType.BOOK)
-                  ? ''
-                  : '/';
-              const sourceKey = `${user.email}/${prevFile.key}${suffix}`;
-              const original_filename = `${
-                process.env.ROOT_FOLDER
-              }/${moment().format('YYYYMMDDHHmmss')}_${
-                fileMoved.original_filename
-              }`;
-              const targetKey = `${user.email}/${original_filename}`;
-              const isMoved = await this._storage.moveFile({
-                sourceKey,
-                targetKey,
-              });
-              if (isMoved) {
-                await this.db('library_items')
-                  .update({
-                    source_path: original_filename,
-                  })
-                  .where({
-                    user_id: user.id_user,
-                    key: fileMoved.key,
-                  });
-              }
-            }
-          }
-        }),
-      );
-      const folderKey = `${user.email}/${
-        folderDB[0].source_path || folderDB[0].key
-      }/`;
-      const folderExist = await this._storage.fileExists({
-        key: folderKey,
-      });
-      if (folderExist) {
-        await this._storage.deleteFile({
-          sourceKey: folderKey,
-        });
+        if (prevFile) {
+          const suffix =
+            parseInt(prevFile.type) === parseInt(LibraryItemType.BOOK)
+              ? ''
+              : '/';
+          const sourceKey = `${user.email}/${prevFile.key}${suffix}`;
+          const targetKey = `${user.email}/${fileMoved.key}${suffix}`;
+          await this._storage.moveFile({
+            sourceKey,
+            targetKey,
+          });
+        }
       }
+
+      await this._storage.deleteFile({
+        sourceKey: `${user.email}/${folderDB[0].key}/`,
+      });
 
       await trx.commit();
       return true;
@@ -1027,9 +941,8 @@ export class LibraryService {
           break;
         default: // deprecated old part
           if (options.withPresign) {
-            const originalFile = item.source_path || itemDb.key;
             const { url, expires_in } = await this._storage.GetPresignedUrl({
-              key: `${user.email}/${originalFile}`,
+              key: `${user.email}/${itemDb.key}`,
               type: StorageAction.GET,
             });
             item.url = url;
@@ -1212,46 +1125,19 @@ export class LibraryService {
         destinationPathFolder,
         trx,
       );
-      const groupCounts = parseInt(`${dbMoved.length / 10}`);
-      const groups =
-        groupCounts > 1 ? splitArrayGroups(dbMoved, groupCounts) : [dbMoved];
-      await Promise.all(
-        groups.map(async (group: LibraryItemMovedDB[]) => {
-          for (let indexTrx = 0; indexTrx < group.length; indexTrx++) {
-            const fileMoved = group[indexTrx];
-            if (
-              !fileMoved.source_path &&
-              parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
-            ) {
-              const suffix =
-                parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
-                  ? ''
-                  : '/';
-              const sourceKey = `${user.email}/${fileMoved.old_key}${suffix}`;
-              const original_filename = `${
-                process.env.ROOT_FOLDER
-              }/${moment().format('YYYYMMDDHHmmss')}_${
-                fileMoved.original_filename
-              }`;
-              const targetKey = `${user.email}/${original_filename}`;
-              const isMoved = await this._storage.moveFile({
-                sourceKey,
-                targetKey,
-              });
-              if (isMoved) {
-                await this.db('library_items')
-                  .update({
-                    original_filename,
-                  })
-                  .where({
-                    user_id: user.id_user,
-                    key: fileMoved.key,
-                  });
-              }
-            }
-          }
-        }),
-      );
+      for (let index = 0; index < dbMoved.length; index++) {
+        const fileMoved = dbMoved[index];
+        const suffix =
+          parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
+            ? ''
+            : '/';
+        const sourceKey = `${user.email}/${fileMoved.old_key}${suffix}`;
+        const targetKey = `${user.email}/${fileMoved.key}${suffix}`;
+        await this._storage.moveFile({
+          sourceKey,
+          targetKey,
+        });
+      }
 
       await trx.commit();
       return dbMoved;

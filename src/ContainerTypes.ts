@@ -23,6 +23,7 @@ const TYPES = {
   StorageController: Symbol.for('StorageController'),
   StorageRouter: Symbol.for('StorageRouter'),
   VersionMiddleware: Symbol.for('VersionMiddleware'),
+  LibraryServiceDeprecated: Symbol.for('LibraryServiceDeprecated'),
 };
 
 export { TYPES };

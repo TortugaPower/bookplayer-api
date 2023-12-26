@@ -44,7 +44,9 @@ export class StorageController implements IStorageController {
             exactly: true,
           },
         );
-        filepath = userItemDB?.length ? `/${userItemDB[0].key}` : null;
+        filepath = userItemDB?.length
+          ? `/${userItemDB[0].source_path || userItemDB[0].key}`
+          : null;
         break;
     }
     if (!filepath) {

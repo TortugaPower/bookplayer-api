@@ -5,6 +5,7 @@ import {
   SignApple,
   TypeUserParams,
   User,
+  UserParam,
   UserParamsObject,
   UserSession,
 } from '../types/user';
@@ -80,6 +81,33 @@ export class UserServices {
         origin: 'GetUser',
         message: err.message,
         data: { email, session },
+      });
+      return null;
+    }
+  }
+
+  async getUserParam(
+    params: {
+      user_id: number;
+      param: TypeUserParams;
+    },
+    trx?: Knex.Transaction,
+  ): Promise<string> {
+    try {
+      const db = trx || this.db;
+      const userParam = await db('user_params')
+        .where({
+          user_id: params.user_id,
+          active: true,
+          param: params.param,
+        })
+        .first();
+      return userParam?.value;
+    } catch (err) {
+      this._logger.log({
+        origin: 'GetUserParam',
+        message: err.message,
+        data: params,
       });
       return null;
     }

@@ -27,7 +27,10 @@ import { IRestClientService } from './interfaces/IRestClientService';
 import { RestClientService } from './services/RestClientService';
 import { IStorageService } from './interfaces/IStorageService';
 import { StorageService } from './services/StorageService';
-import { ILibraryService } from './interfaces/ILibraryService';
+import {
+  ILibraryService,
+  ILibraryServiceDeprecated,
+} from './interfaces/ILibraryService';
 import { LibraryService } from './services/LibraryService';
 import { ILibraryController } from './interfaces/ILibraryController';
 import { LibraryController } from './controllers/LibraryController';
@@ -54,6 +57,7 @@ import { StorageController } from './controllers/StorageController';
 import { IStorageController } from './interfaces/IStorageController';
 import { IVersionMiddleware } from './interfaces/IVersionMiddleware';
 import { VersionMiddleware } from './api/middlewares/version';
+import { LibraryServiceDeprecated } from './services/LibraryServiceDeprecated';
 
 const container = new Container();
 
@@ -98,4 +102,9 @@ container
 container
   .bind<IVersionMiddleware>(TYPES.VersionMiddleware)
   .to(VersionMiddleware);
+
+// deprecated use for migration
+container
+  .bind<ILibraryServiceDeprecated>(TYPES.LibraryServiceDeprecated)
+  .to(LibraryServiceDeprecated);
 export { container };
