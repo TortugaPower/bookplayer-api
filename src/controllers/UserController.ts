@@ -22,7 +22,9 @@ export class UserController implements IUserController {
       res.status(422).json({ message: 'The authentication is missing' });
       return;
     }
-    let client_id = null;
+    let client_id: {
+      apple_id: string;
+    } = null;
     if (origin) {
       client_id = await this._userService.getClientID({
         origin: origin.replace('https://', '').replace('http://', ''),
@@ -30,7 +32,7 @@ export class UserController implements IUserController {
     }
     const appleAuth = await this._userService.verifyToken({
       token_id,
-      client_id,
+      client_id: client_id?.apple_id,
     });
 
     if (!appleAuth?.email || !appleAuth?.sub) {

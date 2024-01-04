@@ -11,6 +11,7 @@ import { TYPES } from '../ContainerTypes';
 export class RouterHttp {
   @inject(TYPES.UserRouter) private _authRouter: IUserRouter;
   @inject(TYPES.LibraryRouter) private _libraryRouter: ILibraryRouter;
+  @inject(TYPES.StorageRouter) private _storageRouter: IAdminRouter;
   @inject(TYPES.AdminRouter) private _adminRouter: IAdminRouter;
 
   get(): express.Router {
@@ -19,6 +20,7 @@ export class RouterHttp {
     router.use('/user', this._authRouter.get());
     router.use('/library', this._libraryRouter.get());
     router.use('/admin', this._adminRouter.get());
+    router.use('/storage', this._storageRouter.get());
 
     return router;
   }

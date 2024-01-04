@@ -12,10 +12,13 @@ export interface IUserService {
   verifyToken({ token_id, client_id }: SignApple): Promise<AppleJWT>;
   AddNewUser(newUser: User): Promise<User>;
   AddNewDevice(userSession: UserSession): Promise<number>;
-  GetUserByAppleID(apple_id: string): Promise<AppleUser>;
+  GetUserByAppleID(apple_id: string[]): Promise<AppleUser>;
   UpdateSubscription(user_id: number, subscription: string): Promise<boolean>;
   DeleteAccount(user_id: number): Promise<boolean>;
   getUserSubscriptionState(user_id: number): Promise<string>;
-  getClientID(p: { origin: string }): Promise<string>;
+  getClientID(p: { origin: string }): Promise<{
+    apple_id: string;
+    app_version: string;
+  }>;
   checkIfAdmin(user_id: number): Promise<boolean>;
 }

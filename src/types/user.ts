@@ -78,6 +78,7 @@ export type RevenuecatEvent = {
   purchased_at_ms: number;
   takehome_percentage: number;
   type: string;
+  aliases: string[];
 };
 
 export enum SubscriptionEventType {
@@ -177,11 +178,14 @@ export interface StorageItem {
   isFolder?: boolean;
 }
 
-export enum S3Action {
+export enum StorageAction {
   PUT = 'put',
   GET = 'get',
 }
 
+export enum StorageOrigin {
+  S3 = 'S3',
+}
 export interface SocketDefaultEventsMap {
   [event: string]: (...args: unknown[]) => void;
 }
@@ -212,3 +216,13 @@ export interface UserBooks {
   id_library_item: number;
   synced: boolean;
 }
+export enum S3ValidHeader {
+  'range' = 'Range',
+  'if-match' = 'IfMatch',
+  'if-modified-since' = 'IfModifiedSince',
+  'if-none-match' = 'IfNoneMatch',
+  'if-unmodified-since' = 'IfUnmodifiedSince',
+}
+export type S3ClientHeaders = {
+  [key in S3ValidHeader]?: string | Date;
+};

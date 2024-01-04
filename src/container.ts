@@ -17,6 +17,7 @@ import {
   IRouterHttp,
   ILibraryRouter,
   IAdminRouter,
+  IStorageRouter,
 } from './interfaces/IRouters';
 import { SubscriptionController } from './controllers/SubscriptionController';
 import { ISubscriptionController } from './interfaces/ISubscriptionController';
@@ -46,6 +47,13 @@ import { IAdminController } from './interfaces/IAdminController';
 import { AdminController } from './controllers/AdminController';
 import { IUserAdminMiddleware } from './interfaces/IUserAdminMiddleware';
 import { UserAdminMiddleware } from './api/middlewares/admin';
+import { S3Service } from './services/S3Service';
+import { IS3Service } from './interfaces/IS3Service';
+import { StorageRouter } from './api/StorageRouter';
+import { StorageController } from './controllers/StorageController';
+import { IStorageController } from './interfaces/IStorageController';
+import { IVersionMiddleware } from './interfaces/IVersionMiddleware';
+import { VersionMiddleware } from './api/middlewares/version';
 
 const container = new Container();
 
@@ -65,6 +73,7 @@ container
   .bind<IRestClientService>(TYPES.RestClientService)
   .to(RestClientService);
 container.bind<IStorageService>(TYPES.StorageService).to(StorageService);
+container.bind<IS3Service>(TYPES.S3Service).to(S3Service);
 container.bind<ILibraryService>(TYPES.LibraryService).to(LibraryService);
 container
   .bind<ILibraryController>(TYPES.LibraryController)
@@ -82,4 +91,11 @@ container
 container.bind<IAdminService>(TYPES.AdminService).to(AdminService);
 container.bind<IAdminController>(TYPES.AdminController).to(AdminController);
 container.bind<IAdminRouter>(TYPES.AdminRouter).to(AdminRouter);
+container.bind<IStorageRouter>(TYPES.StorageRouter).to(StorageRouter);
+container
+  .bind<IStorageController>(TYPES.StorageController)
+  .to(StorageController);
+container
+  .bind<IVersionMiddleware>(TYPES.VersionMiddleware)
+  .to(VersionMiddleware);
 export { container };

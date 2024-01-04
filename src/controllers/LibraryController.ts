@@ -32,16 +32,19 @@ export class LibraryController implements ILibraryController {
       const { relativePath, sign, noLastItemPlayed } = req.query;
       const user = req.user;
       const path = `${user.email}/${relativePath ? relativePath : ''}`;
-      const content = await this._libraryService.GetLibrary(user, path, sign);
+      const content = await this._libraryService.GetLibrary(user, path, {
+        withPresign: sign,
+        appVersion: req.app_version,
+      });
       let lastItemPlayed;
       if (
         (!relativePath || relativePath === '/' || relativePath === '') &&
         !noLastItemPlayed
       ) {
-        lastItemPlayed = await this._libraryService.dbGetLastItemPlayed(
-          user,
-          sign,
-        );
+        lastItemPlayed = await this._libraryService.dbGetLastItemPlayed(user, {
+          withPresign: sign,
+          appVersion: req.app_version,
+        });
       }
       return res.json({ content, lastItemPlayed });
     } catch (err) {
@@ -59,7 +62,10 @@ export class LibraryController implements ILibraryController {
       const user = req.user;
       const lastItemPlayed = await this._libraryService.dbGetLastItemPlayed(
         user,
-        sign,
+        {
+          withPresign: sign,
+          appVersion: req.app_version,
+        },
       );
       return res.json({ lastItemPlayed });
     } catch (err) {

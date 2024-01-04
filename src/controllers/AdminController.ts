@@ -21,11 +21,16 @@ export class AdminController implements IAdminController {
     await Promise.all(
       users.map(async (user) => {
         try {
-          const folderSize = await this._storageService.calculateFolderSize(
-            `${user.email}/`,
-          );
+          const folderSize = await this._storageService.calculateFolderSize({
+            folderKey: `${user.email}/`,
+          });
+          const thumbailsSize = await this._storageService.calculateFolderSize({
+            folderKey: `${user.email}_thumbnail/`,
+          });
           // foldersize is bytes
-          user.size = parseFloat((folderSize / 1024 / 1024 / 1024).toFixed(2));
+          user.size = parseFloat(
+            ((folderSize + thumbailsSize) / 1024 / 1024 / 1024).toFixed(2),
+          );
         } catch (error) {
           this._loggerService.log({
             origin: 'SetUserUsage',
@@ -45,9 +50,9 @@ export class AdminController implements IAdminController {
     await Promise.all(
       usersBooks.map(async (userBook) => {
         try {
-          const fileExist = await this._storageService.fileExists(
-            `${userBook.email}/${userBook.key}`,
-          );
+          const fileExist = await this._storageService.fileExists({
+            key: `${userBook.email}/${userBook.key}`,
+          });
           if (fileExist !== userBook.synced) {
             await this._adminService.updateSync(
               userBook.id_library_item,

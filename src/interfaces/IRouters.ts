@@ -15,3 +15,7 @@ export interface ILibraryRouter {
 export interface IAdminRouter {
   get(): Router;
 }
+
+export interface IStorageRouter {
+  get(): Router;
+}

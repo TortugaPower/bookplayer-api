@@ -152,7 +152,7 @@ export class UserServices {
   }
 
   async GetUserByAppleID(
-    apple_id: string,
+    apple_id: string[],
     trx?: Knex.Transaction,
   ): Promise<AppleUser> {
     try {
@@ -171,10 +171,12 @@ export class UserServices {
           );
         })
         .where({
-          'user_params.value': apple_id,
-          'user_params.param': TypeUserParams.apple_id,
           'user_params.active': true,
         })
+        .whereRaw('user_params.param = ? and user_params.value = ANY(?)', [
+          TypeUserParams.apple_id,
+          apple_id,
+        ])
         .first()
         .debug(true);
       return user;
@@ -309,7 +311,10 @@ export class UserServices {
     }
   }
 
-  async getClientID(params: { origin: string }): Promise<string> {
+  async getClientID(params: { origin: string }): Promise<{
+    apple_id: string;
+    app_version: string;
+  }> {
     try {
       const { origin } = params;
       const client = await this.db('apple_clients')
@@ -317,9 +322,9 @@ export class UserServices {
           active: true,
           origin,
         })
-        .select('apple_id')
+        .select(['apple_id', 'app_version'])
         .first();
-      return client?.apple_id;
+      return client;
     } catch (err) {
       this._logger.log({
         origin: 'getClientID',
