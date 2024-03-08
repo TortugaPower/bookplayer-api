@@ -19,6 +19,9 @@ export class UserRouter implements IUserRouter {
     router.post('/login', (req, res, next) =>
       this._controller.InitLogin(req, res, next).catch(next),
     );
+    router.get('/logout', (req, res, next) =>
+      this._controller.Logout(req, res, next).catch(next),
+    );
     router.post('/revenuecat', (req, res, next) =>
       this._subscription.RevenuecatWebhook(req, res, next).catch(next),
     );

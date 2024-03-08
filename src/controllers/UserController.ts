@@ -3,6 +3,7 @@ import { TYPES } from '../ContainerTypes';
 import { IUserService } from '../interfaces/IUserService';
 import { IRequest, IResponse } from '../interfaces/IRequest';
 import { IUserController } from '../interfaces/IUserController';
+import cookie from 'cookie';
 
 @injectable()
 export class UserController implements IUserController {
@@ -29,6 +30,12 @@ export class UserController implements IUserController {
       client_id = await this._userService.getClientID({
         origin: origin.replace('https://', '').replace('http://', ''),
       });
+      if (!client_id) {
+        res
+          .status(422)
+          .json({ message: 'Your domain is not registered to use our API' });
+        return;
+      }
     }
     const appleAuth = await this._userService.verifyToken({
       token_id,
@@ -69,7 +76,29 @@ export class UserController implements IUserController {
       session: appleAuth.sub,
     });
 
+    if (!!client_id) {
+      // is from web enable 2 weeks
+      const isProd = process.env.NODE_ENV === 'production';
+      res.setHeader(
+        'Set-Cookie',
+        cookie.serialize(process.env.SESSION_COOKIE_NAME, token, {
+          httpOnly: true,
+          maxAge: 60 * 60 * 24 * 7 * 2,
+          sameSite: isProd ? 'none' : null,
+          secure: isProd,
+          path: '/',
+        }),
+      );
+      return res.json({ email: user.email });
+    }
     return res.json({ email: user.email, token });
+  }
+
+  public async Logout(req: IRequest, res: IResponse): Promise<IResponse> {
+    await res.clearCookie(process.env.SESSION_COOKIE_NAME, { path: '*' });
+    return res.send({
+      logout: true,
+    });
   }
 
   public async DeleteAccount(
