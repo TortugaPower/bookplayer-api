@@ -1,8 +1,12 @@
 import { IRequest, IResponse, INext } from '../../interfaces/IRequest';
 import JWT from 'jsonwebtoken';
+import cookie from 'cookie';
 
 const loggedUser = (req: IResponse, _res: IRequest, next: INext) => {
-  const authorization = req.headers?.authorization;
+  const cookies = cookie.parse(req.headers.cookie || '');
+  const cookieToken = cookies ? cookies[process.env.SESSION_COOKIE_NAME] : null;
+
+  const authorization = req.headers?.authorization || cookieToken;
   if (authorization) {
     const token = authorization.replace('Bearer', '').trim();
     try {
