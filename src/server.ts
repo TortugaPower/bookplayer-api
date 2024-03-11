@@ -10,8 +10,6 @@ import { IRouterHttp } from './interfaces/IRouters';
 import { TYPES } from './ContainerTypes';
 import { handleError } from './api/middlewares/error';
 import { IRestClientService } from './interfaces/IRestClientService';
-import { ISocketService } from './interfaces/ISocketService';
-import { ICacheService } from './interfaces/ICacheService';
 import { ILoggerService } from './interfaces/ILoggerService';
 import { IVersionMiddleware } from './interfaces/IVersionMiddleware';
 import { IResponse, IRequest, INext } from './interfaces/IRequest';
@@ -20,8 +18,6 @@ import { IResponse, IRequest, INext } from './interfaces/IRequest';
 export class Server {
   @inject(TYPES.RouterHttp) private _authRouter: IRouterHttp;
   @inject(TYPES.RestClientService) private _restClient: IRestClientService;
-  @inject(TYPES.SocketService) private _socketService: ISocketService;
-  @inject(TYPES.CacheService) private _cacheService: ICacheService;
   @inject(TYPES.LoggerService) private _logger: ILoggerService;
   @inject(TYPES.VersionMiddleware) private version: IVersionMiddleware;
   run(): void {
@@ -48,8 +44,6 @@ export class Server {
     const httpServer = createServer(app);
     httpServer.listen(process.env.API_PORT || 5000, () => {
       this._logger.log({ origin: 'init app' });
-      this._cacheService.connectCacheService();
-      this._socketService.setupClient(httpServer);
     });
   }
 }
