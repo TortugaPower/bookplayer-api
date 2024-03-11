@@ -4,6 +4,7 @@ import { IUserService } from '../interfaces/IUserService';
 import { IRequest, IResponse } from '../interfaces/IRequest';
 import { IUserController } from '../interfaces/IUserController';
 import cookie from 'cookie';
+import { APP_CONST } from '../utils/constant';
 
 @injectable()
 export class UserController implements IUserController {
@@ -81,7 +82,7 @@ export class UserController implements IUserController {
       const isProd = process.env.NODE_ENV === 'production';
       res.setHeader(
         'Set-Cookie',
-        cookie.serialize(process.env.SESSION_COOKIE_NAME, token, {
+        cookie.serialize(APP_CONST.SESSION_COOKIE_NAME, token, {
           httpOnly: true,
           maxAge: 60 * 60 * 24 * 7 * 2,
           sameSite: isProd ? 'none' : null,
@@ -95,7 +96,7 @@ export class UserController implements IUserController {
   }
 
   public async Logout(req: IRequest, res: IResponse): Promise<IResponse> {
-    await res.clearCookie(process.env.SESSION_COOKIE_NAME, { path: '*' });
+    await res.clearCookie(APP_CONST.SESSION_COOKIE_NAME, { path: '/' });
     return res.send({
       logout: true,
     });
