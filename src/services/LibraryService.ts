@@ -113,12 +113,16 @@ export class LibraryService {
   }
 
   async dbDeleteLibrary(
-    user_id: number,
-    path: string,
+    params: {
+      user_id: number;
+      path: string;
+      exactly?: boolean;
+      active?: boolean;
+    },
     trx?: Knex.Transaction,
-    exactly?: boolean,
   ): Promise<LibrarItemDB[]> {
     try {
+      const { user_id, path, exactly, active } = params;
       const db = trx || this.db;
       const objectsDeleted = await db('library_items as li')
         .update({
@@ -126,7 +130,7 @@ export class LibraryService {
         })
         .where({
           user_id,
-          active: true,
+          active: active === false ? active : true,
         })
         .whereRaw('key like ?', [`${path}${exactly ? '' : '%'}`])
         .returning('*');
@@ -135,7 +139,7 @@ export class LibraryService {
       this._logger.log({
         origin: 'dbDeleteLibrary',
         message: err.message,
-        data: { user_id, path, exactly },
+        data: params,
       });
       return null;
     }
@@ -616,13 +620,18 @@ export class LibraryService {
     try {
       const { relativePath } = params;
       const cleanPath = relativePath.replace(`${user.email}/`, '');
-      const deletedObjects = await this.dbDeleteLibrary(
-        user.id_user,
-        cleanPath,
-      );
+      const deletedObjects = await this.dbDeleteLibrary({
+        user_id: user.id_user,
+        path: cleanPath,
+      });
       const itemDb = deletedObjects[0];
       if (!itemDb) {
-        throw Error('Item does not exist');
+        const alreadyDeleted = await this.dbDeleteLibrary({
+          user_id: user.id_user,
+          path: cleanPath,
+          active: false,
+        });
+        return alreadyDeleted?.map((i) => i.key) || [];
       }
 
       for (let index = 0; index < deletedObjects.length; index++) {
@@ -901,10 +910,12 @@ export class LibraryService {
         return true;
       }
       const folderDeleted = await this.dbDeleteLibrary(
-        user.id_user,
-        folderPath,
+        {
+          user_id: user.id_user,
+          path: folderPath,
+          exactly: true,
+        },
         trx,
-        true,
       );
       if (!folderDeleted) {
         throw Error('folder not deleted');
