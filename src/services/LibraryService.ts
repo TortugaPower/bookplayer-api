@@ -947,7 +947,8 @@ export class LibraryService {
                 targetKey,
               });
               if (isMoved) {
-                await this.db('library_items')
+                console.log('is moved', isMoved);
+                await trx('library_items')
                   .update({
                     source_path: original_filename,
                   })
