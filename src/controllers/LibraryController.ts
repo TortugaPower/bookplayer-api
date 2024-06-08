@@ -12,6 +12,7 @@ import { Bookmark, LibraryItem, LibraryItemType } from '../types/user';
 export class LibraryController implements ILibraryController {
   @inject(TYPES.LibraryService)
   private _libraryService: ILibraryService;
+  @inject(TYPES.LibraryServiceDeprecated)
   private _libraryServiceDeprecated: ILibraryServiceDeprecated;
 
   public async getUserLibraryKeys(
