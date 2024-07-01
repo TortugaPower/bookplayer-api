@@ -232,3 +232,19 @@ export enum S3ValidHeader {
 export type S3ClientHeaders = {
   [key in S3ValidHeader]?: string | Date;
 };
+
+export type EmailObjAttachment = {
+  filename: string;
+  path?: string;
+  contentType?: string;
+  content?: Buffer;
+};
+
+export type EmailObj = {
+  to: string;
+  cc?: string;
+  bcc?: string;
+  subject: string;
+  html: string;
+  attachments?: Array<EmailObjAttachment>;
+};

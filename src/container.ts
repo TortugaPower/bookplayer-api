@@ -58,6 +58,8 @@ import { IStorageController } from './interfaces/IStorageController';
 import { IVersionMiddleware } from './interfaces/IVersionMiddleware';
 import { VersionMiddleware } from './api/middlewares/version';
 import { LibraryServiceDeprecated } from './services/LibraryServiceDeprecated';
+import { IEmailService } from './interfaces/IEmailService';
+import { EmailService } from './services/EmailService';
 
 const container = new Container();
 
@@ -102,6 +104,7 @@ container
 container
   .bind<IVersionMiddleware>(TYPES.VersionMiddleware)
   .to(VersionMiddleware);
+container.bind<IEmailService>(TYPES.EmailService).to(EmailService);
 
 // deprecated use for migration
 container

@@ -55,7 +55,10 @@ export class UserController implements IUserController {
       user = await this._userService.AddNewUser({
         email: appleAuth.email,
         active: true,
-        params: { apple_id: appleAuth.sub },
+        params: {
+          apple_id: appleAuth.sub,
+          beta_user: 'true',
+        },
       });
     }
     if (!user.params?.apple_id) {
