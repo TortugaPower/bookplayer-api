@@ -115,6 +115,7 @@ export class LibraryServiceDeprecated {
     path: string,
     trx?: Knex.Transaction,
     exactly?: boolean,
+    active?: boolean,
   ): Promise<LibrarItemDB[]> {
     try {
       const db = trx || this.db;
@@ -124,7 +125,7 @@ export class LibraryServiceDeprecated {
         })
         .where({
           user_id,
-          active: true,
+          active: active === false ? active : true,
         })
         .whereRaw('key like ?', [`${path}${exactly ? '' : '%'}`])
         .returning('*');
@@ -596,7 +597,14 @@ export class LibraryServiceDeprecated {
       );
       const itemDb = deletedObjects[0];
       if (!itemDb) {
-        throw Error('Item does not exist');
+        const alreadyDeleted = await this.dbDeleteLibrary(
+          user.id_user,
+          cleanPath,
+          null,
+          null,
+          false,
+        );
+        return alreadyDeleted?.map((i) => i.key) || [];
       }
 
       for (let index = 0; index < deletedObjects.length; index++) {
