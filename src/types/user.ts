@@ -248,3 +248,17 @@ export type EmailObj = {
   html: string;
   attachments?: Array<EmailObjAttachment>;
 };
+
+export enum UserEventEnum {
+  SECOND_ONBOARDING_START = 'second_onboarding_start',
+  SECOND_ONBOARDING_SKIP = 'second_onboarding_skip',
+  SECOND_ONBOARDING_SUBSCRIPTION = 'second_onboarding_subscription',
+}
+export interface UserEvent {
+  id_user_event?: number;
+  user_id?: number;
+  external_id?: string;
+  event_name: UserEventEnum;
+  event_data: object;
+  created_at: string;
+}

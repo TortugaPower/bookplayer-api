@@ -4,6 +4,8 @@ import { IUserService } from '../interfaces/IUserService';
 import { IRequest, IResponse } from '../interfaces/IRequest';
 import { IUserController } from '../interfaces/IUserController';
 import cookie from 'cookie';
+import { UserEventEnum } from '../types/user';
+import moment from 'moment-timezone';
 
 @injectable()
 export class UserController implements IUserController {
@@ -121,5 +123,50 @@ export class UserController implements IUserController {
       return;
     }
     return res.json({ message: 'The account has been successfully deleted' });
+  }
+
+  public async secondOnboarding(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    const { rc_id, first_seen, region, onboarding_name } = req.body;
+    const diffdays = moment.unix(first_seen).diff(moment(), 'days');
+    if (rc_id && region === 'USA' && diffdays < -7) {
+      const lastEvent = await this._userService.getLastUserEvent({
+        event_name: UserEventEnum.SECOND_ONBOARDING_START,
+        external_id: rc_id,
+      });
+      if (
+        !lastEvent ||
+        moment(lastEvent.created_at).isBefore(moment().subtract(7, 'days'))
+      ) {
+        const onboarding = await this._userService.getSecondOnboardings({
+          onboarding_name: onboarding_name || 'first_seen',
+        });
+        return res.json(onboarding);
+      }
+    }
+    return res.json({});
+  }
+
+  public async userEventsHandler(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    const user = req.user;
+    const { event, event_data, external_id } = req.body;
+    const event_name = event?.toLowerCase();
+    if (!Object.values(UserEventEnum).includes(event_name)) {
+      return res.status(400).json({ message: 'Invalid event' });
+    }
+    const eventToInsert = {
+      user_id: user?.id_user || null,
+      event_name,
+      event_data: event_data,
+      external_id:
+        external_id || event_data.external_id || event_data.rc_id || null,
+    };
+    await this._userService.insertNewEvent(eventToInsert);
+    return res.json({ message: 'event stored' });
   }
 }

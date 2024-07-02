@@ -5,6 +5,8 @@ import {
   SignApple,
   TypeUserParams,
   User,
+  UserEvent,
+  UserEventEnum,
   UserParam,
   UserParamsObject,
   UserSession,
@@ -377,6 +379,88 @@ export class UserServices {
         origin: 'checkIfAdmin',
         message: err.message,
         data: { user_id },
+      });
+      return null;
+    }
+  }
+
+  async insertNewEvent(params: {
+    event_name: UserEventEnum;
+    user_id?: number;
+    external_id?: string;
+    event_data: object;
+  }): Promise<number> {
+    try {
+      const inserted = await this.db('user_events')
+        .insert(params)
+        .returning('id_user_event');
+      return inserted[0].id_user_event;
+    } catch (err) {
+      this._logger.log({
+        origin: 'insertNewEvent',
+        message: err.message,
+        data: { params },
+      });
+      return null;
+    }
+  }
+
+  async getLastUserEvent(params: {
+    event_name: UserEventEnum;
+    user_id?: number;
+    external_id?: string;
+  }): Promise<UserEvent> {
+    try {
+      const filter: {
+        event_name: UserEventEnum;
+        user_id?: number;
+        external_id?: string;
+      } = {
+        event_name: params.event_name,
+      };
+      if (params.user_id) {
+        filter.user_id = params.user_id;
+      }
+      if (params.external_id) {
+        filter.external_id = params.external_id;
+      }
+      const event = await this.db('user_events')
+        .where(filter)
+        .orderBy('created_at', 'desc')
+        .first();
+      return event;
+    } catch (err) {
+      this._logger.log({
+        origin: 'getLastUserEvent',
+        message: err.message,
+        data: { params },
+      });
+      return null;
+    }
+  }
+
+  async getSecondOnboardings(params: { onboarding_name: string }): Promise<{
+    [k: string]: object;
+  }> {
+    try {
+      const response = await this.db
+        .raw(
+          `select json_build_object(
+            'onboarding_name', onboarding_name,
+            'onboarding_id', onboarding_id,
+            'type', type, 
+            type, response_data
+            ) as response from second_onboardings
+          where onboarding_name=? and active=true`,
+          [params.onboarding_name],
+        )
+        .then((result) => result.rows[0]);
+      return response?.response;
+    } catch (err) {
+      this._logger.log({
+        origin: 'getSecondOnboardings',
+        message: err.message,
+        data: { params },
       });
       return null;
     }

@@ -5,6 +5,8 @@ import {
   User,
   TypeUserParams,
   UserSession,
+  UserEventEnum,
+  UserEvent,
 } from '../types/user';
 
 export interface IUserService {
@@ -26,4 +28,18 @@ export interface IUserService {
     app_version: string;
   }>;
   checkIfAdmin(user_id: number): Promise<boolean>;
+  insertNewEvent(params: {
+    event_name: UserEventEnum;
+    user_id?: number;
+    external_id?: string;
+    event_data: object;
+  }): Promise<number>;
+  getSecondOnboardings(params: { onboarding_name: string }): Promise<{
+    [k: string]: object;
+  }>;
+  getLastUserEvent(params: {
+    event_name: UserEventEnum;
+    user_id?: number;
+    external_id?: string;
+  }): Promise<UserEvent>;
 }
