@@ -57,7 +57,7 @@ export class UserController implements IUserController {
         active: true,
         params: {
           apple_id: appleAuth.sub,
-          beta_user: 'true',
+          beta_user: '1',
         },
       });
     }
