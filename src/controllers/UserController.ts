@@ -136,9 +136,16 @@ export class UserController implements IUserController {
         event_name: UserEventEnum.SECOND_ONBOARDING_START,
         external_id: rc_id,
       });
+      const lastSkipEvent = await this._userService.getLastUserEvent({
+        event_name: UserEventEnum.SECOND_ONBOARDING_SKIP,
+        external_id: rc_id,
+      });
       if (
-        !lastEvent ||
-        moment(lastEvent.created_at).isBefore(moment().subtract(7, 'days'))
+        (!lastEvent ||
+          moment(lastEvent.created_at).isBefore(
+            moment().subtract(7, 'days'),
+          )) &&
+        !lastSkipEvent
       ) {
         const onboarding = await this._userService.getSecondOnboardings({
           onboarding_name: onboarding_name || 'first_seen',
