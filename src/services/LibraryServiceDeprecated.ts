@@ -309,11 +309,11 @@ export class LibraryServiceDeprecated {
           title: item.title,
           original_filename: item.original_filename,
           speed: item.speed,
-          actual_time: item.actual_time,
+          actual_time: item.actual_time || '0',
           details: item.details,
           duration: item.duration,
           percent_completed: item.percent_completed,
-          order_rank: item.order_rank,
+          order_rank: item.order_rank || 0,
           last_play_date: !!item.last_play_date
             ? parseInt(`${item.last_play_date}`)
             : null,
@@ -426,11 +426,13 @@ export class LibraryServiceDeprecated {
             title: itemDb.title,
             details: itemDb.details,
             speed: itemDb.speed,
-            currentTime: parseFloat(itemDb.actual_time),
+            currentTime: itemDb.actual_time
+              ? parseFloat(itemDb.actual_time)
+              : 0,
             duration: parseFloat(itemDb.duration),
             percentCompleted: itemDb.percent_completed,
             isFinished: itemDb.is_finish,
-            orderRank: itemDb.order_rank,
+            orderRank: itemDb.order_rank || 0,
             lastPlayDateTimestamp: itemDb.last_play_date,
             type: itemDb.type,
             url: fileUrl,
@@ -465,11 +467,13 @@ export class LibraryServiceDeprecated {
           title: itemTemp.title,
           details: itemTemp.details,
           speed: itemTemp.speed,
-          currentTime: parseFloat(itemTemp.actual_time),
+          currentTime: itemTemp.actual_time
+            ? parseFloat(itemTemp.actual_time)
+            : 0,
           duration: parseFloat(itemTemp.duration),
           percentCompleted: itemTemp.percent_completed,
           isFinished: itemTemp.is_finish,
-          orderRank: itemTemp.order_rank,
+          orderRank: itemTemp.order_rank || 0,
           lastPlayDateTimestamp: itemTemp.last_play_date,
           type: itemTemp.type,
           thumbnail: itemTemp.thumbnail,
@@ -485,12 +489,10 @@ export class LibraryServiceDeprecated {
           original_filename: itemApi.originalFileName,
           speed: itemApi.speed,
           details: itemApi.details,
-          actual_time: itemApi.currentTime
-            ? `${itemApi.currentTime}`
-            : undefined,
+          actual_time: itemApi.currentTime ? `${itemApi.currentTime}` : '0',
           duration: !!itemApi.duration ? `${itemApi.duration}` : undefined,
           percent_completed: itemApi.percentCompleted,
-          order_rank: itemApi.orderRank,
+          order_rank: itemApi.orderRank || 0,
           last_play_date:
             !!itemApi.lastPlayDateTimestamp &&
             `${itemApi.lastPlayDateTimestamp}`.trim() !== ''
@@ -673,7 +675,7 @@ export class LibraryServiceDeprecated {
       if (objectDB.length !== 1) {
         throw Error('Item not found');
       }
-      const prevOrder = objectDB[0].order_rank;
+      const prevOrder = objectDB[0].order_rank || 0;
 
       if (prevOrder === orderRank) {
         throw Error('The order is the same');
@@ -760,7 +762,7 @@ export class LibraryServiceDeprecated {
               title: name,
               original_filename: name,
               speed: 1,
-              actual_time: null,
+              actual_time: '0',
               details: name,
               duration: `0`,
               percent_completed: 0,
