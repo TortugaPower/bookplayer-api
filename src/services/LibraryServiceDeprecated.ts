@@ -491,8 +491,10 @@ export class LibraryServiceDeprecated {
           details: itemApi.details,
           actual_time: itemApi.currentTime ? `${itemApi.currentTime}` : '0',
           duration: !!itemApi.duration ? `${itemApi.duration}` : undefined,
-          percent_completed: itemApi.percentCompleted,
-          order_rank: itemApi.orderRank || 0,
+          percent_completed: parseFloat(`${itemApi.percentCompleted || 0}`),
+          order_rank: itemApi.orderRank
+            ? parseInt(`${itemApi.orderRank}`)
+            : undefined,
           last_play_date:
             !!itemApi.lastPlayDateTimestamp &&
             `${itemApi.lastPlayDateTimestamp}`.trim() !== ''
