@@ -20,7 +20,7 @@ export class SubscriptionMiddleware implements ISubscriptionMiddleware {
           user.id_user,
         );
         if (!state || state === SubscriptionEventType.EXPIRATION) {
-          return res.status(400).json({ message: 'This account does not ithhave an active subscription' });
+          return res.status(400).json({ message: 'This account does not have an active subscription' });
         }
         const betaUser = await this._userService.getUserParam({
           user_id: user.id_user,
