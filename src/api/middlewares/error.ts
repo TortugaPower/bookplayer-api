@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import httpStatus from 'http-status';
 import { IRequest, IResponse, INext } from '../../interfaces/IRequest';
 
 class HttpException extends Error {
@@ -18,7 +17,7 @@ export const handleError = (
   res: IRequest,
   _next: INext,
 ) => {
-  const status = error.status || httpStatus[500];
+  const status = error.status || 500;
   const message = error.message || 'Something went wrong';
   return res.status(status).send({
     status,
