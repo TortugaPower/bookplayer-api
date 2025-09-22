@@ -253,6 +253,7 @@ export enum UserEventEnum {
   SECOND_ONBOARDING_START = 'second_onboarding_start',
   SECOND_ONBOARDING_SKIP = 'second_onboarding_skip',
   SECOND_ONBOARDING_SUBSCRIPTION = 'second_onboarding_subscription',
+  SECOND_ONBOARDING_TIP = 'second_onboarding_tip',
 }
 export interface UserEvent {
   id_user_event?: number;

@@ -306,11 +306,11 @@ export class LibraryServiceDeprecated {
         .insert({
           user_id,
           key: item.key,
-          title: item.title,
+          title: item.title.substring(0, 255),
           original_filename: item.original_filename,
           speed: item.speed,
           actual_time: item.actual_time || '0',
-          details: item.details,
+          details: item.details.substring(0, 255),
           duration: item.duration,
           percent_completed: item.percent_completed,
           order_rank: item.order_rank || 0,
@@ -338,7 +338,7 @@ export class LibraryServiceDeprecated {
     key: string,
     item: LibrarItemDB,
     trx?: Knex.Transaction,
-  ): Promise<LibrarItemDB> {
+  ): Promise<boolean> {
     try {
       const db = trx || this.db;
       const updateObject = Object.keys(item).reduce(
@@ -351,21 +351,18 @@ export class LibraryServiceDeprecated {
         },
         {},
       );
-      const objects = await db('library_items')
-        .update(updateObject)
-        .where({
-          user_id,
-          key: key,
-        })
-        .returning('*');
-      return objects[0];
+      await db('library_items').update(updateObject).where({
+        user_id,
+        key: key,
+      });
+      return true;
     } catch (err) {
       this._logger.log({
         origin: 'dbUpdateLibraryItem',
         message: err.message,
         data: { user_id, key, item },
       });
-      return null;
+      return false;
     }
   }
 
@@ -492,9 +489,10 @@ export class LibraryServiceDeprecated {
           actual_time: itemApi.currentTime ? `${itemApi.currentTime}` : '0',
           duration: !!itemApi.duration ? `${itemApi.duration}` : undefined,
           percent_completed: parseFloat(`${itemApi.percentCompleted || 0}`),
-          order_rank: itemApi.orderRank
-            ? parseInt(`${itemApi.orderRank}`)
-            : undefined,
+          order_rank:
+            itemApi.orderRank != null
+              ? parseInt(`${itemApi.orderRank}`)
+              : undefined,
           last_play_date:
             !!itemApi.lastPlayDateTimestamp &&
             `${itemApi.lastPlayDateTimestamp}`.trim() !== ''
@@ -635,7 +633,7 @@ export class LibraryServiceDeprecated {
     user: User,
     relativePath: string,
     params: LibraryItem,
-  ): Promise<LibraryItem> {
+  ): Promise<boolean> {
     try {
       const cleanPath = relativePath.replace(`${user.email}/`, '');
 
@@ -646,17 +644,13 @@ export class LibraryServiceDeprecated {
         },
         LibraryItemOutput.DB,
       )) as LibrarItemDB;
-      const itemDbInserted = await this.dbUpdateLibraryItem(
+      const result = await this.dbUpdateLibraryItem(
         user.id_user,
         cleanPath,
         libraryItem,
       );
 
-      const item = (await this.ParseLibraryItemDbB(
-        itemDbInserted,
-        LibraryItemOutput.API,
-      )) as LibraryItem;
-      return item;
+      return result;
     } catch (err) {
       this._logger.log({
         origin: 'UpdateObject',
@@ -667,7 +661,7 @@ export class LibraryServiceDeprecated {
     }
   }
 
-  async reOrderObject(user: User, params: LibraryItem): Promise<LibraryItem> {
+  async reOrderObject(user: User, params: LibraryItem): Promise<boolean> {
     let trx;
     try {
       const { relativePath, orderRank } = params;
@@ -706,7 +700,7 @@ export class LibraryServiceDeprecated {
         .whereBetween('order_rank', orderFilter)
         .debug(false);
 
-      const itemDbInserted = await this.dbUpdateLibraryItem(
+      await this.dbUpdateLibraryItem(
         user.id_user,
         cleanPath,
         {
@@ -717,12 +711,7 @@ export class LibraryServiceDeprecated {
       );
       await trx.commit();
 
-      const item = (await this.ParseLibraryItemDbB(
-        itemDbInserted,
-        LibraryItemOutput.API,
-      )) as LibraryItem;
-
-      return item;
+      return true;
     } catch (err) {
       await trx?.rollback();
       this._logger.log({

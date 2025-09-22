@@ -36,7 +36,7 @@ export class LibraryController implements ILibraryController {
     res: IResponse,
   ): Promise<IResponse> {
     try {
-      const { relativePath, sign, noLastItemPlayed } = req.query;
+      const { relativePath, sign, noLastItemPlayed, forceLastItem } = req.query;
       const user = req.user;
       const path = `${user.email}/${relativePath ? relativePath : ''}`;
 
@@ -49,8 +49,9 @@ export class LibraryController implements ILibraryController {
         : await this._libraryServiceDeprecated.GetLibrary(user, path, options);
       let lastItemPlayed;
       if (
-        (!relativePath || relativePath === '/' || relativePath === '') &&
-        !noLastItemPlayed
+        ((!relativePath || relativePath === '/' || relativePath === '') &&
+          !noLastItemPlayed) ||
+        forceLastItem
       ) {
         lastItemPlayed = req.beta_user
           ? await this._libraryService.dbGetLastItemPlayed(user, options)
@@ -96,7 +97,6 @@ export class LibraryController implements ILibraryController {
     try {
       const { relativePath } = req.body;
       const user = req.user;
-      const pathKey = `${user.email}/${relativePath ? relativePath : ''}`;
 
       const updateFields = Object.keys(req.body).filter(
         (key) => key !== 'relativePath' && key !== 'originalFileName',
@@ -125,11 +125,7 @@ export class LibraryController implements ILibraryController {
         }
       }
 
-      const content = req.beta_user
-        ? await this._libraryService.GetObject(user, pathKey, req.app_version)
-        : await this._libraryServiceDeprecated.GetObject(user, pathKey);
-
-      return res.json({ content });
+      return res.json({ content: { url: null } });
     } catch (err) {
       res.status(400).json({ message: err.message });
       return;

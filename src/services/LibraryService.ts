@@ -311,11 +311,11 @@ export class LibraryService {
         .insert({
           user_id,
           key: item.key,
-          title: item.title,
+          title: item.title.substring(0, 255),
           original_filename: item.original_filename,
           speed: item.speed,
           actual_time: item.actual_time || '0',
-          details: item.details,
+          details: item.details.substring(0, 255),
           duration: item.duration,
           percent_completed: item.percent_completed,
           order_rank: item.order_rank || 0,
@@ -344,7 +344,7 @@ export class LibraryService {
     key: string,
     item: LibrarItemDB,
     trx?: Knex.Transaction,
-  ): Promise<LibrarItemDB> {
+  ): Promise<boolean> {
     try {
       const db = trx || this.db;
       const updateObject = Object.keys(item).reduce(
@@ -357,21 +357,18 @@ export class LibraryService {
         },
         {},
       );
-      const objects = await db('library_items')
-        .update(updateObject)
-        .where({
-          user_id,
-          key: key,
-        })
-        .returning('*');
-      return objects[0];
+      await db('library_items').update(updateObject).where({
+        user_id,
+        key: key,
+      });
+      return true;
     } catch (err) {
       this._logger.log({
         origin: 'dbUpdateLibraryItem',
         message: err.message,
         data: { user_id, key, item },
       });
-      return null;
+      return false;
     }
   }
 
@@ -495,19 +492,27 @@ export class LibraryService {
           key: itemApi.relativePath,
           title: itemApi.title,
           original_filename: itemApi.originalFileName,
-          speed: parseFloat(`${itemApi.speed || 1}`),
+          speed:
+            itemApi.speed != null
+              ? parseFloat(`${itemApi.speed || 1}`)
+              : undefined,
           details: itemApi.details,
-          actual_time: itemApi.currentTime ? `${itemApi.currentTime}` : '0',
+          actual_time:
+            itemApi.currentTime != null ? `${itemApi.currentTime}` : undefined,
           duration: !!itemApi.duration ? `${itemApi.duration}` : undefined,
-          percent_completed: parseFloat(`${itemApi.percentCompleted || 0}`),
-          order_rank: itemApi.orderRank
-            ? parseInt(`${itemApi.orderRank}`)
-            : undefined,
+          percent_completed:
+            itemApi.percentCompleted != null
+              ? parseFloat(`${itemApi.percentCompleted || 0}`)
+              : undefined,
+          order_rank:
+            itemApi.orderRank != null
+              ? parseInt(`${itemApi.orderRank}`)
+              : undefined,
           last_play_date:
             !!itemApi.lastPlayDateTimestamp &&
             `${itemApi.lastPlayDateTimestamp}`.trim() !== ''
               ? parseInt(`${itemApi.lastPlayDateTimestamp}`)
-              : null,
+              : undefined,
           type: itemApi.type,
           is_finish: itemApi.isFinished,
           thumbnail: itemApi.thumbnail,
@@ -592,6 +597,10 @@ export class LibraryService {
         if (fileExists === true) {
           return null;
         }
+        // Override the source path with the stored path
+        if (itemDb.source_path) {
+          libObj.source_path = itemDb.source_path;
+        }
       } else {
         itemDb = await this.dbInsertLibraryItem(user.id_user, libObj);
       }
@@ -638,11 +647,13 @@ export class LibraryService {
 
       for (let index = 0; index < deletedObjects.length; index++) {
         const item = deletedObjects[index];
-        const sourceKey = `${user.email}/${item.source_path || item.key}`;
+        const keyPath =
+          parseInt(item.type) === parseInt(LibraryItemType.BOOK)
+            ? `${item.key}`
+            : `${item.key}/`;
+        const sourceKey = `${user.email}/${item.source_path || keyPath}`;
         await this._storage.deleteFile({
-          sourceKey: `${sourceKey}${
-            parseInt(item.type) === parseInt(LibraryItemType.BOOK) ? '' : '/'
-          }`,
+          sourceKey,
         });
       }
       return deletedObjects.map((i) => i.key);
@@ -660,7 +671,7 @@ export class LibraryService {
     user: User,
     relativePath: string,
     params: LibraryItem,
-  ): Promise<LibraryItem> {
+  ): Promise<boolean> {
     try {
       const cleanPath = relativePath.replace(`${user.email}/`, '');
 
@@ -671,17 +682,13 @@ export class LibraryService {
         },
         LibraryItemOutput.DB,
       )) as LibrarItemDB;
-      const itemDbInserted = await this.dbUpdateLibraryItem(
+      const result = await this.dbUpdateLibraryItem(
         user.id_user,
         cleanPath,
         libraryItem,
       );
 
-      const item = (await this.ParseLibraryItemDbB(
-        itemDbInserted,
-        LibraryItemOutput.API,
-      )) as LibraryItem;
-      return item;
+      return result;
     } catch (err) {
       this._logger.log({
         origin: 'UpdateObject',
@@ -692,7 +699,7 @@ export class LibraryService {
     }
   }
 
-  async reOrderObject(user: User, params: LibraryItem): Promise<LibraryItem> {
+  async reOrderObject(user: User, params: LibraryItem): Promise<boolean> {
     let trx;
     try {
       const { relativePath, orderRank } = params;
@@ -731,7 +738,7 @@ export class LibraryService {
         .whereBetween('order_rank', orderFilter)
         .debug(false);
 
-      const itemDbInserted = await this.dbUpdateLibraryItem(
+      await this.dbUpdateLibraryItem(
         user.id_user,
         cleanPath,
         {
@@ -742,12 +749,7 @@ export class LibraryService {
       );
       await trx.commit();
 
-      const item = (await this.ParseLibraryItemDbB(
-        itemDbInserted,
-        LibraryItemOutput.API,
-      )) as LibraryItem;
-
-      return item;
+      return true;
     } catch (err) {
       await trx?.rollback();
       this._logger.log({
@@ -974,9 +976,9 @@ export class LibraryService {
           }
         }),
       );
-      const folderKey = `${user.email}/${
-        folderDB[0].source_path || folderDB[0].key
-      }/`;
+
+      const keyPath = `${folderDB[0].key}/`;
+      const folderKey = `${user.email}/${folderDB[0].source_path || keyPath}`;
       const folderExist = await this._storage.fileExists({
         key: folderKey,
       });

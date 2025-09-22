@@ -126,7 +126,9 @@ export class S3Service {
         new CopyObjectCommand({
           Bucket: process.env.S3_BUCKET,
           Key: targetKey,
-          CopySource: `${process.env.S3_BUCKET}/${sourceKey}`,
+          CopySource: `${process.env.S3_BUCKET}/${encodeURIComponent(
+            sourceKey,
+          )}`,
         }),
       );
       await this.clientObject.send(

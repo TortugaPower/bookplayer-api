@@ -20,15 +20,11 @@ export class SubscriptionMiddleware implements ISubscriptionMiddleware {
           user.id_user,
         );
         if (!state || state === SubscriptionEventType.EXPIRATION) {
-          return res.status(400).json({ message: 'You are not suscribed' });
+          return res.status(400).json({ message: 'You are not subscribed' });
         }
-        const betaUser = await this._userService.getUserParam({
-          user_id: user.id_user,
-          param: TypeUserParams.beta_user,
-        });
-        if (!!parseInt(betaUser || '0')) {
-          req.beta_user = true;
-        }
+        // make every user a beta user
+        req.beta_user = true;
+
         next();
       } else {
         return res.status(400).json({ message: 'the user is invalid' });

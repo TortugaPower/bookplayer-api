@@ -35,8 +35,8 @@ export interface ILibraryService {
     user: User,
     relativePath: string,
     params: LibraryItem,
-  ): Promise<LibraryItem>;
-  reOrderObject(user: User, params: LibraryItem): Promise<LibraryItem>;
+  ): Promise<boolean>;
+  reOrderObject(user: User, params: LibraryItem): Promise<boolean>;
   moveLibraryObject(
     user: User,
     params: {
@@ -97,8 +97,8 @@ export interface ILibraryServiceDeprecated {
     user: User,
     relativePath: string,
     params: LibraryItem,
-  ): Promise<LibraryItem>;
-  reOrderObject(user: User, params: LibraryItem): Promise<LibraryItem>;
+  ): Promise<boolean>;
+  reOrderObject(user: User, params: LibraryItem): Promise<boolean>;
   moveLibraryObject(
     user: User,
     params: {

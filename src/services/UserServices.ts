@@ -420,18 +420,17 @@ export class UserServices {
   }): Promise<UserEvent> {
     try {
       const filter: {
-        event_name: UserEventEnum;
+        event_name?: UserEventEnum;
         user_id?: number;
         external_id?: string;
-      } = {
-        event_name: params.event_name,
-      };
+      } = {};
       if (params.user_id) {
         filter.user_id = params.user_id;
       }
       if (params.external_id) {
         filter.external_id = params.external_id;
       }
+      filter.event_name = params.event_name;
       const event = await this.db('user_events')
         .where(filter)
         .orderBy('created_at', 'desc')
@@ -440,6 +439,36 @@ export class UserServices {
     } catch (err) {
       this._logger.log({
         origin: 'getLastUserEvent',
+        message: err.message,
+        data: { params },
+      });
+      return null;
+    }
+  }
+
+  async getUserEventCount(params: {
+    event_name: UserEventEnum;
+    user_id?: number;
+    external_id?: string;
+  }): Promise<number> {
+    try {
+      const filter: {
+        event_name?: UserEventEnum;
+        user_id?: number;
+        external_id?: string;
+      } = {};
+      if (params.user_id) {
+        filter.user_id = params.user_id;
+      }
+      if (params.external_id) {
+        filter.external_id = params.external_id;
+      }
+      filter.event_name = params.event_name;
+      const total_count = await this.db('user_events').where(filter).count();
+      return Number(total_count[0]['count']);
+    } catch (err) {
+      this._logger.log({
+        origin: 'getUserEventCount',
         message: err.message,
         data: { params },
       });
@@ -457,7 +486,7 @@ export class UserServices {
             'onboarding_name', onboarding_name,
             'onboarding_id', onboarding_id,
             'type', type, 
-            type, response_data
+            'support', response_data
             ) as response from second_onboardings
           where onboarding_name=? and active=true`,
           [params.onboarding_name],

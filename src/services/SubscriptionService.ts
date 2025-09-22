@@ -1,9 +1,6 @@
 import { injectable, inject } from 'inversify';
 import { AppleUser, RevenuecatEvent, TypeUserParams } from '../types/user';
-import verifyAppleToken from 'verify-apple-id-token';
-import { Knex } from 'knex';
 import database from '../database';
-import JWT from 'jsonwebtoken';
 import { TYPES } from '../ContainerTypes';
 import { IRestClientService } from '../interfaces/IRestClientService';
 import { IUserService } from '../interfaces/IUserService';
@@ -92,4 +89,47 @@ export class SubscriptionService {
       return false;
     }
   }
+
+  async HasInAppPurchase(rc_id: string): Promise<boolean> {
+    try {
+      const { subscriber } = await this._restClient.callService({
+        baseURL: process.env.REVENUECAT_API,
+        service: `subscribers/${rc_id}`,
+        method: 'get',
+        headers: { authorization: `Bearer ${process.env.REVENUECAT_KEY}` },
+      });
+
+      let hasPurchase = false;
+      if (subscriber) {
+        const hasEntitlements = Object.keys(subscriber.entitlements).length > 0;
+        const hasSubscriptions =
+          Object.keys(subscriber.subscriptions).length > 0;
+        // Check if user has refunded the subscription
+        if (
+          hasSubscriptions &&
+          Object.keys(subscriber.subscriptions).length === 1 &&
+          Object.keys(subscriber.entitlements).length === 1
+        ) {
+          hasPurchase =
+            (Object.values(subscriber.subscriptions)[0] as SubscriptionParams)
+              .refunded_at === null;
+        } else {
+          hasPurchase = hasEntitlements || hasSubscriptions;
+        }
+      }
+
+      return hasPurchase;
+    } catch (err) {
+      this._logger.log({
+        origin: 'HasInAppPurchase',
+        message: err.message,
+        data: { rc_id },
+      });
+      return false;
+    }
+  }
+}
+
+interface SubscriptionParams {
+  refunded_at?: string;
 }

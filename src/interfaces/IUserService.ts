@@ -42,4 +42,9 @@ export interface IUserService {
     user_id?: number;
     external_id?: string;
   }): Promise<UserEvent>;
+  getUserEventCount(params: {
+    event_name: UserEventEnum;
+    user_id?: number;
+    external_id?: string;
+  }): Promise<number>;
 }

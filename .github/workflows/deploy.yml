@@ -1,0 +1,81 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:  # Manual trigger equivalent to custom pipeline
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 16
+        uses: actions/setup-node@v4
+        with:
+          node-version: '16'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: |
+          npm install -g yarn
+          yarn install --production=false
+
+      - name: Build application
+        run: npm run build
+
+      - name: Create configuration file
+        run: |
+          echo '{"NodeEnv":"${{ secrets.NODE_ENV }}","ApplicationIdentifier":"${{ secrets.CONFIG_APP }}","ConfigurationProfileIdentifier":"${{ secrets.CONFIG_PROFILE }}","EnvironmentIdentifier":"${{ secrets.CONFIG_ENV }}"}' > scripts/config.json
+
+      - name: Create deployment package
+        run: |
+          zip -r production_api.zip * -x 'node_modules/*' -x 'test/*' -x 'src/*' -x '*.env'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+
+      - name: Upload to S3
+        run: |
+          aws s3 cp production_api.zip s3://${{ secrets.S3_BUCKET }}/production_api.zip
+
+      - name: Deploy with CodeDeploy
+        run: |
+          aws deploy create-deployment \
+            --application-name ${{ secrets.APPLICATION_NAME }} \
+            --deployment-group-name ${{ secrets.DEPLOYMENT_GROUP }} \
+            --s3-location bucket=${{ secrets.S3_BUCKET }},key=production_api.zip,bundleType=zip \
+            --file-exists-behavior OVERWRITE \
+            --ignore-application-stop-failures \
+            --description "Deployment from GitHub Actions - ${{ github.sha }}"
+
+      - name: Wait for deployment completion
+        run: |
+          DEPLOYMENT_ID=$(aws deploy list-deployments \
+            --application-name ${{ secrets.APPLICATION_NAME }} \
+            --deployment-group-name ${{ secrets.DEPLOYMENT_GROUP }} \
+            --include-only-statuses "InProgress" \
+            --query 'deployments[0]' \
+            --output text)
+          
+          if [ "$DEPLOYMENT_ID" != "None" ]; then
+            echo "Waiting for deployment $DEPLOYMENT_ID to complete..."
+            aws deploy wait deployment-successful --deployment-id $DEPLOYMENT_ID
+            echo "Deployment completed successfully!"
+          else
+            echo "No in-progress deployment found"
+          fi
