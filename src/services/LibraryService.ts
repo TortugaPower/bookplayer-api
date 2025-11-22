@@ -261,6 +261,56 @@ export class LibraryService {
     }
   }
 
+  async processMovedFiles(
+    user: User,
+    movedFiles: LibraryItemMovedDB[],
+    trx: Knex.Transaction,
+  ): Promise<void> {
+    const groupCounts = parseInt(`${movedFiles.length / 10}`);
+    const groups =
+      groupCounts > 1
+        ? splitArrayGroups(movedFiles, groupCounts)
+        : [movedFiles];
+
+    await Promise.all(
+      groups.map(async (group: LibraryItemMovedDB[]) => {
+        for (let indexTrx = 0; indexTrx < group.length; indexTrx++) {
+          const fileMoved = group[indexTrx];
+          if (
+            !fileMoved.source_path &&
+            parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
+          ) {
+            const suffix =
+              parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
+                ? ''
+                : '/';
+            const sourceKey = `${user.email}/${fileMoved.old_key}${suffix}`;
+            const original_filename = `${
+              process.env.ROOT_FOLDER
+            }/${moment().format('YYYYMMDDHHmmss')}_${
+              fileMoved.original_filename
+            }`;
+            const targetKey = `${user.email}/${original_filename}`;
+            const isMoved = await this._storage.moveFile({
+              sourceKey,
+              targetKey,
+            });
+            if (isMoved) {
+              await trx('library_items')
+                .update({
+                  source_path: original_filename,
+                })
+                .where({
+                  user_id: user.id_user,
+                  key: fileMoved.key,
+                });
+            }
+          }
+        }
+      }),
+    );
+  }
+
   /// TODO: replace this function in favor of `dbMoveFiles`
   async dbMoveFilesUp(
     user_id: number,
@@ -1217,9 +1267,79 @@ export class LibraryService {
         { exactly: true },
         trx,
       );
-      /// Verify destination folder doesnt exists
+      /// Handle destination folder exists - merge or soft delete origin
       if (!!destinationDB.length) {
-        throw new Error('There is a folder with the same name');
+        const destination = destinationDB[0];
+
+        // Check if destination is empty (duration='0' or details='0 Files')
+        const isDestinationEmpty =
+          destination.duration === '0' || destination.details === '0 Files';
+
+        // Check if origin has meaningful data
+        const originHasData =
+          item.duration !== '0' && item.details !== '0 Files';
+
+        // Only merge if destination is empty AND origin has data
+        if (isDestinationEmpty && originHasData) {
+          // Merge: Update destination with origin's data
+          await trx('library_items')
+            .update({
+              duration: item.duration,
+              details: item.details,
+              actual_time: item.actual_time,
+              percent_completed: item.percent_completed,
+              last_play_date: item.last_play_date,
+            })
+            .where({
+              id_library_item: destination.id_library_item,
+            });
+        }
+
+        // Check for nested children and update their keys
+        const nestedChildren = await this.dbNestedObjects(
+          user.id_user,
+          item.key,
+          trx,
+        );
+
+        let movedChildren: LibraryItemMovedDB[] = [];
+
+        if (nestedChildren.length > 0) {
+          // Use dbRenameFiles to update all children keys from origin to destination
+          movedChildren = await this.dbRenameFiles(
+            user.id_user,
+            item.key,
+            destination.key,
+            trx,
+          );
+
+          // Process moved children (handle storage operations)
+          await this.processMovedFiles(user, movedChildren, trx);
+        }
+
+        // Always soft delete origin folder when destination exists
+        await trx('library_items')
+          .update({
+            active: false,
+          })
+          .where({
+            id_library_item: item.id_library_item,
+          });
+
+        await trx.commit();
+
+        // Return destination data along with moved children
+        return [
+          {
+            id_library_item: destination.id_library_item,
+            key: destination.key,
+            old_key: item.key,
+            type: destination.type,
+            original_filename: destination.original_filename,
+            source_path: destination.source_path,
+          },
+          ...movedChildren,
+        ];
       }
 
       const dbMoved = await this.dbRenameFiles(
@@ -1228,46 +1348,9 @@ export class LibraryService {
         destinationPathFolder,
         trx,
       );
-      const groupCounts = parseInt(`${dbMoved.length / 10}`);
-      const groups =
-        groupCounts > 1 ? splitArrayGroups(dbMoved, groupCounts) : [dbMoved];
-      await Promise.all(
-        groups.map(async (group: LibraryItemMovedDB[]) => {
-          for (let indexTrx = 0; indexTrx < group.length; indexTrx++) {
-            const fileMoved = group[indexTrx];
-            if (
-              !fileMoved.source_path &&
-              parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
-            ) {
-              const suffix =
-                parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
-                  ? ''
-                  : '/';
-              const sourceKey = `${user.email}/${fileMoved.old_key}${suffix}`;
-              const original_filename = `${
-                process.env.ROOT_FOLDER
-              }/${moment().format('YYYYMMDDHHmmss')}_${
-                fileMoved.original_filename
-              }`;
-              const targetKey = `${user.email}/${original_filename}`;
-              const isMoved = await this._storage.moveFile({
-                sourceKey,
-                targetKey,
-              });
-              if (isMoved) {
-                await this.db('library_items')
-                  .update({
-                    original_filename,
-                  })
-                  .where({
-                    user_id: user.id_user,
-                    key: fileMoved.key,
-                  });
-              }
-            }
-          }
-        }),
-      );
+
+      // Process moved files (handle storage operations)
+      await this.processMovedFiles(user, dbMoved, trx);
 
       await trx.commit();
       return dbMoved;
