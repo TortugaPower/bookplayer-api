@@ -877,18 +877,30 @@ export class LibraryService {
         trx,
       );
       if (originObj.length !== 1) {
+        // Check if item already exists at destination (already moved)
+        const originFilename = origin.split('/').pop();
+        const expectedDestinationPath =
+          destinationPathFolder === ''
+            ? originFilename
+            : `${destinationPathFolder}/${originFilename}`;
+
         const destinationObj = await this.dbGetLibrary(
           user.id_user,
-          destination,
+          expectedDestinationPath,
           { exactly: true },
           trx,
         );
-        if (destinationObj.length !== 1) {
-          throw Error('origin is invalid');
-        } else {
+
+        if (destinationObj.length === 1) {
+          // Item already moved to destination, return empty array
           await trx.commit();
           return [];
         }
+
+        // Item doesn't exist at origin or destination
+        throw Error(
+          `Item not found at origin "${origin}" or destination "${expectedDestinationPath}"`,
+        );
       }
       const dbMoved = await this.dbMoveFiles(
         user.id_user,
@@ -896,46 +908,8 @@ export class LibraryService {
         destinationPathFolder,
         trx,
       );
-      const groupCounts = parseInt(`${dbMoved.length / 10}`);
-      const groups =
-        groupCounts > 1 ? splitArrayGroups(dbMoved, groupCounts) : [dbMoved];
-      await Promise.all(
-        groups.map(async (group: LibraryItemMovedDB[]) => {
-          for (let indexTrx = 0; indexTrx < group.length; indexTrx++) {
-            const fileMoved = group[indexTrx];
-            if (
-              !fileMoved.source_path &&
-              parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
-            ) {
-              const suffix =
-                parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
-                  ? ''
-                  : '/';
-              const sourceKey = `${user.email}/${fileMoved.old_key}${suffix}`;
-              const original_filename = `${
-                process.env.ROOT_FOLDER
-              }/${moment().format('YYYYMMDDHHmmss')}_${
-                fileMoved.original_filename
-              }`;
-              const targetKey = `${user.email}/${original_filename}`;
-              const isMoved = await this._storage.moveFile({
-                sourceKey,
-                targetKey,
-              });
-              if (isMoved) {
-                await trx('library_items')
-                  .update({
-                    source_path: original_filename,
-                  })
-                  .where({
-                    user_id: user.id_user,
-                    key: fileMoved.key,
-                  });
-              }
-            }
-          }
-        }),
-      );
+
+      await this.processMovedFiles(user, dbMoved, trx);
 
       await trx.commit();
       return dbMoved;
