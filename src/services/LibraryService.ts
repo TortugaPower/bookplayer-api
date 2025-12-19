@@ -823,6 +823,12 @@ export class LibraryService {
       const { origin, destination } = params;
       const destinationPathFolder = destination.trim();
 
+      // If origin and destination are the same, return early
+      if (origin === destinationPathFolder) {
+        await trx.commit();
+        return [];
+      }
+
       /// Verify destination folder if not moving to the library
       if (destinationPathFolder !== '') {
         let destinationDB = await this.dbGetLibrary(
