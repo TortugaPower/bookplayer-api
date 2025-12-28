@@ -15,7 +15,7 @@ import { TYPES } from '../ContainerTypes';
 import { IStorageService } from '../interfaces/IStorageService';
 import { ILoggerService } from '../interfaces/ILoggerService';
 import moment from 'moment-timezone';
-import { splitArrayGroups } from '../utils';
+import { splitArrayGroups, detectExcessiveFolderNesting } from '../utils';
 
 @injectable()
 export class LibraryService {
@@ -626,6 +626,28 @@ export class LibraryService {
   async PutObject(user: User, params: LibraryItem): Promise<LibraryItem> {
     try {
       const { relativePath } = params;
+
+      // Detect excessive folder nesting with same name
+      const nestingCheck = detectExcessiveFolderNesting(relativePath, 5);
+      if (nestingCheck.isExcessive) {
+        // Log the anomaly and return success without processing
+        this._logger.log({
+          origin: 'PutObject',
+          message: `Excessive folder nesting detected and ignored: ${nestingCheck.consecutiveCount} consecutive "${nestingCheck.repeatedFolder}" folders`,
+          data: {
+            user: { id_user: user.id_user, email: user.email },
+            relativePath,
+            nestingDetails: {
+              repeatedFolder: nestingCheck.repeatedFolder,
+              consecutiveCount: nestingCheck.consecutiveCount,
+              totalCount: nestingCheck.totalCount,
+            },
+          },
+        });
+        // Return null - controller will treat as success
+        return null;
+      }
+
       // Parse incoming params into library object
       const libObj = (await this.ParseLibraryItemDbB(
         params,
