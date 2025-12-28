@@ -22,16 +22,6 @@ export class SubscriptionService {
   async ParseNewEvent(event: RevenuecatEvent): Promise<AppleUser> {
     try {
       const { original_app_user_id, aliases } = event;
-      if (event.type === 'INITIAL_PURCHASE') {
-        this._email.sendEmail({
-          to: process.env.SUPPORT_EMAIL,
-          subject: `BP new user: ${event.price}`,
-          html: `<p>
-            <strong>User:</strong> ${event.original_app_user_id}
-            <strong>Price:</strong> ${event.price}
-          </p>`,
-        });
-      }
       await this.db('subscription_events')
         .insert({
           id: event.id,
