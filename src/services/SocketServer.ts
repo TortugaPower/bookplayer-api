@@ -47,7 +47,7 @@ export class SocketService {
         email: req.user.email,
       };
     } catch (err) {
-      console.log(err.message);
+      this._looger.log({ origin: 'SocketService.authValidation', message: err.message }, 'error');
       return null;
     }
   }

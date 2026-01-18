@@ -6,6 +6,7 @@ import {
   ILibraryService,
   ILibraryServiceDeprecated,
 } from '../interfaces/ILibraryService';
+import { ILoggerService } from '../interfaces/ILoggerService';
 import { Bookmark, LibraryItem, LibraryItemType } from '../types/user';
 
 @injectable()
@@ -14,6 +15,8 @@ export class LibraryController implements ILibraryController {
   private _libraryService: ILibraryService;
   @inject(TYPES.LibraryServiceDeprecated)
   private _libraryServiceDeprecated: ILibraryServiceDeprecated;
+  @inject(TYPES.LoggerService)
+  private _logger: ILoggerService;
 
   public async getUserLibraryKeys(
     req: IRequest,
@@ -26,6 +29,7 @@ export class LibraryController implements ILibraryController {
         : await this._libraryServiceDeprecated.dbGetAllKeys(user.id_user);
       return res.json({ content });
     } catch (err) {
+      this._logger.log({ origin: 'getUserLibraryKeys', message: err.message }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -62,6 +66,7 @@ export class LibraryController implements ILibraryController {
       }
       return res.json({ content, lastItemPlayed });
     } catch (err) {
+      this._logger.log({ origin: 'getLibraryContentPath', message: err.message }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -85,6 +90,7 @@ export class LibraryController implements ILibraryController {
           });
       return res.json({ lastItemPlayed });
     } catch (err) {
+      this._logger.log({ origin: 'getLastPlayedItem', message: err.message }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -127,6 +133,7 @@ export class LibraryController implements ILibraryController {
 
       return res.json({ content: { url: null } });
     } catch (err) {
+      this._logger.log({ origin: 'getLibraryObject', message: err.message }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -146,6 +153,7 @@ export class LibraryController implements ILibraryController {
           : await this._libraryServiceDeprecated.PutObject(user, params)) ?? {};
       return res.json({ content });
     } catch (err) {
+      this._logger.log({ origin: 'putLibraryObject', message: err.message }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -163,6 +171,7 @@ export class LibraryController implements ILibraryController {
         : await this._libraryServiceDeprecated.DeleteObject(user, params);
       return res.json({ content });
     } catch (err) {
+      this._logger.log({ origin: 'deleteLibraryObject', message: err.message }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -180,6 +189,7 @@ export class LibraryController implements ILibraryController {
         : await this._libraryServiceDeprecated.reOrderObject(user, params);
       return res.json({ content });
     } catch (err) {
+      this._logger.log({ origin: 'reorderLibraryObject', message: err.message }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -197,6 +207,7 @@ export class LibraryController implements ILibraryController {
         : await this._libraryServiceDeprecated.moveLibraryObject(user, params);
       return res.json({ content });
     } catch (err) {
+      this._logger.log({ origin: 'moveLibraryObject', message: err.message }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -221,6 +232,7 @@ export class LibraryController implements ILibraryController {
           );
       return res.json({ success });
     } catch (err) {
+      this._logger.log({ origin: 'deleteFolderMoving', message: err.message }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -253,6 +265,7 @@ export class LibraryController implements ILibraryController {
       }
       return res.json(response);
     } catch (err) {
+      this._logger.log({ origin: 'getAllUserBookmarks', message: err.message }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -292,6 +305,7 @@ export class LibraryController implements ILibraryController {
         },
       });
     } catch (err) {
+      this._logger.log({ origin: 'upsertBookmark', message: err.message }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -326,6 +340,7 @@ export class LibraryController implements ILibraryController {
         uploaded: thumbnailData.uploaded && url,
       });
     } catch (err) {
+      this._logger.log({ origin: 'itemThumbnailPutRequest', message: err.message }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -369,6 +384,7 @@ export class LibraryController implements ILibraryController {
           });
       return res.json({ content });
     } catch (err) {
+      this._logger.log({ origin: 'renameLibraryObject', message: err.message }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }

@@ -45,6 +45,7 @@ export class RedisService {
       );
       return idObj;
     } catch (err) {
+      this._logger.log({ origin: 'RedisService.setObject', message: err.message, data: { key } }, 'error');
       return null;
     }
   }
@@ -58,6 +59,7 @@ export class RedisService {
       }
       return JSON.parse(jsonObj);
     } catch (err) {
+      this._logger.log({ origin: 'RedisService.getObject', message: err.message, data: { key } }, 'error');
       return null;
     }
   }
@@ -66,6 +68,7 @@ export class RedisService {
       await RedisService.client.del(process.env.REDIS_ENV + key);
       return true;
     } catch (err) {
+      this._logger.log({ origin: 'RedisService.deleteObject', message: err.message, data: { key } }, 'error');
       return false;
     }
   }

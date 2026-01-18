@@ -5,8 +5,8 @@ wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
-nvm install 16.20.0
-nvm use 16
+nvm install 20
+nvm use 20
 npm install -g pm2
 npm install -g yarn
 sudo amazon-linux-extras install nginx1
@@ -21,7 +21,8 @@ sudo systemctl enable nginx
 sudo systemctl restart nginx
 pm2 stop all
 pm2 delete all
-pm2 startup
-sudo env PATH=$PATH:/home/ec2-user/.nvm/versions/node/v16.20.0/bin /home/ec2-user/.nvm/versions/node/v16.20.0/lib/node_modules/pm2/bin/pm2 startup systemd -u ec2-user --hp /home/ec2-user
+NODE_PATH=$(dirname $(which node))
+PM2_PATH=$(which pm2)
+sudo env PATH=$PATH:$NODE_PATH $PM2_PATH startup systemd -u ec2-user --hp /home/ec2-user
 NODE_ENV=production pm2 start --name api -i max dist/main.js
 pm2 save
