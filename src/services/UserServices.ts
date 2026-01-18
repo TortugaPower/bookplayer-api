@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { inject, injectable } from 'inversify';
 import {
   AppleJWT,
@@ -123,6 +124,7 @@ export class UserServices {
         .insert({
           email,
           password: '',
+          public_id: crypto.randomUUID(),
         })
         .returning('*');
       if (newUser.params) {
@@ -485,7 +487,7 @@ export class UserServices {
           `select json_build_object(
             'onboarding_name', onboarding_name,
             'onboarding_id', onboarding_id,
-            'type', type, 
+            'type', type,
             'support', response_data
             ) as response from second_onboardings
           where onboarding_name=? and active=true`,
@@ -496,6 +498,91 @@ export class UserServices {
     } catch (err) {
       this._logger.log({
         origin: 'getSecondOnboardings',
+        message: err.message,
+        data: { params },
+      });
+      return null;
+    }
+  }
+
+  // ============================================
+  // Duplicate Prevention Methods
+  // ============================================
+
+  /**
+   * Look up an auth method by its external ID (e.g., Apple's "sub" claim)
+   * Used to find existing users when they change their Apple ID email
+   */
+  async GetAuthMethodByExternalId(params: {
+    auth_type: string;
+    external_id: string;
+  }): Promise<{
+    user_id: number;
+    id_auth_method: number;
+    email: string;
+  } | null> {
+    try {
+      const authMethod = await this.db('auth_methods as am')
+        .select('am.user_id', 'am.id_auth_method', 'u.email')
+        .join('users as u', 'u.id_user', 'am.user_id')
+        .where({
+          'am.auth_type': params.auth_type,
+          'am.external_id': params.external_id,
+          'am.active': true,
+          'u.active': true,
+        })
+        .first();
+
+      return authMethod || null;
+    } catch (err) {
+      this._logger.log({
+        origin: 'GetAuthMethodByExternalId',
+        message: err.message,
+        data: { params },
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Add an auth method for a user
+   * Used when creating new users or linking additional auth methods
+   */
+  async AddAuthMethod(
+    params: {
+      user_id: number;
+      auth_type: string;
+      external_id: string;
+      is_primary?: boolean;
+      metadata?: object;
+    },
+    trx?: Knex.Transaction,
+  ): Promise<{ id_auth_method: number } | null> {
+    try {
+      const db = trx || this.db;
+      const [inserted] = await db('auth_methods')
+        .insert({
+          user_id: params.user_id,
+          auth_type: params.auth_type,
+          external_id: params.external_id,
+          is_primary: params.is_primary ?? false,
+          metadata: params.metadata ?? {},
+        })
+        .returning('id_auth_method');
+
+      return { id_auth_method: inserted.id_auth_method };
+    } catch (err) {
+      // Check for unique constraint violation (duplicate auth method)
+      if (err.code === '23505') {
+        this._logger.log({
+          origin: 'AddAuthMethod',
+          message: 'Duplicate auth method attempted',
+          data: { params },
+        });
+        return null;
+      }
+      this._logger.log({
+        origin: 'AddAuthMethod',
         message: err.message,
         data: { params },
       });

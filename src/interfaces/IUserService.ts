@@ -47,4 +47,22 @@ export interface IUserService {
     user_id?: number;
     external_id?: string;
   }): Promise<number>;
+
+  // Duplicate Prevention Methods
+  GetAuthMethodByExternalId(params: {
+    auth_type: string;
+    external_id: string;
+  }): Promise<{
+    user_id: number;
+    id_auth_method: number;
+    email: string;
+  } | null>;
+
+  AddAuthMethod(params: {
+    user_id: number;
+    auth_type: string;
+    external_id: string;
+    is_primary?: boolean;
+    metadata?: object;
+  }): Promise<{ id_auth_method: number } | null>;
 }

@@ -60,6 +60,11 @@ import { VersionMiddleware } from './api/middlewares/version';
 import { LibraryServiceDeprecated } from './services/LibraryServiceDeprecated';
 import { IEmailService } from './interfaces/IEmailService';
 import { EmailService } from './services/EmailService';
+import { IEmailVerificationService } from './interfaces/IEmailVerificationService';
+import { EmailVerificationService } from './services/EmailVerificationService';
+import { PasskeyService } from './services/PasskeyService';
+import { PasskeyController } from './controllers/PasskeyController';
+import { PasskeyRouter } from './api/PasskeyRouter';
 
 const container = new Container();
 
@@ -105,6 +110,12 @@ container
   .bind<IVersionMiddleware>(TYPES.VersionMiddleware)
   .to(VersionMiddleware);
 container.bind<IEmailService>(TYPES.EmailService).to(EmailService);
+container
+  .bind<IEmailVerificationService>(TYPES.EmailVerificationService)
+  .to(EmailVerificationService);
+container.bind<PasskeyService>(TYPES.PasskeyService).to(PasskeyService);
+container.bind<PasskeyController>(TYPES.PasskeyController).to(PasskeyController);
+container.bind<PasskeyRouter>(TYPES.PasskeyRouter).to(PasskeyRouter);
 
 // deprecated use for migration
 container

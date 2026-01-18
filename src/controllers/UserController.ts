@@ -55,11 +55,22 @@ export class UserController implements IUserController {
       return;
     }
 
-    let user = await this._userService.GetUser({
-      email: appleAuth.email,
-      session: appleAuth.sub,
+    // Check auth_methods by Apple sub (stable identifier - prevents email collisions)
+    const existingAuthMethod = await this._userService.GetAuthMethodByExternalId({
+      auth_type: 'apple',
+      external_id: appleAuth.sub,
     });
-    if (!user) {
+
+    let user;
+
+    if (existingAuthMethod) {
+      // Existing user - fetch by stored email (safe from collision)
+      user = await this._userService.GetUser({
+        email: existingAuthMethod.email,
+        session: appleAuth.sub,
+      });
+    } else {
+      // New user - create account
       user = await this._userService.AddNewUser({
         email: appleAuth.email,
         active: true,
@@ -68,7 +79,23 @@ export class UserController implements IUserController {
           beta_user: '1',
         },
       });
+
+      // Add to auth_methods table
+      if (user) {
+        await this._userService.AddAuthMethod({
+          user_id: user.id_user,
+          auth_type: 'apple',
+          external_id: appleAuth.sub,
+          is_primary: true,
+        });
+      }
     }
+
+    if (!user) {
+      res.status(500).json({ message: 'Failed to create or find user' });
+      return;
+    }
+
     if (!user.params?.apple_id) {
       res
         .status(409)
@@ -103,7 +130,7 @@ export class UserController implements IUserController {
           path: '/',
         }),
       );
-      return res.json({ email: user.email });
+      return res.json({ email: user.email, token });
     }
     return res.json({ email: user.email, token });
   }

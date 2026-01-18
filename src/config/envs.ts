@@ -6,8 +6,7 @@ export const Envs = () => {
   const result = require('dotenv').config({
     path: path.join(
       __dirname,
-      `../../${
-        process.env.NODE_ENV ? `.${process.env.NODE_ENV}` : '.development'
+      `../../${process.env.NODE_ENV ? `.${process.env.NODE_ENV}` : '.development'
       }.env`,
     ),
   });
@@ -35,7 +34,9 @@ export const Envs = () => {
       .prop('REVENUECAT_API', S.string().required())
       .prop('REVENUECAT_KEY', S.string().required())
       .prop('PROXY_FILE_URL', S.string().required())
-      .prop('APP_VERSION', S.string().required()),
+      .prop('APP_VERSION', S.string().required())
+      .prop('WEBAUTHN_RP_ID', S.string())
+      .prop('WEBAUTHN_RP_NAME', S.string()),
   };
   envSchema(scheme);
 };

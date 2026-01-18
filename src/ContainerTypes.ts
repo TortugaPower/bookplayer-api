@@ -4,6 +4,9 @@ const TYPES = {
   UserRouter: Symbol.for('UserRouter'),
   UserController: Symbol.for('UserController'),
   UserServices: Symbol.for('UserService'),
+  PasskeyService: Symbol.for('PasskeyService'),
+  PasskeyController: Symbol.for('PasskeyController'),
+  PasskeyRouter: Symbol.for('PasskeyRouter'),
   SubscriptionController: Symbol.for('SubscriptionController'),
   SubscriptionService: Symbol.for('SubscriptionService'),
   RestClientService: Symbol.for('RestClientService'),
@@ -25,6 +28,7 @@ const TYPES = {
   VersionMiddleware: Symbol.for('VersionMiddleware'),
   LibraryServiceDeprecated: Symbol.for('LibraryServiceDeprecated'),
   EmailService: Symbol.for('EmailService'),
+  EmailVerificationService: Symbol.for('EmailVerificationService'),
 };
 
 export { TYPES };
