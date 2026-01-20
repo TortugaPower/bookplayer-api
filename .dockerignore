@@ -1,0 +1,48 @@
+# Dependencies
+node_modules
+
+# Build output (we rebuild in Docker)
+dist
+
+# Environment files
+.env
+*.env
+.development.env
+.production.env
+.testing.env
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Logs
+*.log
+combined.log
+
+# Docker
+docker/
+Dockerfile
+docker-compose*.yml
+
+# CI/CD
+.github
+bitbucket-pipelines.yml
+appspec.yml
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+coverage
+
+# Misc
+.DS_Store
+*.dump
+dump.rdb
+README.md
+LICENSE

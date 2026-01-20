@@ -1,0 +1,142 @@
+{
+  "family": "bookplayer-api",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "runtimePlatform": {
+    "cpuArchitecture": "ARM64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "executionRoleArn": "arn:aws:iam::327317202676:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::327317202676:role/bookplayer-api-task-role",
+  "containerDefinitions": [
+    {
+      "name": "bookplayer-api",
+      "image": "327317202676.dkr.ecr.us-east-1.amazonaws.com/bookplayer-api:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 5003,
+          "protocol": "tcp"
+        }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:5003/v1/status || exit 1"],
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 60
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/bookplayer-api",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs",
+          "awslogs-create-group": "true"
+        }
+      },
+      "environment": [
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "API_PORT", "value": "5003" },
+        { "name": "API_HOST", "value": "0.0.0.0" },
+        { "name": "LOG_LEVEL", "value": "warn" }
+      ],
+      "secrets": [
+        {
+          "name": "DB_HOST",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:DB_HOST::"
+        },
+        {
+          "name": "DB_USER",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:DB_USER::"
+        },
+        {
+          "name": "DB_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:DB_PASSWORD::"
+        },
+        {
+          "name": "DB_DATABASE",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:DB_DATABASE::"
+        },
+        {
+          "name": "REDIS_URL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:REDIS_URL::"
+        },
+        {
+          "name": "REDIS_ENV",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:REDIS_ENV::"
+        },
+        {
+          "name": "APP_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:APP_SECRET::"
+        },
+        {
+          "name": "APP_VERSION",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:APP_VERSION::"
+        },
+        {
+          "name": "S3_BUCKET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:S3_BUCKET::"
+        },
+        {
+          "name": "S3_REGION",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:S3_REGION::"
+        },
+        {
+          "name": "APPLE_CLIENT_ID",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:APPLE_CLIENT_ID::"
+        },
+        {
+          "name": "REVENUECAT_HEADER",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:REVENUECAT_HEADER::"
+        },
+        {
+          "name": "REVENUECAT_API",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:REVENUECAT_API::"
+        },
+        {
+          "name": "REVENUECAT_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:REVENUECAT_KEY::"
+        },
+        {
+          "name": "PROXY_FILE_URL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:PROXY_FILE_URL::"
+        },
+        {
+          "name": "ROOT_FOLDER",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:ROOT_FOLDER::"
+        },
+        {
+          "name": "WEBAUTHN_RP_ID",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:WEBAUTHN_RP_ID::"
+        },
+        {
+          "name": "WEBAUTHN_RP_NAME",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:WEBAUTHN_RP_NAME::"
+        },
+        {
+          "name": "AWS_SES_REGION",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:AWS_SES_REGION::"
+        },
+        {
+          "name": "AWS_SES_FROM_EMAIL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:AWS_SES_FROM_EMAIL::"
+        },
+        {
+          "name": "MAILER_NAME",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:MAILER_NAME::"
+        },
+        {
+          "name": "MAILER_EMAIL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:MAILER_EMAIL::"
+        },
+        {
+          "name": "SUPPORT_EMAIL",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:SUPPORT_EMAIL::"
+        }
+      ]
+    }
+  ]
+}

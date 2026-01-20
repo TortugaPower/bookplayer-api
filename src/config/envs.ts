@@ -11,11 +11,15 @@ export const Envs = () => {
     ),
   });
 
-  if (result.error) {
+  // In ECS/Docker, env vars are injected directly, so .env file may not exist
+  // Only throw if file doesn't exist AND required env vars are missing
+  if (result.error && !process.env.DB_HOST) {
     throw new Error(result.error);
   }
+
   const scheme = {
-    data: result.parsed,
+    // Use process.env directly (works with both .env file and injected env vars)
+    data: process.env,
     schema: S.object()
       .prop(
         'NODE_ENV',

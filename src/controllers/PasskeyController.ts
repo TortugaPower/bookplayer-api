@@ -53,7 +53,7 @@ export class PasskeyController {
         expires_in: result.expires_in,
       });
     } catch (err) {
-      this._logger.log({ origin: 'sendVerificationCode', message: err.message }, 'error');
+      this._logger.log({ origin: 'sendVerificationCode', message: err.message, data: { body: req.body } }, 'error');
       return res.status(500).json({ message: err.message });
     }
   }
@@ -87,7 +87,7 @@ export class PasskeyController {
         verification_token: result.verification_token,
       });
     } catch (err) {
-      this._logger.log({ origin: 'checkVerificationCode', message: err.message }, 'error');
+      this._logger.log({ origin: 'checkVerificationCode', message: err.message, data: { body: req.body } }, 'error');
       return res.status(500).json({ message: err.message });
     }
   }
@@ -141,7 +141,7 @@ export class PasskeyController {
 
       return res.json(options);
     } catch (err) {
-      this._logger.log({ origin: 'registrationOptions', message: err.message }, 'error');
+      this._logger.log({ origin: 'registrationOptions', message: err.message, data: { user: req.user, body: req.body } }, 'error');
       return res.status(500).json({ message: err.message });
     }
   }
@@ -208,7 +208,7 @@ export class PasskeyController {
           .status(422)
           .json({ message: 'Challenge expired or invalid' });
       }
-      this._logger.log({ origin: 'registrationVerify', message: err.message }, 'error');
+      this._logger.log({ origin: 'registrationVerify', message: err.message, data: { user: req.user, body: req.body } }, 'error');
       return res.status(500).json({ message: err.message });
     }
   }
@@ -228,7 +228,7 @@ export class PasskeyController {
 
       return res.json(options);
     } catch (err) {
-      this._logger.log({ origin: 'authenticationOptions', message: err.message }, 'error');
+      this._logger.log({ origin: 'authenticationOptions', message: err.message, data: { body: req.body } }, 'error');
       return res.status(500).json({ message: err.message });
     }
   }
@@ -284,7 +284,7 @@ export class PasskeyController {
       if (err.message.includes('Credential not found')) {
         return res.status(404).json({ message: 'Passkey not found' });
       }
-      this._logger.log({ origin: 'authenticationVerify', message: err.message }, 'error');
+      this._logger.log({ origin: 'authenticationVerify', message: err.message, data: { body: req.body } }, 'error');
       return res.status(500).json({ message: err.message });
     }
   }
@@ -306,7 +306,7 @@ export class PasskeyController {
 
       return res.json({ passkeys });
     } catch (err) {
-      this._logger.log({ origin: 'listPasskeys', message: err.message }, 'error');
+      this._logger.log({ origin: 'listPasskeys', message: err.message, data: { user: req.user } }, 'error');
       return res.status(500).json({ message: err.message });
     }
   }
@@ -348,7 +348,7 @@ export class PasskeyController {
           message: 'Cannot delete last authentication method',
         });
       }
-      this._logger.log({ origin: 'deletePasskey', message: err.message }, 'error');
+      this._logger.log({ origin: 'deletePasskey', message: err.message, data: { user: req.user, params: req.params } }, 'error');
       return res.status(500).json({ message: err.message });
     }
   }
@@ -388,7 +388,7 @@ export class PasskeyController {
 
       return res.json({ success: true });
     } catch (err) {
-      this._logger.log({ origin: 'renamePasskey', message: err.message }, 'error');
+      this._logger.log({ origin: 'renamePasskey', message: err.message, data: { user: req.user, params: req.params, body: req.body } }, 'error');
       return res.status(500).json({ message: err.message });
     }
   }
@@ -420,7 +420,7 @@ export class PasskeyController {
 
       return res.json({ methods });
     } catch (err) {
-      this._logger.log({ origin: 'listAuthMethods', message: err.message }, 'error');
+      this._logger.log({ origin: 'listAuthMethods', message: err.message, data: { user: req.user } }, 'error');
       return res.status(500).json({ message: err.message });
     }
   }

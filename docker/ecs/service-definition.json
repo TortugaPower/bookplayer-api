@@ -1,0 +1,37 @@
+{
+  "serviceName": "bookplayer-api",
+  "cluster": "bookplayer-cluster",
+  "taskDefinition": "bookplayer-api",
+  "desiredCount": 2,
+  "launchType": "FARGATE",
+  "platformVersion": "LATEST",
+  "networkConfiguration": {
+    "awsvpcConfiguration": {
+      "subnets": [
+        "subnet-04d2acd411045d0eb",
+        "subnet-09d236b1f4a277a59"
+      ],
+      "securityGroups": [
+        "sg-0049232060c4246eb"
+      ],
+      "assignPublicIp": "ENABLED"
+    }
+  },
+  "loadBalancers": [
+    {
+      "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:327317202676:targetgroup/bp-api-group/049aa891f4dddb51",
+      "containerName": "bookplayer-api",
+      "containerPort": 5003
+    }
+  ],
+  "healthCheckGracePeriodSeconds": 60,
+  "deploymentConfiguration": {
+    "minimumHealthyPercent": 100,
+    "maximumPercent": 200,
+    "deploymentCircuitBreaker": {
+      "enable": true,
+      "rollback": true
+    }
+  },
+  "enableExecuteCommand": true
+}

@@ -31,7 +31,7 @@ export class SubscriptionController implements ISubscriptionController {
       );
       return res.json({ success: updated });
     } catch (err) {
-      this._logger.log({ origin: 'RevenuecatWebhook', message: err.message }, 'error');
+      this._logger.log({ origin: 'RevenuecatWebhook', message: err.message, data: { body: req.body } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
