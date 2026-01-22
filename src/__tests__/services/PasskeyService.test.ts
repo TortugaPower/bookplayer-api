@@ -155,7 +155,7 @@ describe('PasskeyService', () => {
         expect(result).not.toBeNull();
         expect(result!.id_user).toBe(user.id_user);
         expect(result!.email).toBe('test@example.com');
-        expect(result!.public_id).toBe(user.public_id);
+        expect(result!.external_id).toBe(user.external_id);
       });
 
       it('should return null for non-existent email', async () => {
@@ -540,13 +540,13 @@ describe('PasskeyService', () => {
 
         const revenueCatId = await service.getRevenueCatId(
           user.id_user,
-          user.public_id,
+          user.external_id,
         );
 
         expect(revenueCatId).toBe('apple.user.12345');
       });
 
-      it('should return public_id when user has only passkey auth', async () => {
+      it('should return external_id when user has only passkey auth', async () => {
         const trx = getTestTransaction();
         const user = await createTestUser(trx, { email: 'test@example.com' });
 
@@ -558,13 +558,13 @@ describe('PasskeyService', () => {
 
         const revenueCatId = await service.getRevenueCatId(
           user.id_user,
-          user.public_id,
+          user.external_id,
         );
 
-        expect(revenueCatId).toBe(user.public_id);
+        expect(revenueCatId).toBe(user.external_id);
       });
 
-      it('should prioritize Apple ID over public_id', async () => {
+      it('should prioritize Apple ID over external_id', async () => {
         const trx = getTestTransaction();
         const user = await createTestUser(trx, { email: 'test@example.com' });
 
@@ -582,13 +582,13 @@ describe('PasskeyService', () => {
 
         const revenueCatId = await service.getRevenueCatId(
           user.id_user,
-          user.public_id,
+          user.external_id,
         );
 
         expect(revenueCatId).toBe('apple.user.99999');
       });
 
-      it('should return public_id when Apple auth method is inactive', async () => {
+      it('should return external_id when Apple auth method is inactive', async () => {
         const trx = getTestTransaction();
         const user = await createTestUser(trx, { email: 'test@example.com' });
 
@@ -601,10 +601,10 @@ describe('PasskeyService', () => {
 
         const revenueCatId = await service.getRevenueCatId(
           user.id_user,
-          user.public_id,
+          user.external_id,
         );
 
-        expect(revenueCatId).toBe(user.public_id);
+        expect(revenueCatId).toBe(user.external_id);
       });
     });
   });
@@ -659,7 +659,7 @@ describe('PasskeyService', () => {
         const token = await service.generateToken({
           id_user: user.id_user,
           email: user.email,
-          public_id: user.public_id,
+          external_id: user.external_id,
           active: true,
         });
 
@@ -673,7 +673,7 @@ describe('PasskeyService', () => {
 
         expect(decoded.id_user).toBe(user.id_user);
         expect(decoded.email).toBe(user.email);
-        expect(decoded.public_id).toBe(user.public_id);
+        expect(decoded.external_id).toBe(user.external_id);
         expect(decoded.time).toBeDefined();
       });
     });

@@ -79,19 +79,19 @@ export async function createTestUser(
   overrides: Partial<{
     email: string;
     active: boolean;
-    public_id: string;
+    external_id: string;
   }> = {},
-): Promise<{ id_user: number; email: string; public_id: string }> {
+): Promise<{ id_user: number; email: string; external_id: string }> {
   const email = overrides.email || `test-${Date.now()}@example.com`;
-  const public_id = overrides.public_id || randomUUID();
+  const external_id = overrides.external_id || randomUUID();
   const [user] = await trx('users')
     .insert({
       email,
       password: '',
-      public_id,
+      external_id,
       active: overrides.active ?? true,
     })
-    .returning(['id_user', 'email', 'public_id']);
+    .returning(['id_user', 'email', 'external_id']);
 
   return user;
 }

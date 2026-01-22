@@ -1,5 +1,5 @@
 import { injectable, inject } from 'inversify';
-import { AppleUser, RevenuecatEvent, TypeUserParams } from '../types/user';
+import { SubscriptionUser, RevenuecatEvent } from '../types/user';
 import database from '../database';
 import { TYPES } from '../ContainerTypes';
 import { IRestClientService } from '../interfaces/IRestClientService';
@@ -19,7 +19,7 @@ export class SubscriptionService {
   private _email: IEmailService;
   private db = database;
 
-  async ParseNewEvent(event: RevenuecatEvent): Promise<AppleUser> {
+  async ParseNewEvent(event: RevenuecatEvent): Promise<SubscriptionUser> {
     try {
       const { original_app_user_id, aliases } = event;
       await this.db('subscription_events')
@@ -38,7 +38,7 @@ export class SubscriptionService {
           json: JSON.stringify(event),
         })
         .returning('id_subscription_event');
-      const user = await this._user.GetUserByAppleID(
+      const user = await this._user.GetUserByExternalId(
         aliases || [original_app_user_id],
       );
       if (!user) {
@@ -55,12 +55,12 @@ export class SubscriptionService {
     }
   }
 
-  async GetAndUpdateSubscription(user: AppleUser): Promise<boolean> {
+  async GetAndUpdateSubscription(user: SubscriptionUser): Promise<boolean> {
     try {
-      const apple_id = user[TypeUserParams.apple_id];
+      const { external_id } = user;
       const { subscriber } = await this._restClient.callService({
         baseURL: process.env.REVENUECAT_API,
-        service: `subscribers/${apple_id}`,
+        service: `subscribers/${external_id}`,
         method: 'get',
         headers: { authorization: `Bearer ${process.env.REVENUECAT_KEY}` },
       });

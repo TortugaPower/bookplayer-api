@@ -98,7 +98,7 @@ export interface PasskeyAuthVerifyRequest {
 export interface PasskeyLoginResponse {
   email: string;
   token: string;
-  public_id: string;
+  external_id: string;
 }
 
 export interface PasskeyInfo {
@@ -110,10 +110,10 @@ export interface PasskeyInfo {
   created_at: Date;
 }
 
-export interface UserWithPublicId {
+export interface UserWithExternalId {
   id_user: number;
   email: string;
-  public_id: string;
+  external_id: string;
   active: boolean;
   session?: string;
   params?: Record<string, unknown>;

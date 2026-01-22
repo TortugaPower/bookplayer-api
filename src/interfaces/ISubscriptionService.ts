@@ -1,7 +1,7 @@
-import { AppleUser, RevenuecatEvent } from '../types/user';
+import { SubscriptionUser, RevenuecatEvent } from '../types/user';
 
 export interface ISubscriptionService {
-  ParseNewEvent(event: RevenuecatEvent): Promise<AppleUser>;
-  GetAndUpdateSubscription(user: AppleUser): Promise<boolean>;
+  ParseNewEvent(event: RevenuecatEvent): Promise<SubscriptionUser>;
+  GetAndUpdateSubscription(user: SubscriptionUser): Promise<boolean>;
   HasInAppPurchase(rc_id: string): Promise<boolean>;
 }

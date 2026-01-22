@@ -186,10 +186,10 @@ export class PasskeyController {
           .json({ message: 'Registration verification failed' });
       }
 
-      // Get RevenueCat ID (Apple ID if user has one, otherwise public_id)
+      // Get RevenueCat ID (Apple ID if user has one, otherwise external_id)
       const revenuecatId = await this._passkeyService.getRevenueCatId(
         result.user.id_user,
-        result.user.public_id,
+        result.user.external_id,
       );
       const hasSubscription = await this._passkeyService.hasSubscription(
         result.user.id_user,
@@ -198,7 +198,7 @@ export class PasskeyController {
       return res.json({
         email: result.user.email,
         token: result.token,
-        public_id: result.user.public_id,
+        external_id: result.user.external_id,
         revenuecat_id: revenuecatId,
         has_subscription: hasSubscription,
       });
@@ -259,10 +259,10 @@ export class PasskeyController {
         return res.status(401).json({ message: 'Authentication failed' });
       }
 
-      // Get RevenueCat ID (Apple ID if user has one, otherwise public_id)
+      // Get RevenueCat ID (Apple ID if user has one, otherwise external_id)
       const revenuecatId = await this._passkeyService.getRevenueCatId(
         result.user.id_user,
-        result.user.public_id,
+        result.user.external_id,
       );
       const hasSubscription = await this._passkeyService.hasSubscription(
         result.user.id_user,
@@ -271,7 +271,7 @@ export class PasskeyController {
       return res.json({
         email: result.user.email,
         token: result.token,
-        public_id: result.user.public_id,
+        external_id: result.user.external_id,
         revenuecat_id: revenuecatId,
         has_subscription: hasSubscription,
       });

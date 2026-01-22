@@ -12,12 +12,13 @@ export type User = {
   updated_at?: string;
   session?: string;
   params?: UserParamsObject;
+  external_id?: string;
 };
 
-export type AppleUser = {
+export type SubscriptionUser = {
   id_user?: number;
   email: string;
-  [TypeUserParams.apple_id]: string;
+  external_id: string;
 };
 
 export type UserSession = {

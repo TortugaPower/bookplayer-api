@@ -19,7 +19,7 @@ import type {
   PasskeyRegistrationOptionsResponse,
   PasskeyAuthOptionsResponse,
   PasskeyInfo,
-  UserWithPublicId,
+  UserWithExternalId,
 } from '../types/passkey';
 
 @injectable()
@@ -47,7 +47,7 @@ export class PasskeyService {
       // Check if user exists
       const existingUser = await this.getUserByEmail(email);
       const userId = user_id || existingUser?.id_user;
-      let userPublicId = existingUser?.public_id;
+      let userExternalId = existingUser?.external_id;
 
       // Get existing credentials to exclude
       const excludeCredentials: Array<{
@@ -68,8 +68,8 @@ export class PasskeyService {
       }
 
       // Generate a temporary user ID if user doesn't exist yet
-      if (!userPublicId) {
-        userPublicId = crypto.randomUUID();
+      if (!userExternalId) {
+        userExternalId = crypto.randomUUID();
       }
 
       const options = await generateRegistrationOptions({
@@ -77,7 +77,7 @@ export class PasskeyService {
         rpID: this.rpID,
         userName: email,
         userDisplayName: email,
-        userID: new Uint8Array(Buffer.from(userPublicId)),
+        userID: new Uint8Array(Buffer.from(userExternalId)),
         attestationType: 'none',
         excludeCredentials,
         authenticatorSelection: {
@@ -98,7 +98,7 @@ export class PasskeyService {
 
       return {
         challenge: options.challenge,
-        user_id: userPublicId,
+        user_id: userExternalId,
         rp_id: this.rpID,
         rp_name: this.rpName,
         timeout: 60000,
@@ -126,7 +126,7 @@ export class PasskeyService {
     user_id?: number;
   }): Promise<{
     verified: boolean;
-    user: UserWithPublicId;
+    user: UserWithExternalId;
     token: string;
   }> {
     const tx = await this.db.transaction();
@@ -190,9 +190,9 @@ export class PasskeyService {
           .insert({
             email,
             password: '',
-            public_id: crypto.randomUUID(),
+            external_id: crypto.randomUUID(),
           })
-          .returning(['id_user', 'email', 'public_id', 'active']);
+          .returning(['id_user', 'email', 'external_id', 'active']);
 
         user = newUser;
       }
@@ -310,7 +310,7 @@ export class PasskeyService {
     user_handle?: string;
   }): Promise<{
     verified: boolean;
-    user: UserWithPublicId;
+    user: UserWithExternalId;
     token: string;
   }> {
     try {
@@ -712,12 +712,12 @@ export class PasskeyService {
   async getUserByEmail(
     email: string,
     trx?: Knex.Transaction,
-  ): Promise<UserWithPublicId | null> {
+  ): Promise<UserWithExternalId | null> {
     try {
       const db = trx || this.db;
       const user = await db('users')
         .where({ email, active: true })
-        .select('id_user', 'email', 'public_id', 'active')
+        .select('id_user', 'email', 'external_id', 'active')
         .first();
 
       return user || null;
@@ -733,10 +733,10 @@ export class PasskeyService {
 
   async getUserByCredentialId(
     credential_id: Buffer,
-  ): Promise<UserWithPublicId | null> {
+  ): Promise<UserWithExternalId | null> {
     try {
       const user = await this.db('users as u')
-        .select('u.id_user', 'u.email', 'u.public_id', 'u.active')
+        .select('u.id_user', 'u.email', 'u.external_id', 'u.active')
         .join('auth_methods as am', 'am.user_id', 'u.id_user')
         .join(
           'passkey_credentials as pc',
@@ -763,12 +763,12 @@ export class PasskeyService {
   }
 
   // Token generation
-  async generateToken(user: UserWithPublicId): Promise<string> {
+  async generateToken(user: UserWithExternalId): Promise<string> {
     const token = JWT.sign(
       JSON.stringify({
         id_user: user.id_user,
         email: user.email,
-        public_id: user.public_id,
+        external_id: user.external_id,
         time: moment().unix(),
       }),
       process.env.APP_SECRET,
@@ -776,8 +776,8 @@ export class PasskeyService {
     return token;
   }
 
-  // Get RevenueCat ID for user (Apple ID if exists, else public_id)
-  async getRevenueCatId(user_id: number, public_id: string): Promise<string> {
+  // Get RevenueCat ID for user (Apple ID if exists, else external_id)
+  async getRevenueCatId(user_id: number, external_id: string): Promise<string> {
     try {
       // Check if user has an Apple auth method
       const appleAuthMethod = await this.db('auth_methods')
@@ -792,15 +792,15 @@ export class PasskeyService {
         return appleAuthMethod.external_id;
       }
 
-      // Fall back to public_id for passkey-only users
-      return public_id;
+      // Fall back to external_id for passkey-only users
+      return external_id;
     } catch (err) {
       this._logger.log({
         origin: 'PasskeyService.getRevenueCatId',
         message: err.message,
         data: { user_id },
       });
-      return public_id;
+      return external_id;
     }
   }
 

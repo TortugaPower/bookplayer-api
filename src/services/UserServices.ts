@@ -2,8 +2,8 @@ import crypto from 'crypto';
 import { inject, injectable } from 'inversify';
 import {
   AppleJWT,
-  AppleUser,
   SignApple,
+  SubscriptionUser,
   TypeUserParams,
   User,
   UserEvent,
@@ -119,33 +119,17 @@ export class UserServices {
   async AddNewUser(newUser: User, trx?: Knex.Transaction): Promise<User> {
     const tx = trx || (await this.db.transaction());
     try {
-      const { email } = newUser;
+      const { email, external_id } = newUser;
       const userCreated = await tx('users')
         .insert({
           email,
           password: '',
-          public_id: crypto.randomUUID(),
+          external_id: external_id || crypto.randomUUID(),
         })
         .returning('*');
-      if (newUser.params) {
-        const paramsRows = Object.keys(newUser.params).reduce(
-          (rows, k: keyof UserParamsObject) => {
-            return rows.concat([
-              {
-                param: k,
-                value: newUser.params[k],
-                user_id: userCreated[0].id_user,
-              },
-            ]);
-          },
-          [],
-        );
-        await tx('user_params').insert(paramsRows).returning('id_param');
-      }
       await tx.commit();
       return {
         ...userCreated[0],
-        params: newUser.params,
       };
     } catch (err) {
       await tx.rollback();
@@ -183,40 +167,23 @@ export class UserServices {
     }
   }
 
-  async GetUserByAppleID(
-    apple_id: string[],
+  async GetUserByExternalId(
+    external_ids: string[],
     trx?: Knex.Transaction,
-  ): Promise<AppleUser> {
+  ): Promise<SubscriptionUser> {
     try {
       const db = trx || this.db;
-      const user = await db('user_params')
-        .select(
-          'usr.id_user',
-          'usr.email',
-          'value as ' + TypeUserParams.apple_id,
-        )
-        .join('users as usr', function () {
-          this.on('usr.id_user', '=', 'user_params.user_id').andOn(
-            'usr.active',
-            '=',
-            db.raw('?', [true]),
-          );
-        })
-        .where({
-          'user_params.active': true,
-        })
-        .whereRaw('user_params.param = ? and user_params.value = ANY(?)', [
-          TypeUserParams.apple_id,
-          apple_id,
-        ])
-        .first()
-        .debug(true);
+      const user = await db('users')
+        .select('id_user', 'email', 'external_id')
+        .where({ active: true })
+        .whereIn('external_id', external_ids)
+        .first();
       return user;
     } catch (err) {
       this._logger.log({
-        origin: 'GetUserByAppleID',
+        origin: 'GetUserByExternalId',
         message: err.message,
-        data: { apple_id },
+        data: { external_ids },
       });
       return null;
     }
@@ -308,23 +275,21 @@ export class UserServices {
 
   async getUserSubscriptionState(user_id: number): Promise<string> {
     try {
+      // After migration, external_id contains Apple ID for Apple users or UUID for passkey users
+      // This allows us to search subscription_events directly without joining user_params
       const userState = await this.db
         .raw(
           `
-        select usr.id_user, usr.email, apple_id.value as apple_id,
+        select usr.id_user, usr.email, usr.external_id,
           coalesce(subscription_one.period_type, subscription_two.period_type, subscription_aliases.period_type) as period_type,
           coalesce(subscription_one.type, subscription_two.type, subscription_aliases.type) as type
         from users usr
-        join lateral (
-          select * from user_params up where usr.id_user = up.user_id and param='apple_id'
-          order by up.id_param desc limit 1
-        ) as apple_id on true
         left join lateral (
-          select * from subscription_events sevent where sevent.original_app_user_id=apple_id.value
+          select * from subscription_events sevent where sevent.original_app_user_id=usr.external_id
           order by sevent.id_subscription_event desc limit 1
         ) as subscription_one on true
         left join lateral (
-          select * from subscription_events sevent where replace((sevent.json -> 'app_user_id')::varchar, '"', '') = apple_id.value
+          select * from subscription_events sevent where replace((sevent.json -> 'app_user_id')::varchar, '"', '') = usr.external_id
           order by sevent.id_subscription_event desc limit 1
         ) as subscription_two on true
         left join lateral (
@@ -332,7 +297,7 @@ export class UserServices {
             WHERE EXISTS (
                 SELECT 1
                 FROM jsonb_array_elements_text(json->'aliases') AS elem
-                WHERE elem = apple_id.value
+                WHERE elem = usr.external_id
             ) order by sevent.id_subscription_event desc limit 1
         ) as subscription_aliases on true
         where usr.id_user=? and coalesce(subscription_one.type, subscription_two.type, subscription_aliases.type) is not null
@@ -340,7 +305,7 @@ export class UserServices {
           [user_id],
         )
         .then((res) => res.rows[0]);
-      return userState.type;
+      return userState?.type || null;
     } catch (err) {
       this._logger.log({
         origin: 'getUserSubscriptionState',

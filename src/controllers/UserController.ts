@@ -70,10 +70,24 @@ export class UserController implements IUserController {
         session: appleAuth.sub,
       });
     } else {
-      // New user - create account
+      // Check if email already exists (e.g., passkey user trying to sign in with Apple)
+      const existingUserByEmail = await this._userService.GetUser({
+        email: appleAuth.email,
+      });
+
+      if (existingUserByEmail) {
+        // User exists but signed in with different method (passkey)
+        return res.status(409).json({
+          message:
+            'An account with this email already exists. Please sign in with your passkey.',
+        });
+      }
+
+      // New user - create account with Apple ID as external_id
       user = await this._userService.AddNewUser({
         email: appleAuth.email,
         active: true,
+        external_id: appleAuth.sub,
         params: {
           apple_id: appleAuth.sub,
           beta_user: '1',
