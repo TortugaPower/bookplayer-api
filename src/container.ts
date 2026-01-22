@@ -18,6 +18,7 @@ import {
   ILibraryRouter,
   IAdminRouter,
   IStorageRouter,
+  IRetentionMessagingRouter,
 } from './interfaces/IRouters';
 import { SubscriptionController } from './controllers/SubscriptionController';
 import { ISubscriptionController } from './interfaces/ISubscriptionController';
@@ -65,6 +66,11 @@ import { EmailVerificationService } from './services/EmailVerificationService';
 import { PasskeyService } from './services/PasskeyService';
 import { PasskeyController } from './controllers/PasskeyController';
 import { PasskeyRouter } from './api/PasskeyRouter';
+import { IRetentionMessagingService } from './interfaces/IRetentionMessagingService';
+import { RetentionMessagingService } from './services/RetentionMessagingService';
+import { IRetentionMessagingController } from './interfaces/IRetentionMessagingController';
+import { RetentionMessagingController } from './controllers/RetentionMessagingController';
+import { RetentionMessagingRouter } from './api/RetentionMessagingRouter';
 
 const container = new Container();
 
@@ -121,4 +127,16 @@ container.bind<PasskeyRouter>(TYPES.PasskeyRouter).to(PasskeyRouter);
 container
   .bind<ILibraryServiceDeprecated>(TYPES.LibraryServiceDeprecated)
   .to(LibraryServiceDeprecated);
+
+// Retention Messaging (Apple)
+container
+  .bind<IRetentionMessagingService>(TYPES.RetentionMessagingService)
+  .to(RetentionMessagingService);
+container
+  .bind<IRetentionMessagingController>(TYPES.RetentionMessagingController)
+  .to(RetentionMessagingController);
+container
+  .bind<IRetentionMessagingRouter>(TYPES.RetentionMessagingRouter)
+  .to(RetentionMessagingRouter);
+
 export { container };

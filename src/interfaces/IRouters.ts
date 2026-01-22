@@ -19,3 +19,7 @@ export interface IAdminRouter {
 export interface IStorageRouter {
   get(): Router;
 }
+
+export interface IRetentionMessagingRouter {
+  get(): Router;
+}

@@ -19,6 +19,7 @@
   "author": "yamilnunez",
   "license": "ISC",
   "dependencies": {
+    "@apple/app-store-server-library": "^2.0.0",
     "@aws-sdk/client-s3": "^3.88.0",
     "@aws-sdk/s3-request-presigner": "^3.105.0",
     "@simplewebauthn/server": "^11.0.0",

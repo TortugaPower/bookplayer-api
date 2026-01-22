@@ -29,6 +29,9 @@ const TYPES = {
   LibraryServiceDeprecated: Symbol.for('LibraryServiceDeprecated'),
   EmailService: Symbol.for('EmailService'),
   EmailVerificationService: Symbol.for('EmailVerificationService'),
+  RetentionMessagingService: Symbol.for('RetentionMessagingService'),
+  RetentionMessagingController: Symbol.for('RetentionMessagingController'),
+  RetentionMessagingRouter: Symbol.for('RetentionMessagingRouter'),
 };
 
 export { TYPES };

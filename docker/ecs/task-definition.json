@@ -41,7 +41,8 @@
         { "name": "NODE_ENV", "value": "production" },
         { "name": "API_PORT", "value": "5003" },
         { "name": "API_HOST", "value": "0.0.0.0" },
-        { "name": "LOG_LEVEL", "value": "warn" }
+        { "name": "LOG_LEVEL", "value": "warn" },
+        { "name": "APPLE_ENVIRONMENT", "value": "Production" }
       ],
       "secrets": [
         {
@@ -135,6 +136,18 @@
         {
           "name": "SUPPORT_EMAIL",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:SUPPORT_EMAIL::"
+        },
+        {
+          "name": "APPLE_BUNDLE_ID",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:APPLE_BUNDLE_ID::"
+        },
+        {
+          "name": "APPLE_APP_APPLE_ID",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:APPLE_APP_APPLE_ID::"
+        },
+        {
+          "name": "APPLE_DEFAULT_RETENTION_MESSAGE_ID",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:APPLE_DEFAULT_RETENTION_MESSAGE_ID::"
         }
       ]
     }

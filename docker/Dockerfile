@@ -59,6 +59,10 @@ COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./
 
+# Download Apple root certificates for Retention Messaging API verification
+RUN mkdir -p ./certs && \
+    curl -fsSL https://www.apple.com/certificateauthority/AppleRootCA-G3.cer -o ./certs/AppleRootCA-G3.cer
+
 # Note: Migrations are not copied - database should already be set up
 # If you need to run migrations, do it separately before deploying
 

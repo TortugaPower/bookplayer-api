@@ -22,3 +22,6 @@ development.env
 store/*
 .development.env
 dump.rdb
+
+# Apple root certificates (should be downloaded fresh from Apple)
+certs/*.cer
