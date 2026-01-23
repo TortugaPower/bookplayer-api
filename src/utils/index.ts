@@ -1,3 +1,20 @@
+/**
+ * Sanitizes a library path by trimming whitespace from each path segment
+ * This handles cases where folder names were created with trailing/leading whitespace
+ * @param path - The library path to sanitize (e.g., "Grey wolves series /file.mp3")
+ * @returns Sanitized path with trimmed segments (e.g., "Grey wolves series/file.mp3")
+ */
+export const sanitizeLibraryPath = (path: string): string => {
+  if (!path) {
+    return path;
+  }
+  return path
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0)
+    .join('/');
+};
+
 export const splitArrayGroups = (array: unknown[], chunkSize: number) => {
   const chunks = [];
   for (let i = 0; i < array.length; i += chunkSize) {

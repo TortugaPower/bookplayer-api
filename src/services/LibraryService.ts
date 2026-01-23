@@ -15,7 +15,11 @@ import { TYPES } from '../ContainerTypes';
 import { IStorageService } from '../interfaces/IStorageService';
 import { ILoggerService } from '../interfaces/ILoggerService';
 import moment from 'moment-timezone';
-import { splitArrayGroups, detectExcessiveFolderNesting } from '../utils';
+import {
+  splitArrayGroups,
+  detectExcessiveFolderNesting,
+  sanitizeLibraryPath,
+} from '../utils';
 
 @injectable()
 export class LibraryService {
@@ -842,8 +846,9 @@ export class LibraryService {
   ): Promise<LibraryItemMovedDB[]> {
     const trx = await this.db.transaction();
     try {
-      const { origin, destination } = params;
-      const destinationPathFolder = destination.trim();
+      // Sanitize paths to handle whitespace issues in folder names
+      const origin = sanitizeLibraryPath(params.origin);
+      const destinationPathFolder = sanitizeLibraryPath(params.destination);
 
       // If origin and destination are the same, return early
       if (origin === destinationPathFolder) {
@@ -954,10 +959,12 @@ export class LibraryService {
 
   async deleteFolderMoving(user: User, folderPath: string): Promise<boolean> {
     const trx = await this.db.transaction();
+    // Sanitize path to handle whitespace issues in folder names
+    const sanitizedFolderPath = sanitizeLibraryPath(folderPath);
     try {
       const folderDB = await this.dbGetLibrary(
         user.id_user,
-        folderPath,
+        sanitizedFolderPath,
         { exactly: true },
         trx,
       );
@@ -968,7 +975,7 @@ export class LibraryService {
       const folderDeleted = await this.dbDeleteLibrary(
         {
           user_id: user.id_user,
-          path: folderPath,
+          path: sanitizedFolderPath,
           exactly: true,
         },
         trx,
@@ -978,9 +985,9 @@ export class LibraryService {
       }
       const allFilesInside = await this.dbNestedObjects(
         user.id_user,
-        folderPath,
+        sanitizedFolderPath,
       );
-      const dbMoved = await this.dbMoveFilesUp(user.id_user, folderPath, trx);
+      const dbMoved = await this.dbMoveFilesUp(user.id_user, sanitizedFolderPath, trx);
       const groupCounts = parseInt(`${dbMoved.length / 10}`);
       const groups =
         groupCounts > 1 ? splitArrayGroups(dbMoved, groupCounts) : [dbMoved];
