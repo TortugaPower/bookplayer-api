@@ -88,10 +88,6 @@ export class UserController implements IUserController {
         email: appleAuth.email,
         active: true,
         external_id: appleAuth.sub,
-        params: {
-          apple_id: appleAuth.sub,
-          beta_user: '1',
-        },
       });
 
       // Add to auth_methods table
@@ -110,12 +106,6 @@ export class UserController implements IUserController {
       return;
     }
 
-    if (!user.params?.apple_id) {
-      res
-        .status(409)
-        .json({ message: 'The user exist with different apple id' });
-      return;
-    }
     if (!user.session) {
       await this._userService.AddNewDevice({
         user_id: user.id_user,

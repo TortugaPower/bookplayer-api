@@ -59,8 +59,6 @@ export type AppleJWT = {
 
 export enum TypeUserParams {
   subscription = 'subscription',
-  apple_id = 'apple_id',
-  beta_user = 'beta_user',
 }
 export type UserParamsObject = { [key in TypeUserParams]?: unknown };
 

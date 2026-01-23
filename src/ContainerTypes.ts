@@ -26,7 +26,6 @@ const TYPES = {
   StorageController: Symbol.for('StorageController'),
   StorageRouter: Symbol.for('StorageRouter'),
   VersionMiddleware: Symbol.for('VersionMiddleware'),
-  LibraryServiceDeprecated: Symbol.for('LibraryServiceDeprecated'),
   EmailService: Symbol.for('EmailService'),
   EmailVerificationService: Symbol.for('EmailVerificationService'),
   RetentionMessagingService: Symbol.for('RetentionMessagingService'),

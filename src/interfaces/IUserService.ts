@@ -3,7 +3,6 @@ import {
   SignApple,
   SubscriptionUser,
   User,
-  TypeUserParams,
   UserSession,
   UserEventEnum,
   UserEvent,
@@ -12,10 +11,6 @@ import {
 export interface IUserService {
   TokenUser(UserLogged: User): Promise<string>;
   GetUser({ email, session }: UserSession): Promise<User>;
-  getUserParam(params: {
-    user_id: number;
-    param: TypeUserParams;
-  }): Promise<string>;
   verifyToken({ token_id, client_id }: SignApple): Promise<AppleJWT>;
   AddNewUser(newUser: User): Promise<User>;
   AddNewDevice(userSession: UserSession): Promise<number>;

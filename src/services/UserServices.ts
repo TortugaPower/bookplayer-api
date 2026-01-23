@@ -89,33 +89,6 @@ export class UserServices {
     }
   }
 
-  async getUserParam(
-    params: {
-      user_id: number;
-      param: TypeUserParams;
-    },
-    trx?: Knex.Transaction,
-  ): Promise<string> {
-    try {
-      const db = trx || this.db;
-      const userParam = await db('user_params')
-        .where({
-          user_id: params.user_id,
-          active: true,
-          param: params.param,
-        })
-        .first();
-      return userParam?.value;
-    } catch (err) {
-      this._logger.log({
-        origin: 'GetUserParam',
-        message: err.message,
-        data: params,
-      });
-      return null;
-    }
-  }
-
   async AddNewUser(newUser: User, trx?: Knex.Transaction): Promise<User> {
     const tx = trx || (await this.db.transaction());
     try {

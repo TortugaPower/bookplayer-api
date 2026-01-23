@@ -28,10 +28,7 @@ import { IRestClientService } from './interfaces/IRestClientService';
 import { RestClientService } from './services/RestClientService';
 import { IStorageService } from './interfaces/IStorageService';
 import { StorageService } from './services/StorageService';
-import {
-  ILibraryService,
-  ILibraryServiceDeprecated,
-} from './interfaces/ILibraryService';
+import { ILibraryService } from './interfaces/ILibraryService';
 import { LibraryService } from './services/LibraryService';
 import { ILibraryController } from './interfaces/ILibraryController';
 import { LibraryController } from './controllers/LibraryController';
@@ -58,7 +55,6 @@ import { StorageController } from './controllers/StorageController';
 import { IStorageController } from './interfaces/IStorageController';
 import { IVersionMiddleware } from './interfaces/IVersionMiddleware';
 import { VersionMiddleware } from './api/middlewares/version';
-import { LibraryServiceDeprecated } from './services/LibraryServiceDeprecated';
 import { IEmailService } from './interfaces/IEmailService';
 import { EmailService } from './services/EmailService';
 import { IEmailVerificationService } from './interfaces/IEmailVerificationService';
@@ -122,11 +118,6 @@ container
 container.bind<PasskeyService>(TYPES.PasskeyService).to(PasskeyService);
 container.bind<PasskeyController>(TYPES.PasskeyController).to(PasskeyController);
 container.bind<PasskeyRouter>(TYPES.PasskeyRouter).to(PasskeyRouter);
-
-// deprecated use for migration
-container
-  .bind<ILibraryServiceDeprecated>(TYPES.LibraryServiceDeprecated)
-  .to(LibraryServiceDeprecated);
 
 // Retention Messaging (Apple)
 container

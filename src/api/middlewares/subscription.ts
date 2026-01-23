@@ -3,7 +3,7 @@ import { IRequest, IResponse, INext } from '../../interfaces/IRequest';
 import { ISubscriptionMiddleware } from '../../interfaces/ISubscriptionMiddleware';
 import { TYPES } from '../../ContainerTypes';
 import { IUserService } from '../../interfaces/IUserService';
-import { SubscriptionEventType, TypeUserParams } from '../../types/user';
+import { SubscriptionEventType } from '../../types/user';
 
 @injectable()
 export class SubscriptionMiddleware implements ISubscriptionMiddleware {
@@ -22,9 +22,6 @@ export class SubscriptionMiddleware implements ISubscriptionMiddleware {
         if (!state || state === SubscriptionEventType.EXPIRATION) {
           return res.status(400).json({ message: 'You are not subscribed' });
         }
-        // make every user a beta user
-        req.beta_user = true;
-
         next();
       } else {
         return res.status(400).json({ message: 'the user is invalid' });
