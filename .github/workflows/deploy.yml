@@ -1,7 +1,7 @@
-name: Deploy to Production
+name: Deploy to ECS
 
 on:
-  workflow_dispatch:  # Manual trigger equivalent to custom pipeline
+  workflow_dispatch:
     inputs:
       environment:
         description: 'Deployment environment'
@@ -10,72 +10,80 @@ on:
         type: choice
         options:
           - production
-          - staging
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: bookplayer-api
+  ECS_CLUSTER: bookplayer-cluster
+  ECS_SERVICE: bookplayer-api
+  CONTAINER_NAME: bookplayer-api
 
 jobs:
-  build-and-deploy:
+  deploy:
+    name: Build and Deploy to ECS
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Setup Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'yarn'
-
-      - name: Install dependencies
-        run: |
-          npm install -g yarn
-          yarn install --production=false
-
-      - name: Build application
-        run: npm run build
-
-      - name: Create configuration file
-        run: |
-          echo '{"NodeEnv":"${{ secrets.NODE_ENV }}","ApplicationIdentifier":"${{ secrets.CONFIG_APP }}","ConfigurationProfileIdentifier":"${{ secrets.CONFIG_PROFILE }}","EnvironmentIdentifier":"${{ secrets.CONFIG_ENV }}"}' > scripts/config.json
-
-      - name: Create deployment package
-        run: |
-          zip -r production_api-${{ github.sha }}.zip * -x 'node_modules/*' -x 'test/*' -x 'src/*' -x '*.env'
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Upload to S3
-        run: |
-          aws s3 cp production_api-${{ github.sha }}.zip s3://${{ secrets.S3_BUCKET }}/production_api-${{ github.sha }}.zip
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Deploy with CodeDeploy
-        run: |
-          aws deploy create-deployment \
-            --application-name ${{ secrets.APPLICATION_NAME }} \
-            --deployment-group-name ${{ secrets.DEPLOYMENT_GROUP }} \
-            --s3-location bucket=${{ secrets.S3_BUCKET }},key=production_api-${{ github.sha }}.zip,bundleType=zip \
-            --file-exists-behavior OVERWRITE \
-            --ignore-application-stop-failures \
-            --description "Deployment from GitHub Actions - ${{ github.sha }}"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Wait for deployment completion
+      - name: Set up QEMU for ARM64 builds
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build and push Docker image
+        id: build-image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Render Amazon ECS task definition
+        id: render-task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: docker/ecs/task-definition.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+
+      - name: Deploy to Amazon ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Deployment summary
         run: |
-          DEPLOYMENT_ID=$(aws deploy list-deployments \
-            --application-name ${{ secrets.APPLICATION_NAME }} \
-            --deployment-group-name ${{ secrets.DEPLOYMENT_GROUP }} \
-            --include-only-statuses "InProgress" \
-            --query 'deployments[0]' \
-            --output text)
-          
-          if [ "$DEPLOYMENT_ID" != "None" ]; then
-            echo "Waiting for deployment $DEPLOYMENT_ID to complete..."
-            aws deploy wait deployment-successful --deployment-id $DEPLOYMENT_ID
-            echo "Deployment completed successfully!"
-          else
-            echo "No in-progress deployment found"
-          fi
+          echo "## Deployment Complete! :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Detail | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Environment** | ${{ inputs.environment }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Image Tag** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Cluster** | ${{ env.ECS_CLUSTER }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Service** | ${{ env.ECS_SERVICE }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}) |" >> $GITHUB_STEP_SUMMARY
