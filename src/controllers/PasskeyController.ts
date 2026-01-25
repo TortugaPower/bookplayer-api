@@ -199,6 +199,7 @@ export class PasskeyController {
         email: result.user.email,
         token: result.token,
         external_id: result.user.external_id,
+        public_id: result.user.external_id, // Deprecated: for backward compatibility with older iOS versions
         revenuecat_id: revenuecatId,
         has_subscription: hasSubscription,
       });
@@ -272,6 +273,7 @@ export class PasskeyController {
         email: result.user.email,
         token: result.token,
         external_id: result.user.external_id,
+        public_id: result.user.external_id, // Deprecated: for backward compatibility with older iOS versions
         revenuecat_id: revenuecatId,
         has_subscription: hasSubscription,
       });
