@@ -15,7 +15,6 @@ const TYPES = {
   LibraryService: Symbol.for('LibraryService'),
   LibraryController: Symbol.for('LibraryController'),
   LibraryRouter: Symbol.for('LibraryRouter'),
-  SocketService: Symbol.for('SocketService'),
   CacheService: Symbol.for('CacheService'),
   SubscriptionMiddleware: Symbol.for('SubscriptionMiddleware'),
   UserAdminMiddleware: Symbol.for('UserAdminMiddleware'),

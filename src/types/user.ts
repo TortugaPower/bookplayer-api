@@ -193,9 +193,6 @@ export enum StorageAction {
 export enum StorageOrigin {
   S3 = 'S3',
 }
-export interface SocketDefaultEventsMap {
-  [event: string]: (...args: unknown[]) => void;
-}
 
 export interface Bookmark {
   title?: string;

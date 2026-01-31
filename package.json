@@ -50,7 +50,6 @@
     "redis": "^4.3.0",
     "reflect-metadata": "^0.1.13",
     "semver": "^7.7.2",
-    "socket.io": "^4.8",
     "ts-node": "^10.5.0",
     "verify-apple-id-token": "^3.1.2",
     "winston": "^3.9.0"

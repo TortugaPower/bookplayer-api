@@ -33,8 +33,6 @@ import { LibraryService } from './services/LibraryService';
 import { ILibraryController } from './interfaces/ILibraryController';
 import { LibraryController } from './controllers/LibraryController';
 import { LibraryRouter } from './api/LibraryRouter';
-import { SocketService } from './services/SocketServer';
-import { ISocketService } from './interfaces/ISocketService';
 import { RedisService } from './services/RedisService';
 import { ICacheService } from './interfaces/ICacheService';
 import { ISubscriptionMiddleware } from './interfaces/ISubscriptionMiddleware';
@@ -92,7 +90,6 @@ container
   .bind<ILibraryController>(TYPES.LibraryController)
   .to(LibraryController);
 container.bind<ILibraryRouter>(TYPES.LibraryRouter).to(LibraryRouter);
-container.bind<ISocketService>(TYPES.SocketService).to(SocketService);
 container.bind<ICacheService>(TYPES.CacheService).to(RedisService);
 container.bind<ILoggerService>(TYPES.LoggerService).to(LoggerService);
 container
