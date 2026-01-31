@@ -1,6 +1,20 @@
 {
+  "permissions": {
+    "allow": [
+      "mcp__postgres__list_tables",
+      "mcp__postgres__execute_query",
+      "mcp__postgres__describe_table",
+      "Bash(yarn upgrade:*)",
+      "Bash(yarn audit:*)",
+      "Bash(yarn build:*)",
+      "Bash(yarn add:*)",
+      "Bash(ls:*)",
+      "Bash(timeout 5 yarn prod:*)",
+      "Bash(timeout 8 yarn dev:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "postgres"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }

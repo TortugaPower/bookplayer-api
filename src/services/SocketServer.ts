@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Server } from 'socket.io';
+import { Server, Socket } from 'socket.io';
 import { inject, injectable } from 'inversify';
 import http from 'http';
 import { SocketDefaultEventsMap } from '../types/user';
 import { TYPES } from '../ContainerTypes';
 import { ICacheService } from '../interfaces/ICacheService';
-import { Handshake } from 'socket.io/dist/socket';
 import loggedUser from '../api/middlewares/auth';
 import { ILibraryService } from '../interfaces/ILibraryService';
 import { ILoggerService } from '../interfaces/ILoggerService';
@@ -29,7 +28,7 @@ export class SocketService {
     any
   >;
 
-  authValidation(handshake: Handshake): { id_user: number; email: string } {
+  authValidation(handshake: Socket['handshake']): { id_user: number; email: string } {
     try {
       const { authorization } = handshake.auth;
       const req: any = {

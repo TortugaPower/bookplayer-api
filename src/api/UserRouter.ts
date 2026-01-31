@@ -4,6 +4,7 @@ import { TYPES } from '../ContainerTypes';
 import { IUserController } from '../interfaces/IUserController';
 import { IUserRouter } from '../interfaces/IRouters';
 import { ISubscriptionController } from '../interfaces/ISubscriptionController';
+import { authRateLimiter } from './middlewares/rateLimit';
 
 @injectable()
 export class UserRouter implements IUserRouter {
@@ -16,7 +17,7 @@ export class UserRouter implements IUserRouter {
     router.get('/', (req, res, next) =>
       this._controller.getAuth(req, res, next).catch(next),
     );
-    router.post('/login', (req, res, next) =>
+    router.post('/login', authRateLimiter, (req, res, next) =>
       this._controller.InitLogin(req, res, next).catch(next),
     );
     router.get('/logout', (req, res, next) =>

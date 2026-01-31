@@ -54,7 +54,10 @@ export type AppleJWT = {
   iat: number;
   sub: string;
   email: string;
-  auth_time: number;
+  auth_time?: number;
+  email_verified?: boolean;
+  is_private_email?: boolean;
+  real_user_status?: number;
 };
 
 export enum TypeUserParams {

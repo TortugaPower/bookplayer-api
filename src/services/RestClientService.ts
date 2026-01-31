@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import axios, { AxiosError, AxiosRequestConfig, AxiosResponse } from 'axios';
+import axios, { AxiosError, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { injectable } from 'inversify';
 import { RestClientProps } from '../types/user';
 
@@ -9,7 +9,7 @@ export class RestClientService {
 
   async setupClient() {
     this.axiosInstance.interceptors.request.use(
-      (config: AxiosRequestConfig) => {
+      (config: InternalAxiosRequestConfig) => {
         return config;
       },
     );
@@ -17,8 +17,8 @@ export class RestClientService {
       (response: AxiosResponse) => {
         return response;
       },
-      (error: AxiosError) => {
-        const apiError = error.response?.data.message;
+      (error: AxiosError<{ message?: string }>) => {
+        const apiError = error.response?.data?.message;
         if (apiError) {
           return Promise.reject(new Error(apiError));
         }

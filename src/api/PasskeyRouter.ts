@@ -2,6 +2,7 @@ import express from 'express';
 import { inject, injectable } from 'inversify';
 import { TYPES } from '../ContainerTypes';
 import { PasskeyController } from '../controllers/PasskeyController';
+import { authRateLimiter, emailVerificationRateLimiter } from './middlewares/rateLimit';
 
 @injectable()
 export class PasskeyRouter {
@@ -11,26 +12,26 @@ export class PasskeyRouter {
     const router = express.Router();
 
     // Email verification endpoints (for new user registration)
-    router.post('/verify-email/send', (req, res, next) =>
+    router.post('/verify-email/send', emailVerificationRateLimiter, (req, res, next) =>
       this._controller.sendVerificationCode(req, res, next).catch(next),
     );
-    router.post('/verify-email/check', (req, res, next) =>
+    router.post('/verify-email/check', authRateLimiter, (req, res, next) =>
       this._controller.checkVerificationCode(req, res, next).catch(next),
     );
 
     // Registration endpoints
-    router.post('/register/options', (req, res, next) =>
+    router.post('/register/options', authRateLimiter, (req, res, next) =>
       this._controller.registrationOptions(req, res, next).catch(next),
     );
-    router.post('/register/verify', (req, res, next) =>
+    router.post('/register/verify', authRateLimiter, (req, res, next) =>
       this._controller.registrationVerify(req, res, next).catch(next),
     );
 
     // Authentication endpoints
-    router.post('/auth/options', (req, res, next) =>
+    router.post('/auth/options', authRateLimiter, (req, res, next) =>
       this._controller.authenticationOptions(req, res, next).catch(next),
     );
-    router.post('/auth/verify', (req, res, next) =>
+    router.post('/auth/verify', authRateLimiter, (req, res, next) =>
       this._controller.authenticationVerify(req, res, next).catch(next),
     );
 

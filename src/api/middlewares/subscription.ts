@@ -9,8 +9,8 @@ import { SubscriptionEventType } from '../../types/user';
 export class SubscriptionMiddleware implements ISubscriptionMiddleware {
   @inject(TYPES.UserServices) private _userService: IUserService;
   async checkSubscription(
-    req: IResponse,
-    res: IRequest,
+    req: IRequest,
+    res: IResponse,
     next: INext,
   ): Promise<void> {
     try {
