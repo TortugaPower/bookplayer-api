@@ -10,7 +10,19 @@
       "Bash(yarn add:*)",
       "Bash(ls:*)",
       "Bash(timeout 5 yarn prod:*)",
-      "Bash(timeout 8 yarn dev:*)"
+      "Bash(timeout 8 yarn dev:*)",
+      "Bash(aws elasticache describe-serverless-caches:*)",
+      "Bash(aws ecs list-clusters:*)",
+      "Bash(aws ec2 describe-security-groups:*)",
+      "Bash(aws ecs list-services:*)",
+      "Bash(aws ecs describe-services:*)",
+      "Bash(aws ec2 describe-subnets:*)",
+      "Bash(aws ecs describe-task-definition:*)",
+      "Bash(aws secretsmanager get-secret-value:*)",
+      "Bash(aws ecs list-tasks:*)",
+      "Bash(aws ec2 describe-network-acls:*)",
+      "Bash(aws ecs describe-tasks:*)",
+      "Bash(yarn install:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

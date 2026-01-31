@@ -5,7 +5,7 @@ import compress from 'compression';
 import helmet from 'helmet';
 import cors from 'cors';
 import authMiddleware from './api/middlewares/auth';
-import { globalRateLimiter } from './api/middlewares/rateLimit';
+import { globalRateLimiter, initRateLimitRedis } from './api/middlewares/rateLimit';
 import { maintenanceMode } from './api/middlewares/maintenance';
 import { createServer } from 'http';
 import { IRouterHttp } from './interfaces/IRouters';
@@ -22,7 +22,10 @@ export class Server {
   @inject(TYPES.RestClientService) private _restClient: IRestClientService;
   @inject(TYPES.LoggerService) private _logger: ILoggerService;
   @inject(TYPES.VersionMiddleware) private version: IVersionMiddleware;
-  run(): void {
+  async run(): Promise<void> {
+    // Initialize Redis for rate limiting before starting the server
+    await initRateLimitRedis();
+
     const app = express();
     app.use(bodyParser.json());
     app.use(bodyParser.urlencoded({ extended: true }));

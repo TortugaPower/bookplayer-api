@@ -1,3 +1,3 @@
 export interface IServer {
-  run(): void;
+  run(): Promise<void>;
 }
