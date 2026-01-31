@@ -41,7 +41,9 @@
         { "name": "NODE_ENV", "value": "production" },
         { "name": "API_PORT", "value": "5003" },
         { "name": "API_HOST", "value": "0.0.0.0" },
-        { "name": "LOG_LEVEL", "value": "warn" }
+        { "name": "LOG_LEVEL", "value": "warn" },
+        { "name": "MAINTENANCE_START", "value": "2026-02-01T07:00:00Z" },
+        { "name": "MAINTENANCE_END", "value": "2026-02-01T07:30:00Z" }
       ],
       "secrets": [
         {
