@@ -37,25 +37,9 @@ export class Server {
     app.use((req: IResponse, res: IRequest, next: INext) => {
       return this.version.checkVersion(req, res, next);
     });
-    const allowedOrigins = [
-      'https://web.bookplayer.app',
-      'https://library.bookplayer.app',
-      'https://staging.bookplayer.app',
-      ...(process.env.NODE_ENV !== 'production'
-        ? ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:3000', 'http://127.0.0.1:5173']
-        : []),
-    ];
-
     app.use(
       cors({
-        origin: (origin, callback) => {
-          // Allow requests with no origin (mobile apps, curl, etc.)
-          if (!origin) return callback(null, true);
-          if (allowedOrigins.includes(origin)) {
-            return callback(null, true);
-          }
-          return callback(new Error('Not allowed by CORS'));
-        },
+        origin: true,
         credentials: true,
         exposedHeaders: ['Content-Range'],
       }),
