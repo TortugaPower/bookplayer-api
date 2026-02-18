@@ -10,8 +10,8 @@ import {
   GetObjectCommandInput,
   GetBucketLifecycleConfigurationCommand,
   PutBucketLifecycleConfigurationCommand,
-  DeleteBucketLifecycleCommand,
   LifecycleRule,
+  TransitionStorageClass,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { S3ClientHeaders, StorageAction, StorageItem } from '../types/user';
@@ -232,7 +232,7 @@ export class S3Service {
         Transitions: [
           {
             Days: 0,
-            StorageClass: storageClass,
+            StorageClass: storageClass as TransitionStorageClass,
           },
         ],
       };
