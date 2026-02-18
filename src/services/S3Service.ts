@@ -8,6 +8,10 @@ import {
   DeleteObjectCommand,
   ListObjectsV2Command,
   GetObjectCommandInput,
+  GetBucketLifecycleConfigurationCommand,
+  PutBucketLifecycleConfigurationCommand,
+  DeleteBucketLifecycleCommand,
+  LifecycleRule,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { S3ClientHeaders, StorageAction, StorageItem } from '../types/user';
@@ -197,6 +201,62 @@ export class S3Service {
       return null;
     }
   }
+  async addLifecycleRule(
+    ruleId: string,
+    prefix: string,
+    storageClass: string,
+  ): Promise<boolean> {
+    try {
+      let existingRules: LifecycleRule[] = [];
+      try {
+        const getResponse = await this.clientObject.send(
+          new GetBucketLifecycleConfigurationCommand({
+            Bucket: process.env.S3_BUCKET,
+          }),
+        );
+        existingRules = getResponse.Rules || [];
+      } catch (error) {
+        if (error.name !== 'NoSuchLifecycleConfiguration') {
+          throw error;
+        }
+      }
+
+      if (existingRules.some((r) => r.ID === ruleId)) {
+        return true;
+      }
+
+      const newRule: LifecycleRule = {
+        ID: ruleId,
+        Filter: { Prefix: prefix },
+        Status: 'Enabled',
+        Transitions: [
+          {
+            Days: 0,
+            StorageClass: storageClass,
+          },
+        ],
+      };
+
+      await this.clientObject.send(
+        new PutBucketLifecycleConfigurationCommand({
+          Bucket: process.env.S3_BUCKET,
+          LifecycleConfiguration: {
+            Rules: [...existingRules, newRule],
+          },
+        }),
+      );
+
+      return true;
+    } catch (error) {
+      this._logger.log({
+        origin: 'S3: addLifecycleRule',
+        message: error.message,
+        data: { ruleId, prefix, storageClass },
+      });
+      return false;
+    }
+  }
+
   async GetObjectStream(
     key: string,
     headers?: S3ClientHeaders,

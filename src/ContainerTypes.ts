@@ -30,6 +30,7 @@ const TYPES = {
   RetentionMessagingService: Symbol.for('RetentionMessagingService'),
   RetentionMessagingController: Symbol.for('RetentionMessagingController'),
   RetentionMessagingRouter: Symbol.for('RetentionMessagingRouter'),
+  GlacierMigrationService: Symbol.for('GlacierMigrationService'),
 };
 
 export { TYPES };

@@ -65,6 +65,8 @@ import { RetentionMessagingService } from './services/RetentionMessagingService'
 import { IRetentionMessagingController } from './interfaces/IRetentionMessagingController';
 import { RetentionMessagingController } from './controllers/RetentionMessagingController';
 import { RetentionMessagingRouter } from './api/RetentionMessagingRouter';
+import { IGlacierMigrationService } from './interfaces/IGlacierMigrationService';
+import { GlacierMigrationService } from './services/GlacierMigrationService';
 
 const container = new Container();
 
@@ -126,5 +128,10 @@ container
 container
   .bind<IRetentionMessagingRouter>(TYPES.RetentionMessagingRouter)
   .to(RetentionMessagingRouter);
+
+// Glacier Migration
+container
+  .bind<IGlacierMigrationService>(TYPES.GlacierMigrationService)
+  .to(GlacierMigrationService);
 
 export { container };

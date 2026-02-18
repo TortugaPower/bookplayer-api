@@ -23,4 +23,9 @@ export interface IS3Service {
     body: Readable;
     headers: { [k: string]: string | number };
   }>;
+  addLifecycleRule(
+    ruleId: string,
+    prefix: string,
+    storageClass: string,
+  ): Promise<boolean>;
 }
