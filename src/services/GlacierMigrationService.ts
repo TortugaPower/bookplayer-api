@@ -6,7 +6,6 @@ import { IRestClientService } from '../interfaces/IRestClientService';
 import { IGlacierMigrationService } from '../interfaces/IGlacierMigrationService';
 import database from '../database';
 
-const GRACE_PERIOD_MS = 5 * 60 * 1000; // 5 minutes
 
 @injectable()
 export class GlacierMigrationService implements IGlacierMigrationService {
@@ -104,9 +103,8 @@ export class GlacierMigrationService implements IGlacierMigrationService {
       const expiresDate = new Date(
         subscriber.entitlements.pro.expires_date,
       ).getTime();
-      const now = Date.now();
 
-      return expiresDate + GRACE_PERIOD_MS < now;
+      return expiresDate < Date.now();
     } catch (err) {
       this._logger.log(
         {
