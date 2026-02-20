@@ -248,11 +248,14 @@ export class S3Service {
 
       return true;
     } catch (error) {
-      this._logger.log({
-        origin: 'S3: addLifecycleRule',
-        message: error.message,
-        data: { ruleId, prefix, storageClass },
-      });
+      this._logger.log(
+        {
+          origin: 'S3: addLifecycleRule',
+          message: error.message,
+          data: { ruleId, prefix, storageClass },
+        },
+        'error',
+      );
       return false;
     }
   }
