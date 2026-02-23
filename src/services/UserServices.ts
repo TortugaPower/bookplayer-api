@@ -228,6 +228,9 @@ export class UserServices {
           email: tx.raw(
             `concat(users.email, '-deleted', '${moment().unix()}')`,
           ),
+          external_id: tx.raw(
+            `concat(users.external_id, '-deleted', '${moment().unix()}')`,
+          )
         })
         .where({
           active: true,
