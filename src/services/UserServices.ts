@@ -205,7 +205,6 @@ export class UserServices {
         .update({
           updated_at: tx.fn.now(),
           active: false,
-          value: tx.raw("concat(user_params.value, '-deleted')"),
         })
         .where({
           active: true,
@@ -214,8 +213,7 @@ export class UserServices {
       await tx('user_devices')
         .update({
           updated_at: tx.fn.now(),
-          active: false,
-          session: tx.raw("concat(user_devices.session, '-deleted')"),
+          active: false
         })
         .where({
           active: true,
@@ -225,13 +223,19 @@ export class UserServices {
         .update({
           updated_at: tx.fn.now(),
           active: false,
-          email: tx.raw(
-            `concat(users.email, '-deleted', '${moment().unix()}')`,
-          ),
         })
         .where({
           active: true,
           id_user: user_id,
+        });
+      await tx('auth_methods')
+        .update({
+          updated_at: tx.fn.now(),
+          active: false
+        })
+        .where({
+          active: true,
+          user_id: user_id,
         });
       await tx.commit();
       return true;
