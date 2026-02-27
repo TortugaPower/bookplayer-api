@@ -20,7 +20,7 @@ export async function up(knex: Knex): Promise<void> {
 
         ALTER TABLE auth_methods DROP CONSTRAINT IF EXISTS auth_methods_auth_type_external_id_unique;
 
-        CREATE UNIQUE INDEX auth_methods_auth_type_external_id_active_unique ON auth_methods (external_id, auth_type) WHERE active = true;
+        CREATE UNIQUE INDEX auth_methods_auth_type_external_id_active_unique ON auth_methods (auth_type, external_id) WHERE active = true;
     `);
 }
 
@@ -62,7 +62,7 @@ export async function down(knex: Knex): Promise<void> {
     await knex.raw(`
         ALTER TABLE users ADD CONSTRAINT users_user_mail_unique UNIQUE (email);
         ALTER TABLE users ADD CONSTRAINT users_public_id_unique UNIQUE (external_id);
-        ALTER TABLE auth_methods ADD CONSTRAINT auth_methods_auth_type_external_id_unique UNIQUE (external_id);
+        ALTER TABLE auth_methods ADD CONSTRAINT auth_methods_auth_type_external_id_unique UNIQUE (auth_type, external_id);
     `);
 }
 

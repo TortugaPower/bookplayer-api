@@ -213,7 +213,7 @@ export class UserServices {
       await tx('user_devices')
         .update({
           updated_at: tx.fn.now(),
-          active: false
+          active: false,
         })
         .where({
           active: true,
@@ -231,7 +231,7 @@ export class UserServices {
       await tx('auth_methods')
         .update({
           updated_at: tx.fn.now(),
-          active: false
+          active: false,
         })
         .where({
           active: true,
