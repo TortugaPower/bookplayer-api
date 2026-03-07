@@ -5,6 +5,7 @@ import { ILibraryController } from '../interfaces/ILibraryController';
 import { ILibraryService } from '../interfaces/ILibraryService';
 import { ILoggerService } from '../interfaces/ILoggerService';
 import { Bookmark, LibraryItem } from '../types/user';
+import { isValidUUID } from '../utils';
 
 @injectable()
 export class LibraryController implements ILibraryController {
@@ -33,7 +34,7 @@ export class LibraryController implements ILibraryController {
     res: IResponse,
   ): Promise<IResponse> {
     try {
-      const { relativePath, sign, noLastItemPlayed, forceLastItem } = req.query;
+      const { relativePath, uuid, sign, noLastItemPlayed, forceLastItem } = req.query;
       const user = req.user;
       const path = `${user.email}/${relativePath ? relativePath : ''}`;
 
@@ -41,7 +42,7 @@ export class LibraryController implements ILibraryController {
         withPresign: sign,
         appVersion: req.app_version,
       };
-      const content = await this._libraryService.GetLibrary(user, path, options);
+      const content = await this._libraryService.GetLibrary(user, path, options, uuid);
       let lastItemPlayed;
       if (
         ((!relativePath || relativePath === '/' || relativePath === '') &&
@@ -82,11 +83,11 @@ export class LibraryController implements ILibraryController {
     res: IResponse,
   ): Promise<IResponse> {
     try {
-      const { relativePath } = req.body;
+      const { relativePath, uuid } = req.body;
       const user = req.user;
 
       const updateFields = Object.keys(req.body).filter(
-        (key) => key !== 'relativePath' && key !== 'originalFileName',
+        (key) => key !== 'relativePath' && key !== 'originalFileName' && key !== 'uuid',
       );
 
       if (updateFields.length) {
@@ -101,6 +102,7 @@ export class LibraryController implements ILibraryController {
           user,
           relativePath,
           updateObj as unknown as LibraryItem,
+          uuid
         );
       }
 
@@ -202,10 +204,11 @@ export class LibraryController implements ILibraryController {
   ): Promise<IResponse> {
     try {
       const user = req.user;
-      const { relativePath } = req.method === 'POST' ? req.body : req.query;
+      const { relativePath, uuid } = req.method === 'POST' ? req.body : req.query;
       const bookmarks = await this._libraryService.getBookmarks({
         user_id: user.id_user,
         key: relativePath,
+        uuid: uuid
       });
       const response: { bookmarks: Bookmark[]; warning?: string } = {
         bookmarks,
@@ -231,9 +234,13 @@ export class LibraryController implements ILibraryController {
     try {
       const user = req.user;
       const bookmark = req.body as Bookmark;
-      const itemDB = await this._libraryService.dbGetLibrary(user.id_user, bookmark.key, {
-        exactly: true,
-      });
+      const itemDB = bookmark.uuid
+        ? await this._libraryService.dbGetLibraryByUuid(user.id_user, bookmark.uuid, {
+          exactly: true,
+        })
+        : await this._libraryService.dbGetLibrary(user.id_user, bookmark.key, {
+          exactly: true,
+        });
       if (!itemDB || !itemDB[0]) {
         throw new Error('Invalid key');
       }
@@ -265,6 +272,7 @@ export class LibraryController implements ILibraryController {
       const thumbnailData = req.body as {
         thumbnail_name: string;
         relativePath: string;
+        uuid?: string;
         uploaded?: boolean;
       };
       if (!thumbnailData.thumbnail_name || !thumbnailData.relativePath) {
@@ -291,15 +299,17 @@ export class LibraryController implements ILibraryController {
     res: IResponse,
   ): Promise<IResponse> {
     try {
-      const { relativePath, newName } = req.body;
+      const { relativePath, uuid, newName } = req.body;
       if (!relativePath || !newName) {
         throw new Error('Invalid parameters');
       }
       const user = req.user;
       const cleanPath = relativePath.replace(`${user.email}/`, '');
-      const objectDB = await this._libraryService.dbGetLibrary(user.id_user, cleanPath, {
-        exactly: true,
-      });
+      const objectDB = isValidUUID(uuid)
+        ? await this._libraryService.dbGetLibraryByUuid(user.id_user, uuid, { exactly: true })
+        : await this._libraryService.dbGetLibrary(user.id_user, cleanPath, {
+          exactly: true,
+        });
       const itemDb = objectDB[0];
       if (!itemDb) {
         throw Error('Item not found');
@@ -314,6 +324,23 @@ export class LibraryController implements ILibraryController {
       this._logger.log({ origin: 'renameLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
       res.status(400).json({ message: err.message });
       return;
+    }
+  }
+
+  public async postLibraryUuids(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const updates = Object.keys(req.body).map(key => ({key, uuid: req.body[key]})); 
+      const { applied, conflicts } = await this._libraryService.processItemUUIDs(updates);
+      // Return both the successes and the conflicts so the client can patch its local DB
+      return res.json({ applied, conflicts });
+
+    } catch (err) {
+      this._logger.log({ origin: 'postLibraryUuids', message: err.message, data: { user: req.user, body: req.body } }, 'error');
+      res.status(400).json({ message: err.message });
+      return
     }
   }
 }

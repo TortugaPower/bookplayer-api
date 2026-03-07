@@ -1,9 +1,11 @@
 import {
   Bookmark,
-  LibrarItemDB,
+  LibraryItemDB,
   LibraryItemMovedDB,
   LibraryItem,
   User,
+  ItemMatchPayload,
+  MatchUuidsResult,
 } from '../types/user';
 
 export interface ILibraryService {
@@ -14,8 +16,16 @@ export interface ILibraryService {
       rawFilter?: string;
       exactly?: boolean;
     },
-  ): Promise<LibrarItemDB[]>;
-  getItemByThumbnail(user_id: number, thumbnail: string): Promise<LibrarItemDB>;
+  ): Promise<LibraryItemDB[]>;
+  dbGetLibraryByUuid(
+    user_id: number,
+    uuid: string,
+    filter?: {
+      rawFilter?: string;
+      exactly?: boolean;
+    },
+  ): Promise<LibraryItemDB[]>;
+  getItemByThumbnail(user_id: number, thumbnail: string): Promise<LibraryItemDB>;
   GetLibrary(
     user: User,
     path: string,
@@ -23,6 +33,7 @@ export interface ILibraryService {
       withPresign?: boolean; // deprecated
       appVersion: string;
     },
+    uuid?: string
   ): Promise<LibraryItem[]>;
   GetObject(
     user: User,
@@ -35,6 +46,7 @@ export interface ILibraryService {
     user: User,
     relativePath: string,
     params: LibraryItem,
+    uuid?: string
   ): Promise<boolean>;
   reOrderObject(user: User, params: LibraryItem): Promise<boolean>;
   moveLibraryObject(
@@ -42,6 +54,8 @@ export interface ILibraryService {
     params: {
       origin: string;
       destination: string;
+      originUuid?: string;
+      destinationUuid?: string;
     },
   ): Promise<LibraryItemMovedDB[]>;
   deleteFolderMoving(user: User, folderPath: string): Promise<boolean>;
@@ -52,12 +66,13 @@ export interface ILibraryService {
       appVersion: string;
     },
   ): Promise<LibraryItem>;
-  getBookmarks(params: { key?: string; user_id: number }): Promise<Bookmark[]>;
+  getBookmarks(params: { key?: string; uuid?: String, user_id: number }): Promise<Bookmark[]>;
   upsertBookmark(bookmark: Bookmark): Promise<Bookmark>;
   thumbailPutRequest(
     user: User,
     params: {
       relativePath: string;
+      uuid?: string;
       thumbnail_name: string;
       uploaded?: boolean;
     },
@@ -65,9 +80,10 @@ export interface ILibraryService {
   renameLibraryObject(
     user: User,
     params: {
-      item: LibrarItemDB;
+      item: LibraryItemDB;
       newName: string;
     },
   ): Promise<LibraryItemMovedDB[]>;
   dbGetAllKeys(user_id: number): Promise<string[]>;
+  processItemUUIDs(updates: ItemMatchPayload[]): Promise<MatchUuidsResult>;
 }

@@ -1,13 +1,15 @@
 import { inject, injectable } from 'inversify';
 import {
   Bookmark,
-  LibrarItemDB,
+  LibraryItemDB,
   LibraryItemMovedDB,
   LibraryItem,
   LibraryItemOutput,
   LibraryItemType,
   StorageAction,
   User,
+  ItemMatchPayload,
+  MatchUuidsResult,
 } from '../types/user';
 import { Knex } from 'knex';
 import database from '../database';
@@ -19,6 +21,7 @@ import {
   splitArrayGroups,
   detectExcessiveFolderNesting,
   sanitizeLibraryPath,
+  isValidUUID,
 } from '../utils';
 
 @injectable()
@@ -58,7 +61,7 @@ export class LibraryService {
       exactly?: boolean;
     },
     trx?: Knex.Transaction,
-  ): Promise<LibrarItemDB[]> {
+  ): Promise<LibraryItemDB[]> {
     try {
       const db = trx || this.db;
       const pathNumber = path.split('/').length;
@@ -91,11 +94,48 @@ export class LibraryService {
     }
   }
 
+  async dbGetLibraryByUuid(
+    user_id: number,
+    uuid: string,
+    filter?: {
+      rawFilter?: string;
+      exactly?: boolean;
+    },
+    trx?: Knex.Transaction,
+  ): Promise<LibraryItemDB[]> {
+    try {
+      const db = trx || this.db;
+      const objects = await db('library_items as li')
+        .where({
+          user_id,
+          active: true,
+          uuid
+        })
+        .andWhere((builder) => {
+          if (!!filter?.rawFilter) {
+            builder.whereRaw(filter?.rawFilter);
+          } else {
+            builder.where(true);
+          }
+        })
+        .orderBy('order_rank', 'asc')
+        .debug(false);
+      return objects;
+    } catch (err) {
+      this._logger.log({
+        origin: 'dbGetLibrary',
+        message: err.message,
+        data: { user_id, uuid, filter },
+      });
+      return null;
+    }
+  }
+
   async getItemByThumbnail(
     user_id: number,
     thumbnail: string,
     trx?: Knex.Transaction,
-  ): Promise<LibrarItemDB> {
+  ): Promise<LibraryItemDB> {
     try {
       const db = trx || this.db;
       const item = await db('library_items as li')
@@ -124,7 +164,7 @@ export class LibraryService {
       active?: boolean;
     },
     trx?: Knex.Transaction,
-  ): Promise<LibrarItemDB[]> {
+  ): Promise<LibraryItemDB[]> {
     try {
       const { user_id, path, exactly, active } = params;
       const db = trx || this.db;
@@ -149,11 +189,45 @@ export class LibraryService {
     }
   }
 
+  async dbDeleteLibraryByUuid(
+    params: {
+      user_id: number;
+      uuid: string;
+      exactly?: boolean;
+      active?: boolean;
+    },
+    trx?: Knex.Transaction,
+  ): Promise<LibraryItemDB[]> {
+    try {
+      const { user_id, uuid, exactly, active } = params;
+      if (!isValidUUID(uuid)) throw Error(`Invalid UUID ${uuid}. Wrong format`);
+      const db = trx || this.db;
+      const objectsDeleted = await db('library_items as li')
+        .update({
+          active: false,
+        })
+        .where({
+          user_id,
+          uuid,
+          active: active === false ? active : true,
+        })
+        .returning('*');
+      return objectsDeleted;
+    } catch (err) {
+      this._logger.log({
+        origin: 'dbDeleteLibrary',
+        message: err.message,
+        data: params,
+      });
+      return null;
+    }
+  }
+
   async dbNestedObjects(
     user_id: number,
     folderPath: string,
     trx?: Knex.Transaction,
-  ): Promise<LibrarItemDB[]> {
+  ): Promise<LibraryItemDB[]> {
     try {
       const db = trx || this.db;
       const nestedObjects = await db
@@ -320,7 +394,7 @@ export class LibraryService {
     user_id: number,
     folderPath: string,
     trx?: Knex.Transaction,
-  ): Promise<LibrarItemDB[]> {
+  ): Promise<LibraryItemDB[]> {
     try {
       const db = trx || this.db;
       const objectsMoved = await db
@@ -356,9 +430,9 @@ export class LibraryService {
 
   async dbInsertLibraryItem(
     user_id: number,
-    item: LibrarItemDB,
+    item: LibraryItemDB,
     trx?: Knex.Transaction,
-  ): Promise<LibrarItemDB> {
+  ): Promise<LibraryItemDB> {
     try {
       const db = trx || this.db;
       const objects = await db('library_items as li')
@@ -380,6 +454,7 @@ export class LibraryService {
           is_finish: item.is_finish,
           thumbnail: item.thumbnail || null,
           source_path: item.source_path,
+          uuid: item.uuid
         })
         .returning('*');
       return objects[0];
@@ -396,7 +471,8 @@ export class LibraryService {
   async dbUpdateLibraryItem(
     user_id: number,
     key: string,
-    item: LibrarItemDB,
+    item: LibraryItemDB,    
+    uuid?: string,
     trx?: Knex.Transaction,
   ): Promise<boolean> {
     try {
@@ -433,10 +509,13 @@ export class LibraryService {
       withPresign?: boolean; // deprecated
       appVersion: string;
     },
+    uuid?: string
   ): Promise<LibraryItem[]> {
     try {
       const cleanPath = path.replace(`${user.email}/`, '');
-      const objectDB = await this.dbGetLibrary(user.id_user, cleanPath);
+      const objectDB = isValidUUID(uuid)
+        ? await this.dbGetLibraryByUuid(user.id_user, uuid)
+        : await this.dbGetLibrary(user.id_user, cleanPath);
       const library: LibraryItem[] = [];
       if (objectDB?.length) {
         for (let index = 0; index < objectDB.length; index++) {
@@ -479,6 +558,7 @@ export class LibraryService {
           }
 
           const libObj: LibraryItem = {
+            uuid: itemDb.uuid,
             relativePath: itemDb.key,
             originalFileName: itemDb.original_filename,
             title: itemDb.title,
@@ -512,13 +592,13 @@ export class LibraryService {
   }
 
   async ParseLibraryItemDbB(
-    item: LibrarItemDB | LibraryItem,
+    item: LibraryItemDB | LibraryItem,
     output: LibraryItemOutput,
-  ): Promise<LibrarItemDB | LibraryItem> {
-    let parsed: LibraryItem | LibrarItemDB;
+  ): Promise<LibraryItemDB | LibraryItem> {
+    let parsed: LibraryItem | LibraryItemDB;
     switch (output) {
       case LibraryItemOutput.API:
-        const itemTemp = item as LibrarItemDB;
+        const itemTemp = item as LibraryItemDB;
         parsed = {
           relativePath: itemTemp.key,
           originalFileName: itemTemp.original_filename,
@@ -538,6 +618,7 @@ export class LibraryService {
           url: '',
           synced: itemTemp.synced,
           source_path: itemTemp.source_path,
+          uuid: itemTemp.uuid
         };
         break;
       case LibraryItemOutput.DB:
@@ -572,6 +653,7 @@ export class LibraryService {
           thumbnail: itemApi.thumbnail,
           synced: itemApi.synced !== undefined ? itemApi.synced : undefined,
           source_path: itemApi.source_path,
+          uuid: itemApi.uuid
         };
         break;
     }
@@ -656,7 +738,7 @@ export class LibraryService {
       const libObj = (await this.ParseLibraryItemDbB(
         params,
         LibraryItemOutput.DB,
-      )) as LibrarItemDB;
+      )) as LibraryItemDB;
 
       const cleanPath = relativePath.replace(`${user.email}/`, '');
       const objectDB = await this.dbGetLibrary(user.id_user, cleanPath, {
@@ -705,19 +787,30 @@ export class LibraryService {
 
   async DeleteObject(user: User, params: LibraryItem): Promise<string[]> {
     try {
-      const { relativePath } = params;
+      const { relativePath, uuid } = params;
       const cleanPath = relativePath.replace(`${user.email}/`, '');
-      const deletedObjects = await this.dbDeleteLibrary({
-        user_id: user.id_user,
-        path: cleanPath,
-      });
-      const itemDb = deletedObjects[0];
-      if (!itemDb) {
-        const alreadyDeleted = await this.dbDeleteLibrary({
+      const deletedObjects = uuid
+        ? await this.dbDeleteLibraryByUuid({
+          user_id: user.id_user,
+          uuid,
+        })
+        : await this.dbDeleteLibrary({
           user_id: user.id_user,
           path: cleanPath,
-          active: false,
         });
+      const itemDb = deletedObjects[0];
+      if (!itemDb) {
+        const alreadyDeleted = uuid
+          ? await this.dbDeleteLibraryByUuid({
+            user_id: user.id_user,
+            uuid,
+            active: false,
+          })
+          : await this.dbDeleteLibrary({
+            user_id: user.id_user,
+            path: cleanPath,
+            active: false,
+          });
         return alreadyDeleted?.map((i) => i.key) || [];
       }
 
@@ -747,6 +840,7 @@ export class LibraryService {
     user: User,
     relativePath: string,
     params: LibraryItem,
+    uuid?: string
   ): Promise<boolean> {
     try {
       const cleanPath = relativePath.replace(`${user.email}/`, '');
@@ -757,11 +851,12 @@ export class LibraryService {
           ...params,
         },
         LibraryItemOutput.DB,
-      )) as LibrarItemDB;
+      )) as LibraryItemDB;
       const result = await this.dbUpdateLibraryItem(
         user.id_user,
         cleanPath,
         libraryItem,
+        uuid
       );
 
       return result;
@@ -821,6 +916,7 @@ export class LibraryService {
           ...objectDB[0],
           order_rank: orderRank,
         },
+        null,
         trx,
       );
       await trx.commit();
@@ -842,6 +938,8 @@ export class LibraryService {
     params: {
       origin: string;
       destination: string;
+      originUuid?: string;
+      destinationUuid?: string;
     },
   ): Promise<LibraryItemMovedDB[]> {
     const trx = await this.db.transaction();
@@ -1021,7 +1119,6 @@ export class LibraryService {
                 targetKey,
               });
               if (isMoved) {
-                console.log('is moved', isMoved, original_filename, fileMoved);
                 await trx('library_items')
                   .update({
                     source_path: original_filename,
@@ -1126,16 +1223,20 @@ export class LibraryService {
   async getBookmarks(
     params: {
       key?: string;
+      uuid?: string;
       user_id: number;
     },
     trx?: Knex.Transaction,
   ): Promise<Bookmark[]> {
     try {
-      const { key, user_id } = params;
+      const { key, user_id, uuid } = params;
       const db = trx || this.db;
       const filter: (number | string)[] = [user_id];
       let whereFilter = '';
-      if (key) {
+      if (uuid && isValidUUID(uuid)) {
+        filter.push(uuid);
+        whereFilter += ' and li.uuid=? ';
+      } else if (key) {
         filter.push(key);
         whereFilter += ' and li.key=? ';
       }
@@ -1195,16 +1296,21 @@ export class LibraryService {
     user: User,
     params: {
       relativePath: string;
+      uuid?: string;
       thumbnail_name: string;
       uploaded?: boolean;
     },
   ): Promise<string | boolean> {
     try {
-      const { relativePath, thumbnail_name, uploaded } = params;
+      const { relativePath, uuid, thumbnail_name, uploaded } = params;
       const cleanPath = relativePath.replace(`${user.email}/`, '');
-      const objectDB = await this.dbGetLibrary(user.id_user, cleanPath, {
-        exactly: true,
-      });
+      const objectDB = isValidUUID(uuid)
+        ? await this.dbGetLibraryByUuid(user.id_user, uuid, {
+          exactly: true,
+        })
+        : await this.dbGetLibrary(user.id_user, cleanPath, {
+          exactly: true,
+        });
       const itemDb = objectDB[0];
       if (!itemDb) {
         throw new Error('Item not exists');
@@ -1238,7 +1344,7 @@ export class LibraryService {
   async renameLibraryObject(
     user: User,
     params: {
-      item: LibrarItemDB;
+      item: LibraryItemDB;
       newName: string;
     },
   ): Promise<LibraryItemMovedDB[]> {
@@ -1371,6 +1477,65 @@ export class LibraryService {
         data: { user, params },
       });
       throw Error(err);
+    }
+  }
+
+  async processItemUUIDs(updates: ItemMatchPayload[]): Promise<MatchUuidsResult> {
+    const trx = await this.db.transaction();
+
+    try {
+      const serverKeys = updates.map(u => u.key);
+      
+      // 2. Fetch current state using the 'trx' object
+      const existingItems = await trx('library_items')
+        .select('key', 'uuid')
+        .whereIn('key', serverKeys);
+
+      const existingItemsMap = new Map(existingItems.map((item: any) => [item.key, item.uuid]));
+
+      const conflicts: ItemMatchPayload[] = [];
+      const applied: string[] = [];
+      const toUpdate: ItemMatchPayload[] = [];
+
+      // 3. Sort into conflicts and safe updates
+      for (const item of updates) {
+        const currentUuid = existingItemsMap.get(item.key);
+        
+        if (currentUuid === undefined || currentUuid === item.uuid) continue;
+
+        if (currentUuid !== null) {
+          if (currentUuid !== item.uuid) {
+              conflicts.push({ key: item.uuid, uuid: currentUuid });
+          }
+        } else {
+          toUpdate.push(item);
+        }
+      }
+
+      // 4. Perform updates using the 'trx' object
+      if (toUpdate.length > 0) {
+        const updatePromises = toUpdate.map(item => 
+          trx('library_items')
+            .where('key', item.key)
+            .update({ uuid: item.uuid })
+        );
+        
+        await Promise.all(updatePromises);
+        
+        toUpdate.forEach(item => applied.push(item.uuid));
+      }
+
+      // 5. Commit the transaction if everything succeeded
+      await trx.commit();
+
+      return { applied, conflicts };
+
+    } catch (error) {
+      // 6. Rollback the transaction if any error occurs
+      await trx.rollback();
+      
+      // Re-throw the error so your Express route catch-block can return a 500 status
+      throw error; 
     }
   }
 }

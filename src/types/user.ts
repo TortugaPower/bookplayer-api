@@ -145,6 +145,7 @@ export interface LibraryItem {
   thumbnail?: string;
   synced?: boolean;
   source_path?: string;
+  uuid?: string;
 }
 
 export interface LibraryItemMovedDB {
@@ -156,7 +157,7 @@ export interface LibraryItemMovedDB {
   source_path?: string;
 }
 
-export interface LibrarItemDB {
+export interface LibraryItemDB {
   id_library_item?: number;
   user_id?: number;
   key: string;
@@ -175,6 +176,7 @@ export interface LibrarItemDB {
   active?: boolean;
   synced: boolean;
   source_path?: string;
+  uuid?: string;
 }
 
 export interface StorageItem {
@@ -197,6 +199,7 @@ export enum StorageOrigin {
 export interface Bookmark {
   title?: string;
   key: string;
+  uuid?: string;
   note?: string;
   time: number;
   library_item_id?: number;
@@ -261,4 +264,14 @@ export interface UserEvent {
   event_name: UserEventEnum;
   event_data: object;
   created_at: string;
+}
+
+export interface ItemMatchPayload {
+  key: string;
+  uuid: string;
+}
+
+export interface MatchUuidsResult {
+  applied: string[];
+  conflicts: ItemMatchPayload[];
 }
