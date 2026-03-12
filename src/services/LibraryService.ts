@@ -123,7 +123,7 @@ export class LibraryService {
       return objects;
     } catch (err) {
       this._logger.log({
-        origin: 'dbGetLibrary',
+        origin: 'dbGetLibraryByUuid',
         message: err.message,
         data: { user_id, uuid, filter },
       });
@@ -199,7 +199,7 @@ export class LibraryService {
     trx?: Knex.Transaction,
   ): Promise<LibraryItemDB[]> {
     try {
-      const { user_id, uuid, exactly, active } = params;
+      const { user_id, uuid, active } = params;
       if (!isValidUUID(uuid)) throw Error(`Invalid UUID ${uuid}. Wrong format`);
       const db = trx || this.db;
       const objectsDeleted = await db('library_items as li')
@@ -215,7 +215,7 @@ export class LibraryService {
       return objectsDeleted;
     } catch (err) {
       this._logger.log({
-        origin: 'dbDeleteLibrary',
+        origin: 'dbDeleteLibraryByUuid',
         message: err.message,
         data: params,
       });
@@ -487,10 +487,17 @@ export class LibraryService {
         },
         {},
       );
-      await db('library_items').update(updateObject).where({
-        user_id,
-        key: key,
-      });
+      await db('library_items')
+        .update(updateObject)
+        .where(uuid
+          ? {
+            user_id,
+            uuid: uuid,
+          }
+          : {
+            user_id,
+            key: key,
+          });
       return true;
     } catch (err) {
       this._logger.log({
@@ -789,7 +796,7 @@ export class LibraryService {
     try {
       const { relativePath, uuid } = params;
       const cleanPath = relativePath.replace(`${user.email}/`, '');
-      const deletedObjects = uuid
+      const deletedObjects = isValidUUID(uuid)
         ? await this.dbDeleteLibraryByUuid({
           user_id: user.id_user,
           uuid,
@@ -800,7 +807,7 @@ export class LibraryService {
         });
       const itemDb = deletedObjects[0];
       if (!itemDb) {
-        const alreadyDeleted = uuid
+        const alreadyDeleted = isValidUUID(uuid)
           ? await this.dbDeleteLibraryByUuid({
             user_id: user.id_user,
             uuid,
@@ -843,7 +850,7 @@ export class LibraryService {
     uuid?: string
   ): Promise<boolean> {
     try {
-      const cleanPath = relativePath.replace(`${user.email}/`, '');
+      const cleanPath = (relativePath || "").replace(`${user.email}/`, '');
 
       const libraryItem = (await this.ParseLibraryItemDbB(
         {
@@ -938,8 +945,6 @@ export class LibraryService {
     params: {
       origin: string;
       destination: string;
-      originUuid?: string;
-      destinationUuid?: string;
     },
   ): Promise<LibraryItemMovedDB[]> {
     const trx = await this.db.transaction();
@@ -1048,6 +1053,71 @@ export class LibraryService {
       await trx?.rollback();
       this._logger.log({
         origin: 'moveLibraryObject',
+        message: err.message,
+        data: { user, params },
+      });
+      throw Error(err);
+    }
+  }
+
+  async moveLibraryObjectByUuid(
+    user: User,
+    params: {
+      origin: string;
+      destination: string;
+    },
+  ): Promise<LibraryItemMovedDB[]> {
+    const trx = await this.db.transaction();
+    try {
+      // Sanitize paths to handle whitespace issues in folder names
+      const [originDB] = await this.dbGetLibraryByUuid(user.id_user, params.origin);
+      const [destinationDB] = params.destination
+        ? await this.dbGetLibraryByUuid(user.id_user, params.destination)
+        : [null];
+
+      if (!originDB) {
+        throw Error(
+          `Item not found: "${params.origin}"`,
+        );
+      }
+      
+      if (destinationDB) {
+        const destType = `${destinationDB.type}`;
+        if (
+          destType !== LibraryItemType.FOLDER &&
+          destType !== LibraryItemType.BOUND
+        ) {
+          throw Error('The destination is invalid');
+        }
+      }
+
+      const originFilename = originDB.key.split('/').pop();
+      const expectedDestinationPath =
+        !destinationDB
+          ? originFilename
+          : `${destinationDB.key}/${originFilename}`;
+
+      // If origin and destination are the same, return early
+      if (originDB.key === expectedDestinationPath) {
+        await trx.commit();
+        return [];
+      }
+      
+      const dbMoved = await this.dbMoveFiles(
+        user.id_user,
+        originDB.key,
+        destinationDB.key,
+        trx,
+      );
+
+      await this.processMovedFiles(user, dbMoved, trx);
+
+      await trx.commit();
+      return dbMoved;
+    } catch (err) {
+      await trx?.rollback();
+      this._logger.log({
+        origin: 'moveLibraryObjectByUuid',
         message: err.message,
         data: { user, params },
       });

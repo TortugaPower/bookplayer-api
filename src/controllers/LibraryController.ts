@@ -169,7 +169,11 @@ export class LibraryController implements ILibraryController {
     try {
       const params = req.body;
       const user = req.user;
-      const content = await this._libraryService.moveLibraryObject(user, params);
+      const { origin, destination } = params;
+      const useUuids = (isValidUUID(origin) && isValidUUID(destination) || (isValidUUID(origin) && destination === '') || (isValidUUID(destination) && origin === ''))
+      const content = useUuids
+        ? await this._libraryService.moveLibraryObjectByUuid(user, params)
+        : await this._libraryService.moveLibraryObject(user, params);
       return res.json({ content });
     } catch (err) {
       this._logger.log({ origin: 'moveLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
@@ -300,21 +304,22 @@ export class LibraryController implements ILibraryController {
   ): Promise<IResponse> {
     try {
       const { relativePath, uuid, newName } = req.body;
-      if (!relativePath || !newName) {
+      if ((!relativePath && !uuid) || !newName) {
         throw new Error('Invalid parameters');
       }
       const user = req.user;
-      const cleanPath = relativePath.replace(`${user.email}/`, '');
+      const cleanPath = (relativePath || "").replace(`${user.email}/`, '');
       const objectDB = isValidUUID(uuid)
         ? await this._libraryService.dbGetLibraryByUuid(user.id_user, uuid, { exactly: true })
         : await this._libraryService.dbGetLibrary(user.id_user, cleanPath, {
           exactly: true,
         });
       const itemDb = objectDB[0];
+      console.log('HEY HO 0', itemDb.uuid);
       if (!itemDb) {
         throw Error('Item not found');
       }
-
+      console.log('HEY HO', itemDb.uuid);
       const content = await this._libraryService.renameLibraryObject(user, {
         item: itemDb,
         newName,

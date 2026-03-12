@@ -54,8 +54,13 @@ export interface ILibraryService {
     params: {
       origin: string;
       destination: string;
-      originUuid?: string;
-      destinationUuid?: string;
+    },
+  ): Promise<LibraryItemMovedDB[]>;
+  moveLibraryObjectByUuid(
+    user: User,
+    params: {
+      origin?: string;
+      destination?: string;
     },
   ): Promise<LibraryItemMovedDB[]>;
   deleteFolderMoving(user: User, folderPath: string): Promise<boolean>;
