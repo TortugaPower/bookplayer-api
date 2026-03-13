@@ -487,17 +487,21 @@ export class LibraryService {
         },
         {},
       );
-      await db('library_items')
+      const whereClause = isValidUUID(uuid)
+        ? {
+          user_id,
+          uuid: uuid as string,
+        }
+        : {
+          user_id,
+          key: key,
+        };
+      const updatedCount = await db('library_items')
         .update(updateObject)
-        .where(uuid
-          ? {
-            user_id,
-            uuid: uuid,
-          }
-          : {
-            user_id,
-            key: key,
-          });
+        .where(whereClause);
+
+      if (updatedCount !== 1) throw new Error(`Multiple rows (${updatedCount}) matched the update criteria.`);
+
       return true;
     } catch (err) {
       this._logger.log({
@@ -675,7 +679,7 @@ export class LibraryService {
     try {
       const cleanPath = path.replace(`${user.email}/`, '');
       const objectDB = await this.dbGetLibrary(user.id_user, cleanPath);
-      const itemDb = objectDB[0];
+      const itemDb = objectDB?.[0];
       if (!itemDb) {
         throw Error('Item not found');
       }
@@ -795,7 +799,6 @@ export class LibraryService {
   async DeleteObject(user: User, params: LibraryItem): Promise<string[]> {
     try {
       const { relativePath, uuid } = params;
-      const cleanPath = relativePath.replace(`${user.email}/`, '');
       const deletedObjects = isValidUUID(uuid)
         ? await this.dbDeleteLibraryByUuid({
           user_id: user.id_user,
@@ -803,9 +806,10 @@ export class LibraryService {
         })
         : await this.dbDeleteLibrary({
           user_id: user.id_user,
-          path: cleanPath,
+          path: relativePath.replace(`${user.email}/`, ''),
         });
       const itemDb = deletedObjects[0];
+
       if (!itemDb) {
         const alreadyDeleted = isValidUUID(uuid)
           ? await this.dbDeleteLibraryByUuid({
@@ -815,7 +819,7 @@ export class LibraryService {
           })
           : await this.dbDeleteLibrary({
             user_id: user.id_user,
-            path: cleanPath,
+            path: relativePath.replace(`${user.email}/`, ''),
             active: false,
           });
         return alreadyDeleted?.map((i) => i.key) || [];
@@ -1070,9 +1074,9 @@ export class LibraryService {
     const trx = await this.db.transaction();
     try {
       // Sanitize paths to handle whitespace issues in folder names
-      const [originDB] = await this.dbGetLibraryByUuid(user.id_user, params.origin);
+      const [originDB] = await this.dbGetLibraryByUuid(user.id_user, params.origin, null, trx);
       const [destinationDB] = params.destination
-        ? await this.dbGetLibraryByUuid(user.id_user, params.destination)
+        ? await this.dbGetLibraryByUuid(user.id_user, params.destination, null, trx)
         : [null];
 
       if (!originDB) {
@@ -1106,7 +1110,7 @@ export class LibraryService {
       const dbMoved = await this.dbMoveFiles(
         user.id_user,
         originDB.key,
-        destinationDB.key,
+        destinationDB?.key || '',
         trx,
       );
 
@@ -1381,7 +1385,7 @@ export class LibraryService {
         : await this.dbGetLibrary(user.id_user, cleanPath, {
           exactly: true,
         });
-      const itemDb = objectDB[0];
+      const itemDb = objectDB?.[0];
       if (!itemDb) {
         throw new Error('Item not exists');
       }
@@ -1550,7 +1554,7 @@ export class LibraryService {
     }
   }
 
-  async processItemUUIDs(updates: ItemMatchPayload[]): Promise<MatchUuidsResult> {
+  async processItemUUIDs(user: User, updates: ItemMatchPayload[]): Promise<MatchUuidsResult> {
     const trx = await this.db.transaction();
 
     try {
@@ -1559,7 +1563,9 @@ export class LibraryService {
       // 2. Fetch current state using the 'trx' object
       const existingItems = await trx('library_items')
         .select('key', 'uuid')
-        .whereIn('key', serverKeys);
+        .where({ user_id: user.id_user })
+        .whereIn('key', serverKeys)
+        .forUpdate();
 
       const existingItemsMap = new Map(existingItems.map((item: any) => [item.key, item.uuid]));
 
@@ -1586,7 +1592,10 @@ export class LibraryService {
       if (toUpdate.length > 0) {
         const updatePromises = toUpdate.map(item => 
           trx('library_items')
-            .where('key', item.key)
+            .where({
+              user_id: user.id_user,
+              key: item.key
+            })
             .update({ uuid: item.uuid })
         );
         

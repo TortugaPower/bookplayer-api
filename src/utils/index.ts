@@ -17,15 +17,15 @@ export const sanitizeLibraryPath = (path: string): string => {
 
 /**
  * Check if uuid is valid
- * @param uuid - The uuid to check 
+ * @param testUuid - The uuid to check 
  * @returns boolean whether it is valid or not
  */
-export function isValidUUID(uuid?: string): boolean {
-  if (!uuid) return false;
+export function isValidUUID(testUuid?: string): boolean {
+  if (!testUuid) return false;
   
-  const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
-  
-  return uuidRegex.test(uuid);
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  return UUID_REGEX.test(testUuid);
 }
 
 export const splitArrayGroups = (array: unknown[], chunkSize: number) => {

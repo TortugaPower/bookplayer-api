@@ -59,8 +59,8 @@ export interface ILibraryService {
   moveLibraryObjectByUuid(
     user: User,
     params: {
-      origin?: string;
-      destination?: string;
+      origin: string;
+      destination: string;
     },
   ): Promise<LibraryItemMovedDB[]>;
   deleteFolderMoving(user: User, folderPath: string): Promise<boolean>;
@@ -71,7 +71,7 @@ export interface ILibraryService {
       appVersion: string;
     },
   ): Promise<LibraryItem>;
-  getBookmarks(params: { key?: string; uuid?: String, user_id: number }): Promise<Bookmark[]>;
+  getBookmarks(params: { key?: string; uuid?: string, user_id: number }): Promise<Bookmark[]>;
   upsertBookmark(bookmark: Bookmark): Promise<Bookmark>;
   thumbailPutRequest(
     user: User,
@@ -90,5 +90,5 @@ export interface ILibraryService {
     },
   ): Promise<LibraryItemMovedDB[]>;
   dbGetAllKeys(user_id: number): Promise<string[]>;
-  processItemUUIDs(updates: ItemMatchPayload[]): Promise<MatchUuidsResult>;
+  processItemUUIDs(user: User, updates: ItemMatchPayload[]): Promise<MatchUuidsResult>;
 }

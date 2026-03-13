@@ -170,7 +170,9 @@ export class LibraryController implements ILibraryController {
       const params = req.body;
       const user = req.user;
       const { origin, destination } = params;
-      const useUuids = (isValidUUID(origin) && isValidUUID(destination) || (isValidUUID(origin) && destination === '') || (isValidUUID(destination) && origin === ''))
+      const useUuids = (isValidUUID(origin) && isValidUUID(destination)) 
+        || (isValidUUID(origin) && destination === '') 
+        || (isValidUUID(destination) && origin === '');
       const content = useUuids
         ? await this._libraryService.moveLibraryObjectByUuid(user, params)
         : await this._libraryService.moveLibraryObject(user, params);
@@ -315,11 +317,9 @@ export class LibraryController implements ILibraryController {
           exactly: true,
         });
       const itemDb = objectDB[0];
-      console.log('HEY HO 0', itemDb.uuid);
       if (!itemDb) {
         throw Error('Item not found');
       }
-      console.log('HEY HO', itemDb.uuid);
       const content = await this._libraryService.renameLibraryObject(user, {
         item: itemDb,
         newName,
@@ -337,8 +337,15 @@ export class LibraryController implements ILibraryController {
     res: IResponse,
   ): Promise<IResponse> {
     try {
-      const updates = Object.keys(req.body).map(key => ({key, uuid: req.body[key]})); 
-      const { applied, conflicts } = await this._libraryService.processItemUUIDs(updates);
+      const MAX_RECORDS_LIMIT = 1000;
+      const user = req.user;
+      const processData = req.body as {
+        items: Record<string, string>
+      };
+      if (Object.keys(processData.items).length > MAX_RECORDS_LIMIT) throw new Error(`Too many records, the maximum to process at a time is ${MAX_RECORDS_LIMIT}.`);
+
+      const updates = Object.keys(processData.items).map(key => ({key, uuid: processData.items[key]})); 
+      const { applied, conflicts } = await this._libraryService.processItemUUIDs(user, updates);
       // Return both the successes and the conflicts so the client can patch its local DB
       return res.json({ applied, conflicts });
 
