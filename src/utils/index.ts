@@ -15,6 +15,19 @@ export const sanitizeLibraryPath = (path: string): string => {
     .join('/');
 };
 
+/**
+ * Check if uuid is valid
+ * @param testUuid - The uuid to check 
+ * @returns boolean whether it is valid or not
+ */
+export function isValidUUID(testUuid?: string): boolean {
+  if (!testUuid) return false;
+  
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  return UUID_REGEX.test(testUuid);
+}
+
 export const splitArrayGroups = (array: unknown[], chunkSize: number) => {
   const chunks = [];
   for (let i = 0; i < array.length; i += chunkSize) {

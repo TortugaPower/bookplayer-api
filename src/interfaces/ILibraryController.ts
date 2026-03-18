@@ -54,4 +54,8 @@ export interface ILibraryController {
     res: IResponse,
     _: INext,
   ): Promise<IResponse>;
+  postLibraryUuids(
+    req: IRequest, 
+    res: IResponse, _: INext
+  ): Promise<IResponse>;
 }
