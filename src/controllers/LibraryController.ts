@@ -129,6 +129,22 @@ export class LibraryController {
     }
   }
 
+  public async putExternalResource(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const { uuid, id, ...externalResource } = req.body;
+      const user = req.user;
+      const content = (await this._libraryService.PutExternalResource(user, uuid, externalResource)) ?? {};
+      return res.json({ content });
+    } catch (err) {
+      this._logger.log({ origin: 'putExternalResource', message: err.message, data: { user: req.user, body: req.body } }, 'error');
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
+
   public async deleteLibraryObject(
     req: IRequest,
     res: IResponse,

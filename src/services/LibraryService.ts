@@ -9,6 +9,8 @@ import {
   User,
   ItemMatchPayload,
   MatchUuidsResult,
+  ExternalResource,
+  ExternalResourceDb,
 } from '../types/user';
 import { Knex } from 'knex';
 import database from '../database';
@@ -117,75 +119,85 @@ export class LibraryService {
       const objectDB = isValidUUID(uuid)
         ? await this._libraryDB.getLibraryByUuid(user.id_user, uuid)
         : await this._libraryDB.getLibrary(user.id_user, cleanPath);
+      
+      if (!objectDB || objectDB.length <= 0) return []
+
+      const externals = await this.dbGetExternalResources(objectDB.map( ob => ob.id_library_item))
+      const externalsMp = externals.reduce((acc, source) => {
+        const libId = source.library_item_id;
+        
+        if (!acc[libId]) {
+          acc[libId] = [];
+        }
+        
+        acc[libId].push(source);
+        return acc;
+      }, {} as Record<number, ExternalResourceDb[]>);
       const library: LibraryItem[] = [];
-      // Only the deprecated presign branch needs the storage prefix; resolve it
-      // once up front (not per item) when signing, and skip the lookup entirely
-      // for clients on the proxy path.
       const storagePrefix = options.withPresign
         ? await this._prefix.getPrefix(user)
         : null;
-      if (objectDB?.length) {
-        for (let index = 0; index < objectDB.length; index++) {
-          const itemDb = objectDB[index];
-          let fileUrl: string = null;
-          let thumbnail: string = null;
-          switch (options.appVersion) {
-            case '2023-10-29':
-            case 'latest':
-              fileUrl =
-                parseInt(itemDb.type) === parseInt(LibraryItemType.BOOK)
-                  ? `${process.env.PROXY_FILE_URL}/${encodeURIComponent(
-                      itemDb.key,
-                    )}`
-                  : null;
-              thumbnail = itemDb.thumbnail
+      for (let index = 0; index < objectDB.length; index++) {
+        const itemDb = objectDB[index];
+        let fileUrl: string = null;
+        let thumbnail: string = null;
+        switch (options.appVersion) {
+          case '2023-10-29':
+          case 'latest':
+            fileUrl =
+              parseInt(itemDb.type) === parseInt(LibraryItemType.BOOK)
+                ? `${process.env.PROXY_FILE_URL}/${encodeURIComponent(
+                    itemDb.key,
+                  )}`
+                : null;
+            thumbnail = itemDb.thumbnail
                 ? `${
                     process.env.PROXY_FILE_URL
                   }/_thumbnail/${encodeURIComponent(itemDb.thumbnail)}`
                 : null;
-              break;
-            default: // deprecated old part
-              if (options.withPresign) {
-                const originalFile = itemDb.source_path || itemDb.key;
-                const { url } = await this._storage.getPresignedUrl({
-                  key: `${storagePrefix}/${originalFile}`,
+            break;
+          default: // deprecated old part
+            if (options.withPresign) {
+              const originalFile = itemDb.source_path || itemDb.key;
+              const { url } = await this._storage.GetPresignedUrl({
+                key: `${storagePrefix}/${originalFile}`,
+                type: StorageAction.GET,
+              });
+              fileUrl = url;
+
+              if (itemDb.thumbnail) {
+                const { url } = await this._storage.GetPresignedUrl({
+                  key: `${storagePrefix}_thumbnail/${itemDb.thumbnail}`,
                   type: StorageAction.GET,
                 });
-                fileUrl = url;
-
-                if (itemDb.thumbnail) {
-                  const { url } = await this._storage.getPresignedUrl({
-                    key: `${storagePrefix}_thumbnail/${itemDb.thumbnail}`,
-                    type: StorageAction.GET,
-                  });
-                  thumbnail = url;
-                }
+                thumbnail = url;
               }
-              break;
-          }
-
-          const libObj: LibraryItem = {
-            uuid: itemDb.uuid,
-            relativePath: itemDb.key,
-            originalFileName: itemDb.original_filename,
-            title: itemDb.title,
-            details: itemDb.details,
-            speed: itemDb.speed,
-            currentTime: itemDb.actual_time
-              ? parseFloat(itemDb.actual_time)
-              : 0,
-            duration: parseFloat(itemDb.duration),
-            percentCompleted: itemDb.percent_completed,
-            isFinished: itemDb.is_finish,
-            orderRank: itemDb.order_rank || 0,
-            lastPlayDateTimestamp: itemDb.last_play_date,
-            type: itemDb.type,
-            url: fileUrl,
-            thumbnail,
-            synced: itemDb.synced,
-          };
-          library.push(libObj);
+            }
+            break;
         }
+
+        const libObj: LibraryItem = {
+          uuid: itemDb.uuid,
+          relativePath: itemDb.key,
+          originalFileName: itemDb.original_filename,
+          title: itemDb.title,
+          details: itemDb.details,
+          speed: itemDb.speed,
+          currentTime: itemDb.actual_time
+            ? parseFloat(itemDb.actual_time)
+            : 0,
+          duration: parseFloat(itemDb.duration),
+          percentCompleted: itemDb.percent_completed,
+          isFinished: itemDb.is_finish,
+          orderRank: itemDb.order_rank || 0,
+          lastPlayDateTimestamp: itemDb.last_play_date,
+          type: itemDb.type,
+          url: fileUrl,
+          thumbnail,
+          synced: itemDb.synced,
+          externalResources: externalsMp[itemDb.id_library_item]
+        };
+        library.push(libObj);
       }
       return library;
     } catch (err) {
@@ -752,7 +764,42 @@ export class LibraryService {
     }
   }
 
-  async getLastItemPlayed(
+  async PutExternalResource(user: User, libraryItemUuid: string, externalResource: ExternalResource): Promise<ExternalResource> {
+    const trx = await this.db.transaction();
+    try {
+      const [libraryItem] = await this.dbGetLibraryByUuid(user.id_user, libraryItemUuid, null, trx);
+
+      if (!libraryItem) {
+        throw Error(
+          `Item not found: "${libraryItemUuid}"`,
+        );
+      }
+
+      const existingExternalResource = await this.dbGetExternalResource(libraryItem.id_library_item, externalResource.providerId, externalResource.providerName, trx)
+      if (existingExternalResource) return externalResource;
+
+      const insertedRow = await this.dbInsertExternalResource(libraryItem.id_library_item, externalResource, trx)
+
+      if (!insertedRow) {
+        throw Error(
+          `ExternalResource not inserted: "${JSON.stringify(externalResource)}"`,
+        );
+      }
+      
+      await trx.commit();
+      return insertedRow;
+    } catch (err) {
+      await trx?.rollback();
+      this._logger.log({
+        origin: 'PutExternalResource',
+        message: err.stack || err.message,
+        data: { user, libraryItemUuid, externalResource },
+      });
+      throw Error(err);
+    }
+  }
+
+  async dbGetLastItemPlayed(
     user: User,
     options: { withPresign?: boolean; appVersion: string },
     trx?: Knex.Transaction,
@@ -983,6 +1030,79 @@ export class LibraryService {
         data: { user, params },
       });
       throw Error(err);
+    }
+  }
+
+  async dbInsertExternalResource(
+    library_item_id: number,
+    externalResource: ExternalResource,
+    trx?: Knex.Transaction,
+  ): Promise<ExternalResourceDb> {
+    try {
+      const db = trx || this.db;
+      const rowToInsert: Omit<ExternalResourceDb, 'id' | 'created_at' | 'updated_at'> = {
+        ...externalResource,
+        library_item_id
+      };
+      // Perform the insert
+      const [newRow] = await db('external_resources')
+        .insert(rowToInsert)
+        .returning("*");
+      // Handle differences between Postgres (returns object/array) and MySQL (returns number)
+      return newRow as ExternalResourceDb;
+    } catch (err) {
+      this._logger.log({
+        origin: 'dbInsertExternalResource',
+        message: err.message,
+        data: { library_item_id, externalResource },
+      });
+      return null;
+    }
+  }
+
+  async dbGetExternalResource(
+    libraryItemId: number,
+    providerId: string,
+    providerName: string,
+    trx?: Knex.Transaction,
+  ): Promise<ExternalResourceDb> {
+    try {
+      const db = trx || this.db;
+      const [object] = await db('external_resources')
+        .where({
+          library_item_id: libraryItemId,
+          providerId,
+          providerName
+        })
+        .debug(false);
+      return object;
+    } catch (err) {
+      this._logger.log({
+        origin: 'dbGetExternalResource',
+        message: err.message,
+        data: { libraryItemId, providerId, providerName },
+      });
+      return null;
+    }
+  }
+
+  async dbGetExternalResources(
+    libraryItemIds: number[],
+    trx?: Knex.Transaction,
+  ): Promise<ExternalResourceDb[]> {
+    try {
+      const db = trx || this.db;
+      const objects = await db('external_resources')
+        .whereIn('library_item_id', libraryItemIds)
+        .debug(false);
+      return objects as ExternalResourceDb[];
+    } catch (err) {
+      this._logger.log({
+        origin: 'dbGetExternalResources',
+        message: err.message,
+        data: { libraryItemIds },
+      });
+      return null;
     }
   }
 

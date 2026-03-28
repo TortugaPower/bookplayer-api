@@ -149,6 +149,22 @@ export interface LibraryItem {
   synced?: boolean;
   source_path?: string;
   uuid?: string;
+  externalResources?: ExternalResource[] | null | undefined;
+}
+
+export interface ExternalResource {
+  providerName: string;
+  providerId: string;
+  syncStatus: string;
+  lastSyncedAt: Date | null;
+  processedFile: boolean;
+}
+
+export interface ExternalResourceDb extends ExternalResource {
+  id: number;
+  library_item_id: number;
+  created_at: Date;
+  updated_at: Date;
 }
 
 export interface LibraryItemMovedDB {
