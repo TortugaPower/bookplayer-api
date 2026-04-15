@@ -11,6 +11,7 @@ import {
   MatchUuidsResult,
   ExternalResource,
   ExternalResourceDb,
+  SubscriptionTierEnum
 } from '../types/user';
 import { Knex } from 'knex';
 import database from '../database';
@@ -122,7 +123,7 @@ export class LibraryService {
       
       if (!objectDB || objectDB.length <= 0) return []
 
-      const externals = await this.dbGetExternalResources(objectDB.map( ob => ob.id_library_item))
+      const externals = await this._libraryDB.getExternalResources(objectDB.map( ob => ob.id_library_item))
       const externalsMp = externals.reduce((acc, source) => {
         const libId = source.library_item_id;
         
@@ -133,7 +134,7 @@ export class LibraryService {
         acc[libId].push(source);
         return acc;
       }, {} as Record<number, ExternalResourceDb[]>);
-      console.log('hey ho record', externalsMp)
+
       const library: LibraryItem[] = [];
       const storagePrefix = options.withPresign
         ? await this._prefix.getPrefix(user)
@@ -200,7 +201,6 @@ export class LibraryService {
         };
         library.push(libObj);
       }
-      console.log('hey ho 2', library)
       return library;
     } catch (err) {
       this._logger.log({
@@ -319,18 +319,26 @@ export class LibraryService {
           throw new Error(`Failed to create library item at key=${cleanPath}`);
         }
       }
+      const apiResponse = (await this.parseLibraryItemDb(
+        itemDb,
+        LibraryItemOutput.API,
+      )) as LibraryItem;
+      
+
+      if (!user.subscriptions?.includes(SubscriptionTierEnum.PRO)) {
+        apiResponse.url = null;
+        return apiResponse
+      }
+
       const resourcePath = `${storagePrefix}/${libObj.source_path}`;
 
       const { url, expires_in } = await this._storage.getPresignedUrl({
         key: resourcePath,
         type: StorageAction.PUT,
       });
-      const apiResponse = (await this.parseLibraryItemDb(
-        itemDb,
-        LibraryItemOutput.API,
-      )) as LibraryItem;
       apiResponse.url = url;
       apiResponse.expires_in = expires_in;
+      console.log("HEY HO YES PRO SIGNED", url)
       return apiResponse;
     } catch (err) {
       this._logger.log({
@@ -769,7 +777,7 @@ export class LibraryService {
   async PutExternalResource(user: User, libraryItemUuid: string, externalResource: ExternalResource): Promise<ExternalResource> {
     const trx = await this.db.transaction();
     try {
-      const [libraryItem] = await this.dbGetLibraryByUuid(user.id_user, libraryItemUuid, null, trx);
+      const [libraryItem] = await this._libraryDB.getLibraryByUuid(user.id_user, libraryItemUuid, null, trx);
 
       if (!libraryItem) {
         throw Error(
@@ -777,7 +785,7 @@ export class LibraryService {
         );
       }
 
-      const existingExternalResource = await this.dbGetExternalResource(libraryItem.id_library_item, externalResource.providerId, externalResource.providerName, trx)
+      const existingExternalResource = await this._libraryDB.getExternalResource(libraryItem.id_library_item, externalResource.providerId, externalResource.providerName, trx)
       if (existingExternalResource) return externalResource;
 
       const insertedRow = await this.dbInsertExternalResource(libraryItem.id_library_item, externalResource, trx)
@@ -813,7 +821,7 @@ export class LibraryService {
         itemDb,
         LibraryItemOutput.API,
       )) as LibraryItem;
-      const externals = await this.dbGetExternalResources([(itemDb as LibraryItemDB).id_library_item]);
+      const externals = await this._libraryDB.getExternalResources([(itemDb as LibraryItemDB).id_library_item]);
       item.externalResources = externals;
       switch (options.appVersion) {
         case '2023-10-29':
@@ -1059,52 +1067,6 @@ export class LibraryService {
         origin: 'dbInsertExternalResource',
         message: err.message,
         data: { library_item_id, externalResource },
-      });
-      return null;
-    }
-  }
-
-  async dbGetExternalResource(
-    libraryItemId: number,
-    providerId: string,
-    providerName: string,
-    trx?: Knex.Transaction,
-  ): Promise<ExternalResourceDb> {
-    try {
-      const db = trx || this.db;
-      const [object] = await db('external_resources')
-        .where({
-          library_item_id: libraryItemId,
-          providerId,
-          providerName
-        })
-        .debug(false);
-      return object;
-    } catch (err) {
-      this._logger.log({
-        origin: 'dbGetExternalResource',
-        message: err.message,
-        data: { libraryItemId, providerId, providerName },
-      });
-      return null;
-    }
-  }
-
-  async dbGetExternalResources(
-    libraryItemIds: number[],
-    trx?: Knex.Transaction,
-  ): Promise<ExternalResourceDb[]> {
-    try {
-      const db = trx || this.db;
-      const objects = await db('external_resources')
-        .whereIn('library_item_id', libraryItemIds)
-        .debug(false);
-      return objects as ExternalResourceDb[];
-    } catch (err) {
-      this._logger.log({
-        origin: 'dbGetExternalResources',
-        message: err.message,
-        data: { libraryItemIds },
       });
       return null;
     }

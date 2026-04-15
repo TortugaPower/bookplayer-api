@@ -8,6 +8,7 @@ import {
   UserEvent,
   UserEventEnum,
   UserSession,
+  UserState,
 } from '../../types/user';
 
 export class UserDB {

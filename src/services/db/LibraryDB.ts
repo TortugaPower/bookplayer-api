@@ -3,6 +3,7 @@ import database from '../../database';
 import { logger } from '../LoggerService';
 import {
   Bookmark,
+  ExternalResourceDb,
   ItemMatchPayload,
   LibraryItemDB,
   LibraryItemMovedDB,
@@ -716,5 +717,51 @@ export class LibraryDB {
     await trx('library_items')
       .where({ user_id: params.user_id, key: params.key, active: true })
       .update({ uuid: params.uuid });
+  }
+
+  async getExternalResource(
+    libraryItemId: number,
+    providerId: string,
+    providerName: string,
+    trx?: Knex.Transaction,
+  ): Promise<ExternalResourceDb | null> {
+    try {
+      const db = trx || this.db;
+      const [object] = await db('external_resources')
+        .where({
+          library_item_id: libraryItemId,
+          providerId,
+          providerName
+        })
+        .debug(false);
+      return object;
+    } catch (err) {
+      this._logger.log({
+        origin: 'LibraryDB.getExternalResource',
+        message: err.message,
+        data: { libraryItemId, providerId, providerName },
+      });
+      return null;
+    }
+  }
+
+  async getExternalResources(
+    libraryItemIds: number[],
+    trx?: Knex.Transaction,
+  ): Promise<ExternalResourceDb[] | null> {
+    try {
+      const db = trx || this.db;
+      const objects = await db('external_resources')
+        .whereIn('library_item_id', libraryItemIds)
+        .debug(false);
+      return objects as ExternalResourceDb[];
+    } catch (err) {
+      this._logger.log({
+        origin: 'LibraryDB.getExternalResources',
+        message: err.message,
+        data: { libraryItemIds },
+      });
+      return null;
+    }
   }
 }
