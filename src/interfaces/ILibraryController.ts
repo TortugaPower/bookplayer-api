@@ -45,6 +45,11 @@ export interface ILibraryController {
     res: IResponse,
     _: INext,
   ): Promise<IResponse>;
+  itemPutRequest(
+    req: IRequest,
+    res: IResponse,
+    _: INext,
+  ): Promise<IResponse>;
   renameLibraryObject(
     req: IRequest,
     res: IResponse,

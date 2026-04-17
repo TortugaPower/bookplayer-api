@@ -1,6 +1,7 @@
 import express from 'express';
 import { LibraryController } from '../controllers/LibraryController';
-import { checkSubscription } from './middlewares/subscription';
+import { checkSubscription, requireSubscription } from './middlewares/subscription';
+import { SubscriptionTierEnum } from '../types/user';
 
 const LibraryRouter = express.Router();
 const controller = new LibraryController();
@@ -46,6 +47,9 @@ LibraryRouter.put('/bookmark', checkSubscription, (req, res, next) =>
 );
 LibraryRouter.post('/thumbnail_set', checkSubscription, (req, res, next) =>
   controller.itemThumbnailPutRequest(req, res).catch(next),
+);
+LibraryRouter.post('/external_set', checkSubscription, requireSubscription([SubscriptionTierEnum.PRO]), (req, res, next) =>
+  controller.itemPutRequest(req, res).catch(next),
 );
 LibraryRouter.get('/keys', checkSubscription, (req, res, next) =>
   controller.getUserLibraryKeys(req, res).catch(next),

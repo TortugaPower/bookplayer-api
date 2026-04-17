@@ -324,6 +324,29 @@ export class LibraryController {
     }
   }
 
+  public async itemPutRequest(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const user = req.user;
+      const data = req.body as {
+        uuid: string;
+      };
+      const url = await this._libraryService.sourcePutRequest(user, data);
+      if (!url) {
+        throw new Error('problem creating the request url');
+      }
+      return res.json({
+        url
+      });
+    } catch (err) {
+      this._logger.log({ origin: 'itemPutRequest', message: err.message, data: { user: req.user, body: req.body } }, 'error');
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
+
   public async renameLibraryObject(
     req: IRequest,
     res: IResponse,

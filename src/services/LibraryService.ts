@@ -159,7 +159,7 @@ export class LibraryService {
                 : null;
             break;
           default: // deprecated old part
-            if (options.withPresign) {
+            if (options.withPresign && user.subscriptions.includes(SubscriptionTierEnum.PRO)) {
               const originalFile = itemDb.source_path || itemDb.key;
               const { url } = await this._storage.GetPresignedUrl({
                 key: `${storagePrefix}/${originalFile}`,
@@ -240,14 +240,16 @@ export class LibraryService {
               : null;
           break;
         default: // deprecated old part
-          const originalFile = itemDb.source_path || itemDb.key;
-          const storagePrefix = await this._prefix.getPrefix(user);
-          const { url, expires_in } = await this._storage.getPresignedUrl({
-            key: `${storagePrefix}/${originalFile}`,
-            type: StorageAction.GET,
-          });
-          fileUrl = url;
-          libObj.expires_in = expires_in;
+          if (user.subscriptions && user.subscriptions.includes(SubscriptionTierEnum.PRO)) {
+            const originalFile = itemDb.source_path || itemDb.key;
+            const storagePrefix = await this._prefix.getPrefix(user);
+            const { url, expires_in } = await this._storage.getPresignedUrl({
+              key: `${storagePrefix}/${originalFile}`,
+              type: StorageAction.GET,
+            });
+            fileUrl = url;
+            libObj.expires_in = expires_in;
+          }
           break;
       }
       libObj.url = fileUrl;
@@ -338,7 +340,6 @@ export class LibraryService {
       });
       apiResponse.url = url;
       apiResponse.expires_in = expires_in;
-      console.log("HEY HO YES PRO SIGNED", url)
       return apiResponse;
     } catch (err) {
       this._logger.log({
@@ -909,6 +910,37 @@ export class LibraryService {
     } catch (err) {
       this._logger.log({
         origin: 'LibraryService.thumbnailPutRequest',
+        message: err.message,
+        data: { user, params },
+      });
+      throw Error(err);
+    }
+  }
+
+  async sourcePutRequest(
+    user: User,
+    params: {
+      uuid: string;
+    },
+  ): Promise<string | boolean> {
+    try {
+      const { uuid } = params;
+      const objectDB = await this.dbGetLibraryByUuid(user.id_user, uuid, {
+        exactly: true,
+      });
+      const itemDb = objectDB?.[0];
+      if (!itemDb) {
+        throw new Error('Item not exists');
+      }
+      const originalFile = itemDb.source_path || itemDb.key;
+      const { url } = await this._storage.GetPresignedUrl({
+        key: `${user.email}/${originalFile}`,
+        type: StorageAction.GET,
+      });
+      return url;
+    } catch (err) {
+      this._logger.log({
+        origin: 'sourcePutRequest',
         message: err.message,
         data: { user, params },
       });

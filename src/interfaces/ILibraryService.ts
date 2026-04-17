@@ -84,6 +84,12 @@ export interface ILibraryService {
       uploaded?: boolean;
     },
   ): Promise<string | boolean>;
+  sourcePutRequest(
+    user: User,
+    params: {
+      uuid: string;
+    },
+  ): Promise<string | boolean>;
   renameLibraryObject(
     user: User,
     params: {
