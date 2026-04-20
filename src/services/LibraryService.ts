@@ -199,18 +199,27 @@ export class LibraryService {
     trx?: Knex.Transaction,
   ): Promise<LibraryItemDB[]> {
     try {
-      const { user_id, uuid, active } = params;
+      const { user_id, uuid, active, exactly } = params;
       if (!isValidUUID(uuid)) throw Error(`Invalid UUID ${uuid}. Wrong format`);
       const db = trx || this.db;
+      const targetItem = await db('library_items')
+        .select('key')
+        .where({ user_id, uuid })
+        .first();
+
+      if (!targetItem) {
+        return [];
+      }
+
       const objectsDeleted = await db('library_items as li')
         .update({
           active: false,
         })
         .where({
           user_id,
-          uuid,
           active: active === false ? active : true,
         })
+        .whereRaw('key like ?', [`${targetItem.key}${exactly ? '' : '%'}`])
         .returning('*');
       return objectsDeleted;
     } catch (err) {
