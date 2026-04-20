@@ -208,7 +208,7 @@ export class LibraryService {
         .first();
 
       if (!targetItem) {
-        throw new Error('Item not found');
+        return [];
       }
 
       const objectsDeleted = await db('library_items as li')
