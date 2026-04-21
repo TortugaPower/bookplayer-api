@@ -1,21 +1,20 @@
 import { inject, injectable } from 'inversify';
 import { TYPES } from '../ContainerTypes';
-import { IRequest, IResponse } from '../interfaces/IRequest';
-import { IStorageService } from '../interfaces/IStorageService';
-import { IStorageController } from '../interfaces/IStorageController';
-import { ILibraryService } from '../interfaces/ILibraryService';
+import { IRequest, IResponse } from '../types/http';
+import type { StorageService } from '../services/StorageService';
+import type { LibraryService } from '../services/LibraryService';
 import { Writable } from 'stream';
 import { S3ClientHeaders, S3ValidHeader } from '../types/user';
-import { ILoggerService } from '../interfaces/ILoggerService';
+import type { LoggerService } from '../services/LoggerService';
 
 @injectable()
-export class StorageController implements IStorageController {
+export class StorageController {
   @inject(TYPES.StorageService)
-  private _storageService: IStorageService;
+  private _storageService: StorageService;
   @inject(TYPES.LibraryService)
-  private _libraryService: ILibraryService;
+  private _libraryService: LibraryService;
   @inject(TYPES.LoggerService)
-  private _loggerService: ILoggerService;
+  private _loggerService: LoggerService;
 
   public async getProxyLibrary(
     req: IRequest,

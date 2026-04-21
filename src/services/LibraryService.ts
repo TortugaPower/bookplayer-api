@@ -14,8 +14,8 @@ import {
 import { Knex } from 'knex';
 import database from '../database';
 import { TYPES } from '../ContainerTypes';
-import { IStorageService } from '../interfaces/IStorageService';
-import { ILoggerService } from '../interfaces/ILoggerService';
+import type { StorageService } from './StorageService';
+import type { LoggerService } from './LoggerService';
 import moment from 'moment-timezone';
 import {
   splitArrayGroups,
@@ -27,9 +27,9 @@ import {
 @injectable()
 export class LibraryService {
   @inject(TYPES.StorageService)
-  private _storage: IStorageService;
+  private _storage: StorageService;
   @inject(TYPES.LoggerService)
-  private _logger: ILoggerService;
+  private _logger: LoggerService;
   private db = database;
 
   async dbGetAllKeys(user_id: number): Promise<string[]> {

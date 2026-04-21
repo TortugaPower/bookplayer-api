@@ -1,7 +1,7 @@
 import rateLimit, { Options, RateLimitRequestHandler } from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import { createClient } from 'redis';
-import { IRequest, IResponse } from '../../interfaces/IRequest';
+import { IRequest, IResponse } from '../../types/http';
 
 let redisClient: ReturnType<typeof createClient> | null = null;
 

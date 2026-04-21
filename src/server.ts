@@ -8,20 +8,20 @@ import authMiddleware from './api/middlewares/auth';
 import { globalRateLimiter, initRateLimitRedis } from './api/middlewares/rateLimit';
 import { maintenanceMode } from './api/middlewares/maintenance';
 import { createServer } from 'http';
-import { IRouterHttp } from './interfaces/IRouters';
+import type { RouterHttp } from './api/RouterHttp';
 import { TYPES } from './ContainerTypes';
 import { handleError } from './api/middlewares/error';
-import { IRestClientService } from './interfaces/IRestClientService';
-import { ILoggerService } from './interfaces/ILoggerService';
-import { IVersionMiddleware } from './interfaces/IVersionMiddleware';
-import { IResponse, IRequest, INext } from './interfaces/IRequest';
+import type { RestClientService } from './services/RestClientService';
+import type { LoggerService } from './services/LoggerService';
+import type { VersionMiddleware } from './api/middlewares/version';
+import { IResponse, IRequest, INext } from './types/http';
 
 @injectable()
 export class Server {
-  @inject(TYPES.RouterHttp) private _authRouter: IRouterHttp;
-  @inject(TYPES.RestClientService) private _restClient: IRestClientService;
-  @inject(TYPES.LoggerService) private _logger: ILoggerService;
-  @inject(TYPES.VersionMiddleware) private version: IVersionMiddleware;
+  @inject(TYPES.RouterHttp) private _authRouter: RouterHttp;
+  @inject(TYPES.RestClientService) private _restClient: RestClientService;
+  @inject(TYPES.LoggerService) private _logger: LoggerService;
+  @inject(TYPES.VersionMiddleware) private version: VersionMiddleware;
   async run(): Promise<void> {
     // Initialize Redis for rate limiting before starting the server
     await initRateLimitRedis();

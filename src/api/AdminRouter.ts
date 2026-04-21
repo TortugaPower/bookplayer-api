@@ -1,17 +1,16 @@
 import express from 'express';
 import { inject, injectable } from 'inversify';
 import { TYPES } from '../ContainerTypes';
-import { IAdminRouter } from '../interfaces/IRouters';
-import { IAdminController } from '../interfaces/IAdminController';
-import { IUserAdminMiddleware } from '../interfaces/IUserAdminMiddleware';
-import { INext, IRequest, IResponse } from '../interfaces/IRequest';
+import type { AdminController } from '../controllers/AdminController';
+import type { UserAdminMiddleware } from './middlewares/admin';
+import { INext, IRequest, IResponse } from '../types/http';
 
 @injectable()
-export class AdminRouter implements IAdminRouter {
+export class AdminRouter {
   @inject(TYPES.AdminController)
-  private _controller: IAdminController;
+  private _controller: AdminController;
   @inject(TYPES.UserAdminMiddleware)
-  private _adminMiddleware: IUserAdminMiddleware;
+  private _adminMiddleware: UserAdminMiddleware;
 
   get(): express.Router {
     const router = express.Router();
@@ -19,10 +18,10 @@ export class AdminRouter implements IAdminRouter {
       this._adminMiddleware.checkUserAdmin(req, res, next);
 
     router.get('/users_usage', middleWareInit, (req, res, next) =>
-      this._controller.SetUserUsage(req, res, next).catch(next),
+      this._controller.SetUserUsage(req, res).catch(next),
     );
     router.get('/validate_sync', middleWareInit, (req, res, next) =>
-      this._controller.validateSyncBooks(req, res, next).catch(next),
+      this._controller.validateSyncBooks(req, res).catch(next),
     );
     return router;
   }

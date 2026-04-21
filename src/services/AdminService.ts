@@ -1,12 +1,12 @@
 import { inject, injectable } from 'inversify';
 import { LibraryItemType, UserBooks, UserStats } from '../types/user';
 import database from '../database';
-import { ILoggerService } from '../interfaces/ILoggerService';
+import type { LoggerService } from './LoggerService';
 import { TYPES } from '../ContainerTypes';
 @injectable()
 export class AdminService {
   @inject(TYPES.LoggerService)
-  private _logger: ILoggerService;
+  private _logger: LoggerService;
   private db = database;
 
   async GetUsersStats(): Promise<UserStats[]> {

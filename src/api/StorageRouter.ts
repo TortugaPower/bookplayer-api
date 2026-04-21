@@ -1,24 +1,23 @@
 import express from 'express';
 import { inject, injectable } from 'inversify';
 import { TYPES } from '../ContainerTypes';
-import { IStorageRouter } from '../interfaces/IRouters';
-import { INext, IRequest, IResponse } from '../interfaces/IRequest';
-import { IStorageController } from '../interfaces/IStorageController';
-import { ISubscriptionMiddleware } from '../interfaces/ISubscriptionMiddleware';
+import { INext, IRequest, IResponse } from '../types/http';
+import type { StorageController } from '../controllers/StorageController';
+import type { SubscriptionMiddleware } from './middlewares/subscription';
 
 @injectable()
-export class StorageRouter implements IStorageRouter {
+export class StorageRouter {
   @inject(TYPES.StorageController)
-  private _controller: IStorageController;
+  private _controller: StorageController;
   @inject(TYPES.SubscriptionMiddleware)
-  private _subscription: ISubscriptionMiddleware;
+  private _subscription: SubscriptionMiddleware;
 
   get(): express.Router {
     const router = express.Router();
     const middleWareInit = (req: IRequest, res: IResponse, next: INext) =>
       this._subscription.checkSubscription(req, res, next);
     router.get('/*', middleWareInit, (req, res, next) =>
-      this._controller.getProxyLibrary(req, res, next).catch(next),
+      this._controller.getProxyLibrary(req, res).catch(next),
     );
     return router;
   }

@@ -1,20 +1,19 @@
 import { inject, injectable } from 'inversify';
 import { TYPES } from '../ContainerTypes';
-import { IUserService } from '../interfaces/IUserService';
-import { IRequest, IResponse } from '../interfaces/IRequest';
-import { IUserController } from '../interfaces/IUserController';
+import type { UserServices } from '../services/UserServices';
+import { IRequest, IResponse } from '../types/http';
 import cookie from 'cookie';
 import { UserEventEnum } from '../types/user';
 import moment from 'moment-timezone';
-import { ISubscriptionService } from '../interfaces/ISubscriptionService';
+import type { SubscriptionService } from '../services/SubscriptionService';
 import { gte } from 'semver';
 
 @injectable()
-export class UserController implements IUserController {
+export class UserController {
   @inject(TYPES.UserServices)
-  private _userService: IUserService;
+  private _userService: UserServices;
   @inject(TYPES.SubscriptionService)
-  private _subscriptionService: ISubscriptionService;
+  private _subscriptionService: SubscriptionService;
 
   private readonly minVersion = '5.6.0';
 

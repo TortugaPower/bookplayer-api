@@ -17,12 +17,12 @@ import { Knex } from 'knex';
 import database from '../database';
 import JWT from 'jsonwebtoken';
 import moment from 'moment';
-import { ILoggerService } from '../interfaces/ILoggerService';
+import type { LoggerService } from './LoggerService';
 import { TYPES } from '../ContainerTypes';
 @injectable()
 export class UserServices {
   @inject(TYPES.LoggerService)
-  private _logger: ILoggerService;
+  private _logger: LoggerService;
   private db = database;
   async TokenUser(UserLogged: User): Promise<string> {
     const token = JWT.sign(

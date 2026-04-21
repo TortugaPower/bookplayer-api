@@ -2,21 +2,21 @@ import { injectable, inject } from 'inversify';
 import { SubscriptionUser, RevenuecatEvent } from '../types/user';
 import database from '../database';
 import { TYPES } from '../ContainerTypes';
-import { IRestClientService } from '../interfaces/IRestClientService';
-import { IUserService } from '../interfaces/IUserService';
-import { ILoggerService } from '../interfaces/ILoggerService';
-import { IEmailService } from '../interfaces/IEmailService';
+import type { RestClientService } from './RestClientService';
+import type { UserServices } from './UserServices';
+import type { LoggerService } from './LoggerService';
+import type { EmailService } from './EmailService';
 
 @injectable()
 export class SubscriptionService {
   @inject(TYPES.RestClientService)
-  private _restClient: IRestClientService;
+  private _restClient: RestClientService;
   @inject(TYPES.UserServices)
-  private _user: IUserService;
+  private _user: UserServices;
   @inject(TYPES.LoggerService)
-  private _logger: ILoggerService;
+  private _logger: LoggerService;
   @inject(TYPES.EmailService)
-  private _email: IEmailService;
+  private _email: EmailService;
   private db = database;
 
   async ParseNewEvent(event: RevenuecatEvent): Promise<SubscriptionUser> {

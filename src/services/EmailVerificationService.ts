@@ -4,21 +4,20 @@ import JWT from 'jsonwebtoken';
 import moment from 'moment';
 import database from '../database';
 import { TYPES } from '../ContainerTypes';
-import { ILoggerService } from '../interfaces/ILoggerService';
-import { IEmailService } from '../interfaces/IEmailService';
-import { IEmailVerificationService } from '../interfaces/IEmailVerificationService';
-import { IUserService } from '../interfaces/IUserService';
+import type { LoggerService } from './LoggerService';
+import type { EmailService } from './EmailService';
+import type { UserServices } from './UserServices';
 
 @injectable()
-export class EmailVerificationService implements IEmailVerificationService {
+export class EmailVerificationService {
   @inject(TYPES.LoggerService)
-  private _logger: ILoggerService;
+  private _logger: LoggerService;
 
   @inject(TYPES.EmailService)
-  private _emailService: IEmailService;
+  private _emailService: EmailService;
 
   @inject(TYPES.UserServices)
-  private _userService: IUserService;
+  private _userService: UserServices;
 
   private db = database;
 

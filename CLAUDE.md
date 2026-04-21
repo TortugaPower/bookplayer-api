@@ -76,8 +76,7 @@ src/
 │       └── admin.ts       # Admin permission check
 ├── controllers/           # HTTP handlers
 ├── services/              # Business logic
-├── interfaces/            # TypeScript interfaces (I* prefix)
-├── types/                 # Type definitions
+├── types/                 # Type definitions (including http.ts for IRequest/IResponse/INext)
 ├── database/
 │   ├── index.ts          # Knex connection
 │   └── migrations/       # Database migrations
@@ -86,27 +85,20 @@ src/
 
 ## Dependency Injection (Inversify)
 
-All components use Inversify for dependency injection.
+All components use Inversify for dependency injection. Bindings use Symbols from `ContainerTypes.ts` as runtime keys; concrete classes are used directly for compile-time types (no `IFoo` interface layer).
 
 ### Adding a New Service
 
-1. **Create the interface** (`src/interfaces/IMyService.ts`):
-```typescript
-export interface IMyService {
-  DoSomething(param: string): Promise<Result>;
-}
-```
-
-2. **Create the service** (`src/services/MyService.ts`):
+1. **Create the service** (`src/services/MyService.ts`):
 ```typescript
 import { injectable, inject } from 'inversify';
 import { TYPES } from '../ContainerTypes';
-import { ILoggerService } from '../interfaces/ILoggerService';
+import type { LoggerService } from './LoggerService';
 
 @injectable()
-export class MyService implements IMyService {
+export class MyService {
   @inject(TYPES.LoggerService)
-  private _logger: ILoggerService;
+  private _logger: LoggerService;
 
   private db = database;
 
@@ -126,7 +118,7 @@ export class MyService implements IMyService {
 }
 ```
 
-3. **Add symbol** (`src/ContainerTypes.ts`):
+2. **Add symbol** (`src/ContainerTypes.ts`):
 ```typescript
 const TYPES = {
   // ...existing types
@@ -134,22 +126,25 @@ const TYPES = {
 };
 ```
 
-4. **Register binding** (`src/container.ts`):
+3. **Register binding** (`src/container.ts`):
 ```typescript
-import { IMyService } from './interfaces/IMyService';
 import { MyService } from './services/MyService';
 
-container.bind<IMyService>(TYPES.MyService).to(MyService);
+container.bind<MyService>(TYPES.MyService).to(MyService);
 ```
 
-5. **Inject in controller**:
+4. **Inject in controller**:
 ```typescript
+import type { MyService } from '../services/MyService';
+
 @injectable()
 export class MyController {
   @inject(TYPES.MyService)
-  private _myService: IMyService;
+  private _myService: MyService;
 }
 ```
+
+**Note:** Use `import type` for injected class types. This keeps the property-type annotation compile-time only (no runtime import edge), matching the behavior of the old interface-based pattern and avoiding accidental circular imports via `emitDecoratorMetadata`.
 
 ## Request Flow
 
@@ -177,12 +172,12 @@ The auth middleware (`src/api/middlewares/auth.ts`):
 
 ```typescript
 @injectable()
-export class UserController implements IUserController {
+export class UserController {
   @inject(TYPES.UserServices)
-  private _userService: IUserService;
+  private _userService: UserServices;
 
   @inject(TYPES.LoggerService)
-  private _logger: ILoggerService;
+  private _logger: LoggerService;
 
   public async InitLogin(req: IRequest, res: IResponse): Promise<IResponse> {
     try {
@@ -371,7 +366,7 @@ POST /v1/user/email/confirm { "email": "...", "code": "123456" }
 
 ```typescript
 @inject(TYPES.S3Service)
-private _s3: IS3Service;
+private _s3: S3Service;
 
 // List objects
 const items = await this._s3.listObjects(prefix);
@@ -387,7 +382,7 @@ const exists = await this._s3.objectExists(key);
 
 ```typescript
 @inject(TYPES.CacheService)
-private _cache: ICacheService;
+private _cache: RedisService;
 
 // Store object
 await this._cache.setObject('key', { data }, ttlSeconds);
@@ -471,7 +466,7 @@ public async Handler(req: IRequest, res: IResponse): Promise<IResponse> {
 
 ```typescript
 @inject(TYPES.LoggerService)
-private _logger: ILoggerService;
+private _logger: LoggerService;
 
 // Info (default)
 this._logger.log({
@@ -569,7 +564,6 @@ describe('MyService', () => {
 1. Add route in appropriate router (`src/api/*Router.ts`)
 2. Add controller method (`src/controllers/*Controller.ts`)
 3. Add service method if needed (`src/services/*Service.ts`)
-4. Update interface if adding new methods
 
 ### Adding a New Database Table
 
@@ -611,7 +605,6 @@ See `docker/ecs/README.md` for deployment instructions.
 
 | Type | Convention | Example |
 |------|------------|---------|
-| Interfaces | `I` prefix | `IUserService` |
 | Services | PascalCase | `UserServices` |
 | Controllers | PascalCase + Controller | `UserController` |
 | Routers | PascalCase + Router | `UserRouter` |

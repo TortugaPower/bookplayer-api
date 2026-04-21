@@ -1,20 +1,19 @@
 import { injectable, inject } from 'inversify';
 import { TYPES } from '../ContainerTypes';
-import { IS3Service } from '../interfaces/IS3Service';
-import { ILoggerService } from '../interfaces/ILoggerService';
-import { IRestClientService } from '../interfaces/IRestClientService';
-import { IGlacierMigrationService } from '../interfaces/IGlacierMigrationService';
+import type { S3Service } from './S3Service';
+import type { LoggerService } from './LoggerService';
+import type { RestClientService } from './RestClientService';
 import database from '../database';
 
 
 @injectable()
-export class GlacierMigrationService implements IGlacierMigrationService {
+export class GlacierMigrationService {
   @inject(TYPES.S3Service)
-  private _s3: IS3Service;
+  private _s3: S3Service;
   @inject(TYPES.LoggerService)
-  private _logger: ILoggerService;
+  private _logger: LoggerService;
   @inject(TYPES.RestClientService)
-  private _restClient: IRestClientService;
+  private _restClient: RestClientService;
   private db = database;
 
   async HandleExpirationEvent(

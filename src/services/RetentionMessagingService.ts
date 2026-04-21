@@ -3,14 +3,13 @@ import { SignedDataVerifier, Environment } from '@apple/app-store-server-library
 import * as fs from 'fs';
 import * as path from 'path';
 import { TYPES } from '../ContainerTypes';
-import { ILoggerService } from '../interfaces/ILoggerService';
-import { IRetentionMessagingService } from '../interfaces/IRetentionMessagingService';
+import type { LoggerService } from './LoggerService';
 import { DecodedRealtimeRequestBody } from '../types/retentionMessaging';
 
 @injectable()
-export class RetentionMessagingService implements IRetentionMessagingService {
+export class RetentionMessagingService {
   @inject(TYPES.LoggerService)
-  private _logger: ILoggerService;
+  private _logger: LoggerService;
 
   private _verifier: SignedDataVerifier | null = null;
 

@@ -16,14 +16,14 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { S3ClientHeaders, StorageAction, StorageItem } from '../types/user';
 import moment from 'moment';
-import { ILoggerService } from '../interfaces/ILoggerService';
+import type { LoggerService } from './LoggerService';
 import { TYPES } from '../ContainerTypes';
 import { Readable } from 'stream';
 
 @injectable()
 export class S3Service {
   @inject(TYPES.LoggerService)
-  private _logger: ILoggerService;
+  private _logger: LoggerService;
   private client = new S3({ region: process.env.S3_REGION });
   private clientObject = new S3Client({ region: process.env.S3_REGION });
 

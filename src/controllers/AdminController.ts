@@ -1,20 +1,18 @@
 import { inject, injectable } from 'inversify';
 import { TYPES } from '../ContainerTypes';
-import { IUserService } from '../interfaces/IUserService';
-import { IRequest, IResponse } from '../interfaces/IRequest';
-import { IAdminController } from '../interfaces/IAdminController';
-import { IAdminService } from '../interfaces/IAdminService';
-import { IStorageService } from '../interfaces/IStorageService';
-import { ILoggerService } from '../interfaces/ILoggerService';
+import { IRequest, IResponse } from '../types/http';
+import type { AdminService } from '../services/AdminService';
+import type { StorageService } from '../services/StorageService';
+import type { LoggerService } from '../services/LoggerService';
 
 @injectable()
-export class AdminController implements IAdminController {
+export class AdminController {
   @inject(TYPES.AdminService)
-  private _adminService: IAdminService;
+  private _adminService: AdminService;
   @inject(TYPES.StorageService)
-  private _storageService: IStorageService;
+  private _storageService: StorageService;
   @inject(TYPES.LoggerService)
-  private _loggerService: ILoggerService;
+  private _loggerService: LoggerService;
 
   public async SetUserUsage(req: IRequest, res: IResponse): Promise<IResponse> {
     const users = await this._adminService.GetUsersStats();

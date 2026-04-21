@@ -1,4 +1,4 @@
-import { IRequest, IResponse, INext } from '../../interfaces/IRequest';
+import { IRequest, IResponse, INext } from '../../types/http';
 
 /**
  * Maintenance mode middleware.

@@ -1,9 +1,9 @@
 import { inject, injectable } from 'inversify';
 import { TYPES } from '../ContainerTypes';
-import { PasskeyService } from '../services/PasskeyService';
-import { IEmailVerificationService } from '../interfaces/IEmailVerificationService';
-import { ILoggerService } from '../interfaces/ILoggerService';
-import { IRequest, IResponse, INext } from '../interfaces/IRequest';
+import type { PasskeyService } from '../services/PasskeyService';
+import type { EmailVerificationService } from '../services/EmailVerificationService';
+import type { LoggerService } from '../services/LoggerService';
+import { IRequest, IResponse, INext } from '../types/http';
 
 @injectable()
 export class PasskeyController {
@@ -11,10 +11,10 @@ export class PasskeyController {
   private _passkeyService: PasskeyService;
 
   @inject(TYPES.EmailVerificationService)
-  private _emailVerificationService: IEmailVerificationService;
+  private _emailVerificationService: EmailVerificationService;
 
   @inject(TYPES.LoggerService)
-  private _logger: ILoggerService;
+  private _logger: LoggerService;
 
   // Email verification endpoints
   public async sendVerificationCode(

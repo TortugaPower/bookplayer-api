@@ -1,18 +1,17 @@
 import { inject, injectable } from 'inversify';
 import { TYPES } from '../ContainerTypes';
-import { IRequest, IResponse } from '../interfaces/IRequest';
-import { ILibraryController } from '../interfaces/ILibraryController';
-import { ILibraryService } from '../interfaces/ILibraryService';
-import { ILoggerService } from '../interfaces/ILoggerService';
+import { IRequest, IResponse } from '../types/http';
+import type { LibraryService } from '../services/LibraryService';
+import type { LoggerService } from '../services/LoggerService';
 import { Bookmark, LibraryItem } from '../types/user';
 import { isValidUUID } from '../utils';
 
 @injectable()
-export class LibraryController implements ILibraryController {
+export class LibraryController {
   @inject(TYPES.LibraryService)
-  private _libraryService: ILibraryService;
+  private _libraryService: LibraryService;
   @inject(TYPES.LoggerService)
-  private _logger: ILoggerService;
+  private _logger: LoggerService;
 
   public async getUserLibraryKeys(
     req: IRequest,

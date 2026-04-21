@@ -1,13 +1,12 @@
 import { inject, injectable } from 'inversify';
-import { IRequest, IResponse, INext } from '../../interfaces/IRequest';
-import { ISubscriptionMiddleware } from '../../interfaces/ISubscriptionMiddleware';
+import { IRequest, IResponse, INext } from '../../types/http';
 import { TYPES } from '../../ContainerTypes';
-import { IUserService } from '../../interfaces/IUserService';
+import type { UserServices } from '../../services/UserServices';
 import { SubscriptionEventType } from '../../types/user';
 
 @injectable()
-export class SubscriptionMiddleware implements ISubscriptionMiddleware {
-  @inject(TYPES.UserServices) private _userService: IUserService;
+export class SubscriptionMiddleware {
+  @inject(TYPES.UserServices) private _userService: UserServices;
   async checkSubscription(
     req: IRequest,
     res: IResponse,

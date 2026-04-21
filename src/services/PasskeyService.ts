@@ -12,7 +12,7 @@ import JWT from 'jsonwebtoken';
 import moment from 'moment';
 import database from '../database';
 import { TYPES } from '../ContainerTypes';
-import { ILoggerService } from '../interfaces/ILoggerService';
+import type { LoggerService } from './LoggerService';
 import type {
   PasskeyCredential,
   AuthMethod,
@@ -25,7 +25,7 @@ import type {
 @injectable()
 export class PasskeyService {
   @inject(TYPES.LoggerService)
-  private _logger: ILoggerService;
+  private _logger: LoggerService;
 
   private db = database;
 

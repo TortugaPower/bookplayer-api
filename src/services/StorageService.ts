@@ -5,16 +5,16 @@ import {
   StorageItem,
   StorageOrigin,
 } from '../types/user';
-import { ILoggerService } from '../interfaces/ILoggerService';
+import type { LoggerService } from './LoggerService';
 import { TYPES } from '../ContainerTypes';
-import { IS3Service } from '../interfaces/IS3Service';
+import type { S3Service } from './S3Service';
 import { Readable } from 'stream';
 @injectable()
 export class StorageService {
   @inject(TYPES.LoggerService)
-  private _logger: ILoggerService;
+  private _logger: LoggerService;
   @inject(TYPES.S3Service)
-  private _s3Service: IS3Service;
+  private _s3Service: S3Service;
 
   async fileExists(params: {
     key: string;

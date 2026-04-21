@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { IRequest, IResponse, INext } from '../../interfaces/IRequest';
+import { IRequest, IResponse, INext } from '../../types/http';
 
 class HttpException extends Error {
   status: number;
