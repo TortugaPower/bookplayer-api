@@ -1,16 +1,13 @@
 import express from 'express';
-import { inject, injectable } from 'inversify';
-import { TYPES } from '../ContainerTypes';
-import type { AdminController } from '../controllers/AdminController';
-import type { UserAdminMiddleware } from './middlewares/admin';
+import { AdminController } from '../controllers/AdminController';
+import { UserAdminMiddleware } from './middlewares/admin';
 import { INext, IRequest, IResponse } from '../types/http';
 
-@injectable()
 export class AdminRouter {
-  @inject(TYPES.AdminController)
-  private _controller: AdminController;
-  @inject(TYPES.UserAdminMiddleware)
-  private _adminMiddleware: UserAdminMiddleware;
+  constructor(
+    private _controller: AdminController,
+    private _adminMiddleware: UserAdminMiddleware,
+  ) {}
 
   get(): express.Router {
     const router = express.Router();

@@ -57,8 +57,7 @@ yarn dev
 src/
 ├── main.ts                 # Entry point
 ├── server.ts               # Express app setup
-├── container.ts            # Dependency injection bindings
-├── ContainerTypes.ts       # DI symbols
+├── composition.ts          # Composition root (manual DI wire-up)
 ├── config/
 │   └── envs.ts            # Environment validation
 ├── api/
@@ -83,24 +82,20 @@ src/
 └── utils/                # Shared utilities
 ```
 
-## Dependency Injection (Inversify)
+## Dependency Injection (Composition Root)
 
-All components use Inversify for dependency injection. Bindings use Symbols from `ContainerTypes.ts` as runtime keys; concrete classes are used directly for compile-time types (no `IFoo` interface layer).
+Components use **manual constructor injection**. A single composition root (`src/composition.ts`) instantiates the full object graph in topological order and hands the root `Server` back to `main.ts`. No DI framework, no decorators, no Symbols.
 
 ### Adding a New Service
 
 1. **Create the service** (`src/services/MyService.ts`):
 ```typescript
-import { injectable, inject } from 'inversify';
-import { TYPES } from '../ContainerTypes';
-import type { LoggerService } from './LoggerService';
+import { LoggerService } from './LoggerService';
 
-@injectable()
 export class MyService {
-  @inject(TYPES.LoggerService)
-  private _logger: LoggerService;
-
   private db = database;
+
+  constructor(private _logger: LoggerService) {}
 
   async DoSomething(param: string): Promise<Result> {
     try {
@@ -118,33 +113,29 @@ export class MyService {
 }
 ```
 
-2. **Add symbol** (`src/ContainerTypes.ts`):
+2. **Wire it up in `src/composition.ts`** at the correct tier (after all its deps are instantiated):
 ```typescript
-const TYPES = {
-  // ...existing types
-  MyService: Symbol.for('MyService'),
-};
+const myService = new MyService(logger);
 ```
 
-3. **Register binding** (`src/container.ts`):
+3. **Inject in a controller** — add a constructor param:
 ```typescript
-import { MyService } from './services/MyService';
+import { MyService } from '../services/MyService';
 
-container.bind<MyService>(TYPES.MyService).to(MyService);
-```
-
-4. **Inject in controller**:
-```typescript
-import type { MyService } from '../services/MyService';
-
-@injectable()
 export class MyController {
-  @inject(TYPES.MyService)
-  private _myService: MyService;
+  constructor(private _myService: MyService) {}
 }
 ```
 
-**Note:** Use `import type` for injected class types. This keeps the property-type annotation compile-time only (no runtime import edge), matching the behavior of the old interface-based pattern and avoiding accidental circular imports via `emitDecoratorMetadata`.
+Then update the controller's line in `composition.ts`:
+```typescript
+const myController = new MyController(myService);
+```
+
+**Notes:**
+- `constructor(private _foo: Foo)` is TypeScript **parameter-property** sugar — it declares and assigns `this._foo` in one step. Method bodies keep using `this._foo.x()` exactly as before.
+- Controller handler signatures are `async method(req: IRequest, res: IResponse): Promise<IResponse>`. The router wraps calls with `.catch(next)` for error handling, so controllers don't need to accept `next` unless they actually use it (see `PasskeyController` for that exception).
+- Tests instantiate services directly with mock constructor args: `new MyService(mockLogger as any)`. No container needed.
 
 ## Request Flow
 
@@ -171,13 +162,11 @@ The auth middleware (`src/api/middlewares/auth.ts`):
 ### 3. Controller Pattern
 
 ```typescript
-@injectable()
 export class UserController {
-  @inject(TYPES.UserServices)
-  private _userService: UserServices;
-
-  @inject(TYPES.LoggerService)
-  private _logger: LoggerService;
+  constructor(
+    private _userService: UserServices,
+    private _logger: LoggerService,
+  ) {}
 
   public async InitLogin(req: IRequest, res: IResponse): Promise<IResponse> {
     try {
@@ -208,7 +197,6 @@ export class UserController {
 ```typescript
 import database from '../database';
 
-@injectable()
 export class MyService {
   private db = database;
 
@@ -365,8 +353,7 @@ POST /v1/user/email/confirm { "email": "...", "code": "123456" }
 ### AWS S3
 
 ```typescript
-@inject(TYPES.S3Service)
-private _s3: S3Service;
+// constructor(private _s3: S3Service) {}
 
 // List objects
 const items = await this._s3.listObjects(prefix);
@@ -381,8 +368,7 @@ const exists = await this._s3.objectExists(key);
 ### Redis Cache
 
 ```typescript
-@inject(TYPES.CacheService)
-private _cache: RedisService;
+// constructor(private _cache: RedisService) {}
 
 // Store object
 await this._cache.setObject('key', { data }, ttlSeconds);
@@ -465,8 +451,7 @@ public async Handler(req: IRequest, res: IResponse): Promise<IResponse> {
 ## Logging
 
 ```typescript
-@inject(TYPES.LoggerService)
-private _logger: LoggerService;
+// constructor(private _logger: LoggerService) {}
 
 // Info (default)
 this._logger.log({
@@ -594,7 +579,6 @@ See `docker/ecs/README.md` for deployment instructions.
 | Node.js | 20.x | Runtime |
 | TypeScript | 4.5.5 | Language |
 | Express | 4.17.2 | HTTP framework |
-| Inversify | 6.0.1 | Dependency injection |
 | Knex.js | 1.0.2 | Database query builder |
 | PostgreSQL | - | Database |
 | Redis | 4.3.0 | Caching |

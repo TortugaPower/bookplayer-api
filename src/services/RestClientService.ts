@@ -1,9 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import axios, { AxiosError, AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
-import { injectable } from 'inversify';
 import { RestClientProps } from '../types/user';
 
-@injectable()
 export class RestClientService {
   private axiosInstance = axios.create();
 

@@ -1,12 +1,9 @@
 import express from 'express';
-import { inject, injectable } from 'inversify';
-import { TYPES } from '../ContainerTypes';
 import { PasskeyController } from '../controllers/PasskeyController';
 import { authRateLimiter, emailVerificationRateLimiter } from './middlewares/rateLimit';
 
-@injectable()
 export class PasskeyRouter {
-  @inject(TYPES.PasskeyController) private _controller: PasskeyController;
+  constructor(private _controller: PasskeyController) {}
 
   get(): express.Router {
     const router = express.Router();

@@ -1,25 +1,19 @@
 import crypto from 'crypto';
-import { inject, injectable } from 'inversify';
 import JWT from 'jsonwebtoken';
 import moment from 'moment';
 import database from '../database';
-import { TYPES } from '../ContainerTypes';
-import type { LoggerService } from './LoggerService';
-import type { EmailService } from './EmailService';
-import type { UserServices } from './UserServices';
+import { LoggerService } from './LoggerService';
+import { EmailService } from './EmailService';
+import { UserServices } from './UserServices';
 
-@injectable()
 export class EmailVerificationService {
-  @inject(TYPES.LoggerService)
-  private _logger: LoggerService;
-
-  @inject(TYPES.EmailService)
-  private _emailService: EmailService;
-
-  @inject(TYPES.UserServices)
-  private _userService: UserServices;
-
   private db = database;
+
+  constructor(
+    private _logger: LoggerService,
+    private _emailService: EmailService,
+    private _userService: UserServices,
+  ) {}
 
   // Configuration
   private readonly CODE_LENGTH = 6;

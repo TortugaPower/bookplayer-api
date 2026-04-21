@@ -1,15 +1,13 @@
 import express from 'express';
-import { inject, injectable } from 'inversify';
-import { TYPES } from '../ContainerTypes';
-import type { LibraryController } from '../controllers/LibraryController';
-import type { SubscriptionMiddleware } from './middlewares/subscription';
+import { LibraryController } from '../controllers/LibraryController';
+import { SubscriptionMiddleware } from './middlewares/subscription';
 import { INext, IRequest, IResponse } from '../types/http';
 
-@injectable()
 export class LibraryRouter {
-  @inject(TYPES.LibraryController) private _controller: LibraryController;
-  @inject(TYPES.SubscriptionMiddleware)
-  private _subscription: SubscriptionMiddleware;
+  constructor(
+    private _controller: LibraryController,
+    private _subscription: SubscriptionMiddleware,
+  ) {}
 
   get(): express.Router {
     const router = express.Router();

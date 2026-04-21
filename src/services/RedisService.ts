@@ -1,14 +1,11 @@
 import { createClient } from 'redis';
-import { inject, injectable } from 'inversify';
 import { RedisClientType } from '@redis/client';
-import type { LoggerService } from './LoggerService';
-import { TYPES } from '../ContainerTypes';
+import { LoggerService } from './LoggerService';
 
-@injectable()
 export class RedisService {
-  @inject(TYPES.LoggerService)
-  private _logger: LoggerService;
   private static client: RedisClientType;
+
+  constructor(private _logger: LoggerService) {}
 
   async connectCacheService() {
     try {

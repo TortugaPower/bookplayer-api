@@ -1,11 +1,8 @@
-import { inject, injectable } from 'inversify';
 import { IRequest, IResponse, INext } from '../../types/http';
-import { TYPES } from '../../ContainerTypes';
-import type { UserServices } from '../../services/UserServices';
+import { UserServices } from '../../services/UserServices';
 
-@injectable()
 export class UserAdminMiddleware {
-  @inject(TYPES.UserServices) private _userService: UserServices;
+  constructor(private _userService: UserServices) {}
   async checkUserAdmin(
     req: IResponse,
     res: IRequest,

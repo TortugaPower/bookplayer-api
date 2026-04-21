@@ -1,20 +1,17 @@
 import nodemailer from 'nodemailer';
 import AWS from 'aws-sdk';
-import { inject, injectable } from 'inversify';
-import { TYPES } from '../ContainerTypes';
-import type { LoggerService } from './LoggerService';
+import { LoggerService } from './LoggerService';
 import { EmailObj } from '../types/user';
 
-@injectable()
 export class EmailService {
-  @inject(TYPES.LoggerService)
-  private _logger: LoggerService;
   private client = nodemailer.createTransport({
     SES: {
       ses: new AWS.SES({ signatureVersion: 'v4', region: 'us-east-1' }),
       aws: AWS,
     },
   });
+
+  constructor(private _logger: LoggerService) {}
 
   async sendEmail(options: EmailObj): Promise<string> {
     try {

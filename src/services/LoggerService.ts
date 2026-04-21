@@ -1,7 +1,5 @@
-import { injectable } from 'inversify';
 import winston from 'winston';
 
-@injectable()
 export class LoggerService {
   private logger: winston.Logger;
 

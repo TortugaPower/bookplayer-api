@@ -1,13 +1,11 @@
-import { inject, injectable } from 'inversify';
 import { LibraryItemType, UserBooks, UserStats } from '../types/user';
 import database from '../database';
-import type { LoggerService } from './LoggerService';
-import { TYPES } from '../ContainerTypes';
-@injectable()
+import { LoggerService } from './LoggerService';
+
 export class AdminService {
-  @inject(TYPES.LoggerService)
-  private _logger: LoggerService;
   private db = database;
+
+  constructor(private _logger: LoggerService) {}
 
   async GetUsersStats(): Promise<UserStats[]> {
     try {

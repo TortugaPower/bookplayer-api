@@ -1,22 +1,20 @@
 import express from 'express';
-import { inject, injectable } from 'inversify';
-import type { UserRouter } from './UserRouter';
-import type { LibraryRouter } from './LibraryRouter';
-import type { AdminRouter } from './AdminRouter';
-import type { StorageRouter } from './StorageRouter';
-import type { RetentionMessagingRouter } from './RetentionMessagingRouter';
-import type { PasskeyRouter } from './PasskeyRouter';
-import { TYPES } from '../ContainerTypes';
+import { UserRouter } from './UserRouter';
+import { LibraryRouter } from './LibraryRouter';
+import { AdminRouter } from './AdminRouter';
+import { StorageRouter } from './StorageRouter';
+import { RetentionMessagingRouter } from './RetentionMessagingRouter';
+import { PasskeyRouter } from './PasskeyRouter';
 
-@injectable()
 export class RouterHttp {
-  @inject(TYPES.UserRouter) private _authRouter: UserRouter;
-  @inject(TYPES.LibraryRouter) private _libraryRouter: LibraryRouter;
-  @inject(TYPES.StorageRouter) private _storageRouter: StorageRouter;
-  @inject(TYPES.AdminRouter) private _adminRouter: AdminRouter;
-  @inject(TYPES.PasskeyRouter) private _passkeyRouter: PasskeyRouter;
-  @inject(TYPES.RetentionMessagingRouter)
-  private _retentionRouter: RetentionMessagingRouter;
+  constructor(
+    private _authRouter: UserRouter,
+    private _libraryRouter: LibraryRouter,
+    private _adminRouter: AdminRouter,
+    private _storageRouter: StorageRouter,
+    private _passkeyRouter: PasskeyRouter,
+    private _retentionRouter: RetentionMessagingRouter,
+  ) {}
 
   get(): express.Router {
     const router = express.Router();

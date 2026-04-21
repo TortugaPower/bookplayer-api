@@ -16,8 +16,7 @@ describe('PasskeyService', () => {
   let service: PasskeyService;
 
   beforeEach(() => {
-    service = new PasskeyService();
-    (service as any)._logger = mockLoggerService;
+    service = new PasskeyService(mockLoggerService as any);
     (service as any).db = getTestTransaction();
     mockLoggerService.log.mockClear();
   });

@@ -1,20 +1,14 @@
-import { inject, injectable } from 'inversify';
-import { TYPES } from '../ContainerTypes';
-import type { PasskeyService } from '../services/PasskeyService';
-import type { EmailVerificationService } from '../services/EmailVerificationService';
-import type { LoggerService } from '../services/LoggerService';
+import { PasskeyService } from '../services/PasskeyService';
+import { EmailVerificationService } from '../services/EmailVerificationService';
+import { LoggerService } from '../services/LoggerService';
 import { IRequest, IResponse, INext } from '../types/http';
 
-@injectable()
 export class PasskeyController {
-  @inject(TYPES.PasskeyService)
-  private _passkeyService: PasskeyService;
-
-  @inject(TYPES.EmailVerificationService)
-  private _emailVerificationService: EmailVerificationService;
-
-  @inject(TYPES.LoggerService)
-  private _logger: LoggerService;
+  constructor(
+    private _passkeyService: PasskeyService,
+    private _emailVerificationService: EmailVerificationService,
+    private _logger: LoggerService,
+  ) {}
 
   // Email verification endpoints
   public async sendVerificationCode(

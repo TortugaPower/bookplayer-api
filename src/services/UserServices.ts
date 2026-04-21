@@ -1,5 +1,4 @@
 import crypto from 'crypto';
-import { inject, injectable } from 'inversify';
 import {
   AppleJWT,
   SignApple,
@@ -17,13 +16,12 @@ import { Knex } from 'knex';
 import database from '../database';
 import JWT from 'jsonwebtoken';
 import moment from 'moment';
-import type { LoggerService } from './LoggerService';
-import { TYPES } from '../ContainerTypes';
-@injectable()
+import { LoggerService } from './LoggerService';
+
 export class UserServices {
-  @inject(TYPES.LoggerService)
-  private _logger: LoggerService;
   private db = database;
+
+  constructor(private _logger: LoggerService) {}
   async TokenUser(UserLogged: User): Promise<string> {
     const token = JWT.sign(
       JSON.stringify({ ...UserLogged, time: moment().unix() }),

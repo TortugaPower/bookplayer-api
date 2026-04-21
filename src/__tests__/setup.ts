@@ -1,4 +1,3 @@
-import 'reflect-metadata';
 import { Knex } from 'knex';
 import { randomUUID } from 'crypto';
 import database from '../database';

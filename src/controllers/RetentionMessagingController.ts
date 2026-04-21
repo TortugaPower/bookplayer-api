@@ -1,16 +1,13 @@
-import { inject, injectable } from 'inversify';
-import { TYPES } from '../ContainerTypes';
 import { IRequest, IResponse } from '../types/http';
-import type { RetentionMessagingService } from '../services/RetentionMessagingService';
-import type { LoggerService } from '../services/LoggerService';
+import { RetentionMessagingService } from '../services/RetentionMessagingService';
+import { LoggerService } from '../services/LoggerService';
 import { RealtimeResponseBody } from '../types/retentionMessaging';
 
-@injectable()
 export class RetentionMessagingController {
-  @inject(TYPES.RetentionMessagingService)
-  private _retentionService: RetentionMessagingService;
-  @inject(TYPES.LoggerService)
-  private _logger: LoggerService;
+  constructor(
+    private _retentionService: RetentionMessagingService,
+    private _logger: LoggerService,
+  ) {}
 
   public async HandleRetentionRequest(
     req: IRequest,

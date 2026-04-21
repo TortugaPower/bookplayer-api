@@ -1,19 +1,16 @@
-import { inject, injectable } from 'inversify';
-import { TYPES } from '../ContainerTypes';
-import type { UserServices } from '../services/UserServices';
+import { UserServices } from '../services/UserServices';
 import { IRequest, IResponse } from '../types/http';
 import cookie from 'cookie';
 import { UserEventEnum } from '../types/user';
 import moment from 'moment-timezone';
-import type { SubscriptionService } from '../services/SubscriptionService';
+import { SubscriptionService } from '../services/SubscriptionService';
 import { gte } from 'semver';
 
-@injectable()
 export class UserController {
-  @inject(TYPES.UserServices)
-  private _userService: UserServices;
-  @inject(TYPES.SubscriptionService)
-  private _subscriptionService: SubscriptionService;
+  constructor(
+    private _userService: UserServices,
+    private _subscriptionService: SubscriptionService,
+  ) {}
 
   private readonly minVersion = '5.6.0';
 

@@ -1,4 +1,3 @@
-import { inject, injectable } from 'inversify';
 import {
   Bookmark,
   LibraryItemDB,
@@ -13,9 +12,8 @@ import {
 } from '../types/user';
 import { Knex } from 'knex';
 import database from '../database';
-import { TYPES } from '../ContainerTypes';
-import type { StorageService } from './StorageService';
-import type { LoggerService } from './LoggerService';
+import { StorageService } from './StorageService';
+import { LoggerService } from './LoggerService';
 import moment from 'moment-timezone';
 import {
   splitArrayGroups,
@@ -24,13 +22,13 @@ import {
   isValidUUID,
 } from '../utils';
 
-@injectable()
 export class LibraryService {
-  @inject(TYPES.StorageService)
-  private _storage: StorageService;
-  @inject(TYPES.LoggerService)
-  private _logger: LoggerService;
   private db = database;
+
+  constructor(
+    private _storage: StorageService,
+    private _logger: LoggerService,
+  ) {}
 
   async dbGetAllKeys(user_id: number): Promise<string[]> {
     try {

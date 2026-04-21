@@ -1,4 +1,3 @@
-import { injectable, inject } from 'inversify';
 import express from 'express';
 import bodyParser from 'body-parser';
 import compress from 'compression';
@@ -8,20 +7,20 @@ import authMiddleware from './api/middlewares/auth';
 import { globalRateLimiter, initRateLimitRedis } from './api/middlewares/rateLimit';
 import { maintenanceMode } from './api/middlewares/maintenance';
 import { createServer } from 'http';
-import type { RouterHttp } from './api/RouterHttp';
-import { TYPES } from './ContainerTypes';
+import { RouterHttp } from './api/RouterHttp';
 import { handleError } from './api/middlewares/error';
-import type { RestClientService } from './services/RestClientService';
-import type { LoggerService } from './services/LoggerService';
-import type { VersionMiddleware } from './api/middlewares/version';
+import { RestClientService } from './services/RestClientService';
+import { LoggerService } from './services/LoggerService';
+import { VersionMiddleware } from './api/middlewares/version';
 import { IResponse, IRequest, INext } from './types/http';
 
-@injectable()
 export class Server {
-  @inject(TYPES.RouterHttp) private _authRouter: RouterHttp;
-  @inject(TYPES.RestClientService) private _restClient: RestClientService;
-  @inject(TYPES.LoggerService) private _logger: LoggerService;
-  @inject(TYPES.VersionMiddleware) private version: VersionMiddleware;
+  constructor(
+    private _authRouter: RouterHttp,
+    private _restClient: RestClientService,
+    private _logger: LoggerService,
+    private version: VersionMiddleware,
+  ) {}
   async run(): Promise<void> {
     // Initialize Redis for rate limiting before starting the server
     await initRateLimitRedis();

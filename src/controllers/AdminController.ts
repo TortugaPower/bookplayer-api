@@ -1,18 +1,14 @@
-import { inject, injectable } from 'inversify';
-import { TYPES } from '../ContainerTypes';
 import { IRequest, IResponse } from '../types/http';
-import type { AdminService } from '../services/AdminService';
-import type { StorageService } from '../services/StorageService';
-import type { LoggerService } from '../services/LoggerService';
+import { AdminService } from '../services/AdminService';
+import { StorageService } from '../services/StorageService';
+import { LoggerService } from '../services/LoggerService';
 
-@injectable()
 export class AdminController {
-  @inject(TYPES.AdminService)
-  private _adminService: AdminService;
-  @inject(TYPES.StorageService)
-  private _storageService: StorageService;
-  @inject(TYPES.LoggerService)
-  private _loggerService: LoggerService;
+  constructor(
+    private _adminService: AdminService,
+    private _storageService: StorageService,
+    private _loggerService: LoggerService,
+  ) {}
 
   public async SetUserUsage(req: IRequest, res: IResponse): Promise<IResponse> {
     const users = await this._adminService.GetUsersStats();

@@ -1,13 +1,12 @@
-import { inject, injectable } from 'inversify';
 import { IRequest, IResponse, INext } from '../../types/http';
-import { TYPES } from '../../ContainerTypes';
-import type { UserServices } from '../../services/UserServices';
-import type { RedisService } from '../../services/RedisService';
+import { UserServices } from '../../services/UserServices';
+import { RedisService } from '../../services/RedisService';
 
-@injectable()
 export class VersionMiddleware {
-  @inject(TYPES.UserServices) private _userService: UserServices;
-  @inject(TYPES.CacheService) public _cacheService: RedisService;
+  constructor(
+    private _userService: UserServices,
+    public _cacheService: RedisService,
+  ) {}
   async checkVersion(
     req: IResponse,
     res: IRequest,

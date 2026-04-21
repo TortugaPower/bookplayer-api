@@ -1,20 +1,18 @@
-import { inject, injectable } from 'inversify';
 import {
   S3ClientHeaders,
   StorageAction,
   StorageItem,
   StorageOrigin,
 } from '../types/user';
-import type { LoggerService } from './LoggerService';
-import { TYPES } from '../ContainerTypes';
-import type { S3Service } from './S3Service';
+import { LoggerService } from './LoggerService';
+import { S3Service } from './S3Service';
 import { Readable } from 'stream';
-@injectable()
+
 export class StorageService {
-  @inject(TYPES.LoggerService)
-  private _logger: LoggerService;
-  @inject(TYPES.S3Service)
-  private _s3Service: S3Service;
+  constructor(
+    private _logger: LoggerService,
+    private _s3Service: S3Service,
+  ) {}
 
   async fileExists(params: {
     key: string;

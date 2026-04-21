@@ -1,5 +1,4 @@
 import crypto from 'crypto';
-import { inject, injectable } from 'inversify';
 import { Knex } from 'knex';
 import {
   generateRegistrationOptions,
@@ -11,8 +10,7 @@ import type { AuthenticatorTransportFuture } from '@simplewebauthn/types';
 import JWT from 'jsonwebtoken';
 import moment from 'moment';
 import database from '../database';
-import { TYPES } from '../ContainerTypes';
-import type { LoggerService } from './LoggerService';
+import { LoggerService } from './LoggerService';
 import type {
   PasskeyCredential,
   AuthMethod,
@@ -22,12 +20,10 @@ import type {
   UserWithExternalId,
 } from '../types/passkey';
 
-@injectable()
 export class PasskeyService {
-  @inject(TYPES.LoggerService)
-  private _logger: LoggerService;
-
   private db = database;
+
+  constructor(private _logger: LoggerService) {}
 
   // WebAuthn configuration
   private readonly rpID = process.env.WEBAUTHN_RP_ID;

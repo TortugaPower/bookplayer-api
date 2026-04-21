@@ -1,17 +1,13 @@
-import { injectable, inject } from 'inversify';
 import { SignedDataVerifier, Environment } from '@apple/app-store-server-library';
 import * as fs from 'fs';
 import * as path from 'path';
-import { TYPES } from '../ContainerTypes';
-import type { LoggerService } from './LoggerService';
+import { LoggerService } from './LoggerService';
 import { DecodedRealtimeRequestBody } from '../types/retentionMessaging';
 
-@injectable()
 export class RetentionMessagingService {
-  @inject(TYPES.LoggerService)
-  private _logger: LoggerService;
-
   private _verifier: SignedDataVerifier | null = null;
+
+  constructor(private _logger: LoggerService) {}
 
   private getVerifier(): SignedDataVerifier {
     if (this._verifier) {

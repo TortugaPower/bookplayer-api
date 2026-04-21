@@ -11,8 +11,7 @@ describe('UserServices - Duplicate Prevention', () => {
   let service: UserServices;
 
   beforeEach(() => {
-    service = new UserServices();
-    (service as any)._logger = mockLoggerService;
+    service = new UserServices(mockLoggerService as any);
     (service as any).db = getTestTransaction();
     mockLoggerService.log.mockClear();
   });

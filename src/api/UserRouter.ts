@@ -1,15 +1,13 @@
 import express from 'express';
-import { inject, injectable } from 'inversify';
-import { TYPES } from '../ContainerTypes';
-import type { UserController } from '../controllers/UserController';
-import type { SubscriptionController } from '../controllers/SubscriptionController';
+import { UserController } from '../controllers/UserController';
+import { SubscriptionController } from '../controllers/SubscriptionController';
 import { authRateLimiter } from './middlewares/rateLimit';
 
-@injectable()
 export class UserRouter {
-  @inject(TYPES.UserController) private _controller: UserController;
-  @inject(TYPES.SubscriptionController)
-  private _subscription: SubscriptionController;
+  constructor(
+    private _controller: UserController,
+    private _subscription: SubscriptionController,
+  ) {}
 
   get(): express.Router {
     const router = express.Router();

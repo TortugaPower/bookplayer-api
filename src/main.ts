@@ -1,13 +1,9 @@
-import 'reflect-metadata';
 import { Envs } from './config/envs';
-
-import { container } from './container';
-import { TYPES } from './ContainerTypes';
-import { Server } from './server';
+import { composeServer } from './composition';
 
 const startApp = async () => {
   Envs();
-  const server = container.get<Server>(TYPES.Server);
+  const server = composeServer();
   return server.run();
 };
 

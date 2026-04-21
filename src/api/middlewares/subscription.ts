@@ -1,12 +1,9 @@
-import { inject, injectable } from 'inversify';
 import { IRequest, IResponse, INext } from '../../types/http';
-import { TYPES } from '../../ContainerTypes';
-import type { UserServices } from '../../services/UserServices';
+import { UserServices } from '../../services/UserServices';
 import { SubscriptionEventType } from '../../types/user';
 
-@injectable()
 export class SubscriptionMiddleware {
-  @inject(TYPES.UserServices) private _userService: UserServices;
+  constructor(private _userService: UserServices) {}
   async checkSubscription(
     req: IRequest,
     res: IResponse,

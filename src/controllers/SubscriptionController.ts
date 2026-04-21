@@ -1,19 +1,15 @@
-import { inject, injectable } from 'inversify';
-import { TYPES } from '../ContainerTypes';
 import { IRequest, IResponse } from '../types/http';
-import type { LoggerService } from '../services/LoggerService';
+import { LoggerService } from '../services/LoggerService';
 import { RevenuecatEvent, SubscriptionEventType } from '../types/user';
-import type { SubscriptionService } from '../services/SubscriptionService';
-import type { GlacierMigrationService } from '../services/GlacierMigrationService';
+import { SubscriptionService } from '../services/SubscriptionService';
+import { GlacierMigrationService } from '../services/GlacierMigrationService';
 
-@injectable()
 export class SubscriptionController {
-  @inject(TYPES.SubscriptionService)
-  private _subscriptionService: SubscriptionService;
-  @inject(TYPES.LoggerService)
-  private _logger: LoggerService;
-  @inject(TYPES.GlacierMigrationService)
-  private _glacierService: GlacierMigrationService;
+  constructor(
+    private _subscriptionService: SubscriptionService,
+    private _logger: LoggerService,
+    private _glacierService: GlacierMigrationService,
+  ) {}
 
   public async RevenuecatWebhook(
     req: IRequest,

@@ -1,12 +1,8 @@
 import express from 'express';
-import { inject, injectable } from 'inversify';
-import { TYPES } from '../ContainerTypes';
-import type { RetentionMessagingController } from '../controllers/RetentionMessagingController';
+import { RetentionMessagingController } from '../controllers/RetentionMessagingController';
 
-@injectable()
 export class RetentionMessagingRouter {
-  @inject(TYPES.RetentionMessagingController)
-  private _controller: RetentionMessagingController;
+  constructor(private _controller: RetentionMessagingController) {}
 
   get(): express.Router {
     const router = express.Router();
