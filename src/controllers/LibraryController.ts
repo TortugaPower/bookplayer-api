@@ -189,13 +189,22 @@ export class LibraryController implements ILibraryController {
     res: IResponse,
   ): Promise<IResponse> {
     try {
-      const { relativePath } = req.body;
-
-      if (!relativePath) {
+      const { relativePath, uuid } = req.body;
+      const user = req.user;
+      let folderPath: string | undefined = relativePath;
+      if (isValidUUID(uuid)) {
+        const items = await this._libraryService.dbGetLibraryByUuid(user.id_user, uuid, {
+          exactly: true,
+        });
+        const item = items?.[0];
+        if (!item) {
+          throw new Error('Invalid folder');
+        }
+        folderPath = item.key;
+      } else if (!relativePath) {
         throw new Error('Invalid folder');
       }
-      const user = req.user;
-      const success = await this._libraryService.deleteFolderMoving(user, relativePath);
+      const success = await this._libraryService.deleteFolderMoving(user, folderPath);
       return res.json({ success });
     } catch (err) {
       this._logger.log({ origin: 'deleteFolderMoving', message: err.message, data: { user: req.user, body: req.body } }, 'error');
@@ -240,7 +249,7 @@ export class LibraryController implements ILibraryController {
     try {
       const user = req.user;
       const bookmark = req.body as Bookmark;
-      const itemDB = bookmark.uuid
+      const itemDB = isValidUUID(bookmark.uuid)
         ? await this._libraryService.dbGetLibraryByUuid(user.id_user, bookmark.uuid, {
           exactly: true,
         })
