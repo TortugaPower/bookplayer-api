@@ -47,7 +47,7 @@ export class S3Service {
     }
   }
 
-  async GetDirectoryContent(
+  async getDirectoryContent(
     path: string,
     isFolder = true,
   ): Promise<StorageItem[]> {
@@ -74,7 +74,7 @@ export class S3Service {
       return content.filter((item) => item.Key !== fixPath || !isFolder);
     } catch (err) {
       this._logger.log({
-        origin: 'S3: GetDirectoryContent',
+        origin: 'S3Service.getDirectoryContent',
         message: err.message,
         data: { path },
       });
@@ -82,7 +82,7 @@ export class S3Service {
     }
   }
 
-  async GetPresignedUrl(
+  async getPresignedUrl(
     key: string,
     type: StorageAction,
     bucket?: string,
@@ -112,7 +112,7 @@ export class S3Service {
       return { url, expires_in: expires };
     } catch (error) {
       this._logger.log({
-        origin: 'S3: GetPresignedUrl',
+        origin: 'S3Service.getPresignedUrl',
         message: error.message,
         data: { key, type },
       });
@@ -256,7 +256,7 @@ export class S3Service {
     }
   }
 
-  async GetObjectStream(
+  async getObjectStream(
     key: string,
     headers?: S3ClientHeaders,
   ): Promise<{
@@ -307,7 +307,7 @@ export class S3Service {
       };
     } catch (error) {
       this._logger.log({
-        origin: 'S3: GetObjectStream',
+        origin: 'S3Service.getObjectStream',
         error,
         data: { key },
       });

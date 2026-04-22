@@ -10,7 +10,7 @@ export class RetentionMessagingController {
     private _retentionService: RetentionMessagingService = new RetentionMessagingService(),
   ) {}
 
-  public async HandleRetentionRequest(
+  public async handleRetentionRequest(
     req: IRequest,
     res: IResponse,
   ): Promise<IResponse> {
@@ -19,17 +19,17 @@ export class RetentionMessagingController {
 
       if (!signedPayload) {
         this._logger.log({
-          origin: 'RetentionMessagingController.HandleRetentionRequest',
+          origin: 'RetentionMessagingController.handleRetentionRequest',
           message: 'Missing signedPayload in request body',
         });
         return res.status(400).json({});
       }
 
       // Verify and decode the JWS signed payload from Apple
-      const request = await this._retentionService.VerifyAndDecodeRequest(signedPayload);
+      const request = await this._retentionService.verifyAndDecodeRequest(signedPayload);
 
       // Select the appropriate retention message
-      const messageId = await this._retentionService.SelectRetentionMessage(request);
+      const messageId = await this._retentionService.selectRetentionMessage(request);
 
       if (!messageId) {
         // Return empty object to let Apple use default message
@@ -40,7 +40,7 @@ export class RetentionMessagingController {
       return res.json(response);
     } catch (err) {
       this._logger.log({
-        origin: 'RetentionMessagingController.HandleRetentionRequest',
+        origin: 'RetentionMessagingController.handleRetentionRequest',
         message: err.message,
       }, 'error');
       // Return empty response on error - Apple will use default message

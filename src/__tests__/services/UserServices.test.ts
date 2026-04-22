@@ -14,6 +14,8 @@ describe('UserServices - Duplicate Prevention', () => {
     service = new UserServices();
     (service as any)._logger = mockLoggerService;
     (service as any).db = getTestTransaction();
+    (service as any)._userDB.db = getTestTransaction();
+    (service as any)._userDB._logger = mockLoggerService;
     mockLoggerService.log.mockClear();
   });
 
@@ -30,7 +32,7 @@ describe('UserServices - Duplicate Prevention', () => {
         is_primary: true,
       });
 
-      const result = await service.GetAuthMethodByExternalId({
+      const result = await service.getAuthMethodByExternalId({
         auth_type: 'apple',
         external_id: 'apple-sub-12345',
       });
@@ -41,7 +43,7 @@ describe('UserServices - Duplicate Prevention', () => {
     });
 
     it('should return null when auth method not found', async () => {
-      const result = await service.GetAuthMethodByExternalId({
+      const result = await service.getAuthMethodByExternalId({
         auth_type: 'apple',
         external_id: 'nonexistent-id',
       });
@@ -62,7 +64,7 @@ describe('UserServices - Duplicate Prevention', () => {
         active: false,
       });
 
-      const result = await service.GetAuthMethodByExternalId({
+      const result = await service.getAuthMethodByExternalId({
         auth_type: 'apple',
         external_id: 'apple-sub-inactive',
       });
@@ -83,7 +85,7 @@ describe('UserServices - Duplicate Prevention', () => {
         external_id: 'apple-sub-deleted-user',
       });
 
-      const result = await service.GetAuthMethodByExternalId({
+      const result = await service.getAuthMethodByExternalId({
         auth_type: 'apple',
         external_id: 'apple-sub-deleted-user',
       });
@@ -102,7 +104,7 @@ describe('UserServices - Duplicate Prevention', () => {
       });
 
       // Should not find when looking for different auth type
-      const result = await service.GetAuthMethodByExternalId({
+      const result = await service.getAuthMethodByExternalId({
         auth_type: 'apple',
         external_id: 'credential-id-123',
       });
@@ -117,7 +119,7 @@ describe('UserServices - Duplicate Prevention', () => {
 
       const user = await createTestUser(trx, { email: 'test@example.com' });
 
-      const result = await service.AddAuthMethod(
+      const result = await service.addAuthMethod(
         {
           user_id: user.id_user,
           auth_type: 'apple',
@@ -152,7 +154,7 @@ describe('UserServices - Duplicate Prevention', () => {
       });
 
       // Try to create duplicate
-      const result = await service.AddAuthMethod(
+      const result = await service.addAuthMethod(
         {
           user_id: user.id_user,
           auth_type: 'apple',
@@ -176,7 +178,7 @@ describe('UserServices - Duplicate Prevention', () => {
       });
 
       // Different auth_type should be allowed
-      const result = await service.AddAuthMethod(
+      const result = await service.addAuthMethod(
         {
           user_id: user.id_user,
           auth_type: 'passkey',
@@ -193,7 +195,7 @@ describe('UserServices - Duplicate Prevention', () => {
 
       const user = await createTestUser(trx, { email: 'test@example.com' });
 
-      const result = await service.AddAuthMethod(
+      const result = await service.addAuthMethod(
         {
           user_id: user.id_user,
           auth_type: 'apple',
@@ -236,7 +238,7 @@ describe('UserServices - Duplicate Prevention', () => {
       expect(userByNewEmail).toBeUndefined();
 
       // Step 3: Look up by Apple ID in auth_methods - finds original user
-      const existingAuth = await service.GetAuthMethodByExternalId({
+      const existingAuth = await service.getAuthMethodByExternalId({
         auth_type: 'apple',
         external_id: appleId,
       });
@@ -257,7 +259,7 @@ describe('UserServices - Duplicate Prevention', () => {
       const newAppleId = 'brand-new-apple-id';
 
       // Step 1: Verify no existing auth method
-      const existingAuth = await service.GetAuthMethodByExternalId({
+      const existingAuth = await service.getAuthMethodByExternalId({
         auth_type: 'apple',
         external_id: newAppleId,
       });
@@ -269,7 +271,7 @@ describe('UserServices - Duplicate Prevention', () => {
       });
 
       // Step 3: Add auth method for future duplicate prevention
-      const authMethod = await service.AddAuthMethod(
+      const authMethod = await service.addAuthMethod(
         {
           user_id: newUser.id_user,
           auth_type: 'apple',
@@ -282,7 +284,7 @@ describe('UserServices - Duplicate Prevention', () => {
       expect(authMethod).not.toBeNull();
 
       // Step 4: Future lookups should find this user
-      const foundAuth = await service.GetAuthMethodByExternalId({
+      const foundAuth = await service.getAuthMethodByExternalId({
         auth_type: 'apple',
         external_id: newAppleId,
       });
@@ -296,7 +298,7 @@ describe('UserServices - Duplicate Prevention', () => {
       const user = await createTestUser(trx, { email: 'multi@example.com' });
 
       // Add Apple auth method
-      await service.AddAuthMethod(
+      await service.addAuthMethod(
         {
           user_id: user.id_user,
           auth_type: 'apple',
@@ -307,7 +309,7 @@ describe('UserServices - Duplicate Prevention', () => {
       );
 
       // Add Passkey auth method
-      await service.AddAuthMethod(
+      await service.addAuthMethod(
         {
           user_id: user.id_user,
           auth_type: 'passkey',
@@ -318,11 +320,11 @@ describe('UserServices - Duplicate Prevention', () => {
       );
 
       // Both should resolve to same user
-      const byApple = await service.GetAuthMethodByExternalId({
+      const byApple = await service.getAuthMethodByExternalId({
         auth_type: 'apple',
         external_id: 'apple-sub-multi',
       });
-      const byPasskey = await service.GetAuthMethodByExternalId({
+      const byPasskey = await service.getAuthMethodByExternalId({
         auth_type: 'passkey',
         external_id: 'passkey-credential-multi',
       });

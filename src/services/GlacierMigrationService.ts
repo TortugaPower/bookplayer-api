@@ -1,38 +1,37 @@
 import { S3Service } from './S3Service';
 import { logger } from './LoggerService';
 import { RestClientService } from './RestClientService';
-import database from '../database';
-
+import { SubscriptionDB } from './db/SubscriptionDB';
 
 export class GlacierMigrationService {
   private readonly _logger = logger;
-  private db = database;
 
   constructor(
     private _s3: S3Service = new S3Service(),
     private _restClient: RestClientService = new RestClientService(),
+    private _subscriptionDB: SubscriptionDB = new SubscriptionDB(),
   ) {}
 
-  async HandleExpirationEvent(
+  async handleExpirationEvent(
     userId: number,
     email: string,
     externalId: string,
   ): Promise<void> {
     try {
-      const isExpired = await this.IsProEntitlementExpired(externalId);
+      const isExpired = await this.isProEntitlementExpired(externalId);
       if (!isExpired) {
         this._logger.log({
-          origin: 'GlacierMigrationService.HandleExpirationEvent',
+          origin: 'GlacierMigrationService.handleExpirationEvent',
           message: 'Pro entitlement still active, skipping migration',
           data: { userId },
         });
         return;
       }
 
-      const hasActive = await this.HasActiveMigration(userId);
+      const hasActive = await this._subscriptionDB.hasActiveGlacierMigration(userId);
       if (hasActive) {
         this._logger.log({
-          origin: 'GlacierMigrationService.HandleExpirationEvent',
+          origin: 'GlacierMigrationService.handleExpirationEvent',
           message: 'Active migration already exists, skipping',
           data: { userId },
         });
@@ -50,7 +49,7 @@ export class GlacierMigrationService {
       if (!success) {
         this._logger.log(
           {
-            origin: 'GlacierMigrationService.HandleExpirationEvent',
+            origin: 'GlacierMigrationService.handleExpirationEvent',
             message: 'Failed to create lifecycle rule',
             data: { userId, ruleId },
           },
@@ -59,22 +58,21 @@ export class GlacierMigrationService {
         return;
       }
 
-      await this.db('glacier_migrations').insert({
+      await this._subscriptionDB.insertGlacierMigration({
         user_id: userId,
         direction: 'to_glacier',
         lifecycle_rule_id: ruleId,
-        rule_cleaned_up: false,
       });
 
       this._logger.log({
-        origin: 'GlacierMigrationService.HandleExpirationEvent',
+        origin: 'GlacierMigrationService.handleExpirationEvent',
         message: 'Lifecycle rule created for glacier migration',
         data: { userId, ruleId },
       });
     } catch (err) {
       this._logger.log(
         {
-          origin: 'GlacierMigrationService.HandleExpirationEvent',
+          origin: 'GlacierMigrationService.handleExpirationEvent',
           message: err.message,
           data: { userId },
         },
@@ -83,7 +81,7 @@ export class GlacierMigrationService {
     }
   }
 
-  private async IsProEntitlementExpired(externalId: string): Promise<boolean> {
+  private async isProEntitlementExpired(externalId: string): Promise<boolean> {
     try {
       const { subscriber } = await this._restClient.callService({
         baseURL: process.env.REVENUECAT_API,
@@ -104,7 +102,7 @@ export class GlacierMigrationService {
     } catch (err) {
       this._logger.log(
         {
-          origin: 'GlacierMigrationService.IsProEntitlementExpired',
+          origin: 'GlacierMigrationService.isProEntitlementExpired',
           message: err.message,
           data: { externalId },
         },
@@ -113,13 +111,5 @@ export class GlacierMigrationService {
       // Fail-safe: don't migrate if we can't verify
       return false;
     }
-  }
-
-  private async HasActiveMigration(userId: number): Promise<boolean> {
-    const existing = await this.db('glacier_migrations')
-      .where({ user_id: userId, rule_cleaned_up: false })
-      .first();
-
-    return !!existing;
   }
 }

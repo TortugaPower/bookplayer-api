@@ -1,40 +1,25 @@
 import { SubscriptionUser, RevenuecatEvent } from '../types/user';
-import database from '../database';
 import { RestClientService } from './RestClientService';
 import { UserServices } from './UserServices';
 import { logger } from './LoggerService';
 import { EmailService } from './EmailService';
+import { SubscriptionDB } from './db/SubscriptionDB';
 
 export class SubscriptionService {
   private readonly _logger = logger;
-  private db = database;
 
   constructor(
+    private _subscriptionDB: SubscriptionDB = new SubscriptionDB(),
     private _restClient: RestClientService = new RestClientService(),
     private _user: UserServices = new UserServices(),
     private _email: EmailService = new EmailService(),
   ) {}
 
-  async ParseNewEvent(event: RevenuecatEvent): Promise<SubscriptionUser> {
+  async parseNewEvent(event: RevenuecatEvent): Promise<SubscriptionUser> {
     try {
       const { original_app_user_id, aliases } = event;
-      await this.db('subscription_events')
-        .insert({
-          id: event.id,
-          currency: event.currency,
-          entitlement_id: event.entitlement_id,
-          environment: event.environment,
-          expiration_at_ms: event.expiration_at_ms,
-          original_app_user_id: event.original_app_user_id,
-          period_type: event.period_type,
-          purchased_at_ms: event.purchased_at_ms,
-          price: event.price,
-          type: event.type,
-          takehome_percentage: event.takehome_percentage,
-          json: JSON.stringify(event),
-        })
-        .returning('id_subscription_event');
-      const user = await this._user.GetUserByExternalId(
+      await this._subscriptionDB.insertSubscriptionEvent(event);
+      const user = await this._user.getUserByExternalId(
         aliases || [original_app_user_id],
       );
       if (!user) {
@@ -43,7 +28,7 @@ export class SubscriptionService {
       return user;
     } catch (err) {
       this._logger.log({
-        origin: 'ParseNewEvent',
+        origin: 'SubscriptionService.parseNewEvent',
         message: err.message,
         data: { event },
       });
@@ -51,7 +36,7 @@ export class SubscriptionService {
     }
   }
 
-  async GetAndUpdateSubscription(user: SubscriptionUser): Promise<boolean> {
+  async getAndUpdateSubscription(user: SubscriptionUser): Promise<boolean> {
     try {
       const { external_id } = user;
       const { subscriber } = await this._restClient.callService({
@@ -63,12 +48,12 @@ export class SubscriptionService {
       if (subscriber) {
         const subscriptions = Object.keys(subscriber.subscriptions);
         const subs = subscriptions.length ? subscriptions.join(',') : null;
-        await this._user.UpdateSubscription(user.id_user, subs);
+        await this._user.updateSubscription(user.id_user, subs);
       }
       return true;
     } catch (err) {
       this._logger.log({
-        origin: 'GetAndUpdateSubscription',
+        origin: 'SubscriptionService.getAndUpdateSubscription',
         message: err.message,
         data: { user },
       });
@@ -76,7 +61,7 @@ export class SubscriptionService {
     }
   }
 
-  async HasInAppPurchase(rc_id: string): Promise<boolean> {
+  async hasInAppPurchase(rc_id: string): Promise<boolean> {
     try {
       const { subscriber } = await this._restClient.callService({
         baseURL: process.env.REVENUECAT_API,
@@ -107,7 +92,7 @@ export class SubscriptionService {
       return hasPurchase;
     } catch (err) {
       this._logger.log({
-        origin: 'HasInAppPurchase',
+        origin: 'SubscriptionService.hasInAppPurchase',
         message: err.message,
         data: { rc_id },
       });

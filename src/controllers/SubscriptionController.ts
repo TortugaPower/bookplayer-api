@@ -12,7 +12,7 @@ export class SubscriptionController {
     private _glacierService: GlacierMigrationService = new GlacierMigrationService(),
   ) {}
 
-  public async RevenuecatWebhook(
+  public async revenuecatWebhook(
     req: IRequest,
     res: IResponse,
   ): Promise<IResponse> {
@@ -24,8 +24,8 @@ export class SubscriptionController {
       }
       const { event } = req.body;
       const revenueEvent = event as RevenuecatEvent;
-      const user = await this._subscriptionService.ParseNewEvent(revenueEvent);
-      const updated = await this._subscriptionService.GetAndUpdateSubscription(
+      const user = await this._subscriptionService.parseNewEvent(revenueEvent);
+      const updated = await this._subscriptionService.getAndUpdateSubscription(
         user,
       );
 
@@ -35,11 +35,11 @@ export class SubscriptionController {
       ) {
         // Fire-and-forget: don't block webhook response
         this._glacierService
-          .HandleExpirationEvent(user.id_user, user.email, user.external_id)
+          .handleExpirationEvent(user.id_user, user.email, user.external_id)
           .catch((err) => {
             this._logger.log(
               {
-                origin: 'RevenuecatWebhook.glacierMigration',
+                origin: 'SubscriptionController.revenuecatWebhook.glacierMigration',
                 message: err.message,
                 data: { userId: user.id_user },
               },
@@ -50,7 +50,7 @@ export class SubscriptionController {
 
       return res.json({ success: updated });
     } catch (err) {
-      this._logger.log({ origin: 'RevenuecatWebhook', message: err.message, data: { body: req.body } }, 'error');
+      this._logger.log({ origin: 'SubscriptionController.revenuecatWebhook', message: err.message, data: { body: req.body } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }

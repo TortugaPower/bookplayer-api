@@ -8,7 +8,7 @@ const controller = new RetentionMessagingController();
 // Note: This endpoint does not require user authentication
 // as it's a server-to-server call from Apple
 RetentionMessagingRouter.post('/', (req, res, next) =>
-  controller.HandleRetentionRequest(req, res).catch(next),
+  controller.handleRetentionRequest(req, res).catch(next),
 );
 
 export default RetentionMessagingRouter;

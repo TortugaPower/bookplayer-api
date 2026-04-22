@@ -19,6 +19,10 @@ describe('PasskeyService', () => {
     service = new PasskeyService();
     (service as any)._logger = mockLoggerService;
     (service as any).db = getTestTransaction();
+    (service as any)._passkeyDB.db = getTestTransaction();
+    (service as any)._passkeyDB._logger = mockLoggerService;
+    (service as any)._userDB.db = getTestTransaction();
+    (service as any)._userDB._logger = mockLoggerService;
     mockLoggerService.log.mockClear();
   });
 

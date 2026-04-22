@@ -52,14 +52,14 @@ export class RetentionMessagingService {
     return this._verifier;
   }
 
-  async VerifyAndDecodeRequest(signedPayload: string): Promise<DecodedRealtimeRequestBody> {
+  async verifyAndDecodeRequest(signedPayload: string): Promise<DecodedRealtimeRequestBody> {
     try {
       const verifier = this.getVerifier();
       const decodedRequest = await verifier.verifyAndDecodeRealtimeRequest(signedPayload);
       return decodedRequest;
     } catch (err) {
       this._logger.log({
-        origin: 'RetentionMessagingService.VerifyAndDecodeRequest',
+        origin: 'RetentionMessagingService.verifyAndDecodeRequest',
         message: err.message,
         data: { signedPayload: signedPayload?.substring(0, 50) + '...' },
       });
@@ -67,14 +67,14 @@ export class RetentionMessagingService {
     }
   }
 
-  async SelectRetentionMessage(request: DecodedRealtimeRequestBody): Promise<string | null> {
+  async selectRetentionMessage(request: DecodedRealtimeRequestBody): Promise<string | null> {
     try {
       const defaultMessageId = process.env.APPLE_DEFAULT_RETENTION_MESSAGE_ID;
 
       if (!defaultMessageId) {
         // Return null to let Apple use its default fallback message
         this._logger.log({
-          origin: 'RetentionMessagingService.SelectRetentionMessage',
+          origin: 'RetentionMessagingService.selectRetentionMessage',
           message: 'No default retention message ID configured',
           data: { userLocale: request.userLocale, productId: request.productId },
         });
@@ -87,7 +87,7 @@ export class RetentionMessagingService {
       return defaultMessageId;
     } catch (err) {
       this._logger.log({
-        origin: 'RetentionMessagingService.SelectRetentionMessage',
+        origin: 'RetentionMessagingService.selectRetentionMessage',
         message: err.message,
         data: { request },
       });

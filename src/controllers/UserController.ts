@@ -20,7 +20,7 @@ export class UserController {
     return;
   }
 
-  public async InitLogin(req: IRequest, res: IResponse): Promise<IResponse> {
+  public async initLogin(req: IRequest, res: IResponse): Promise<IResponse> {
     const { token_id } = req.body;
     const { origin } = req.headers;
     if (!token_id) {
@@ -52,7 +52,7 @@ export class UserController {
     }
 
     // Check auth_methods by Apple sub (stable identifier - prevents email collisions)
-    const existingAuthMethod = await this._userService.GetAuthMethodByExternalId({
+    const existingAuthMethod = await this._userService.getAuthMethodByExternalId({
       auth_type: 'apple',
       external_id: appleAuth.sub,
     });
@@ -61,13 +61,13 @@ export class UserController {
 
     if (existingAuthMethod) {
       // Existing user - fetch by stored email (safe from collision)
-      user = await this._userService.GetUser({
+      user = await this._userService.getUser({
         email: existingAuthMethod.email,
         session: appleAuth.sub,
       });
     } else {
       // Check if email already exists (e.g., passkey user trying to sign in with Apple)
-      const existingUserByEmail = await this._userService.GetUser({
+      const existingUserByEmail = await this._userService.getUser({
         email: appleAuth.email,
       });
 
@@ -80,7 +80,7 @@ export class UserController {
       }
 
       // New user - create account with Apple ID as external_id
-      user = await this._userService.AddNewUser({
+      user = await this._userService.addNewUser({
         email: appleAuth.email,
         active: true,
         external_id: appleAuth.sub,
@@ -88,7 +88,7 @@ export class UserController {
 
       // Add to auth_methods table
       if (user) {
-        await this._userService.AddAuthMethod({
+        await this._userService.addAuthMethod({
           user_id: user.id_user,
           auth_type: 'apple',
           external_id: appleAuth.sub,
@@ -103,12 +103,12 @@ export class UserController {
     }
 
     if (!user.session) {
-      await this._userService.AddNewDevice({
+      await this._userService.addNewDevice({
         user_id: user.id_user,
         session: appleAuth.sub,
       });
     }
-    const token = await this._userService.TokenUser({
+    const token = await this._userService.tokenUser({
       id_user: user.id_user,
       email: appleAuth.email,
       session: appleAuth.sub,
@@ -135,7 +135,7 @@ export class UserController {
     return res.json({ email: user.email, token });
   }
 
-  public async Logout(req: IRequest, res: IResponse): Promise<IResponse> {
+  public async logout(req: IRequest, res: IResponse): Promise<IResponse> {
     await res.clearCookie(process.env.SESSION_COOKIE_NAME, {
       path: '/',
       httpOnly: true,
@@ -147,7 +147,7 @@ export class UserController {
     });
   }
 
-  public async DeleteAccount(
+  public async deleteAccount(
     req: IRequest,
     res: IResponse,
   ): Promise<IResponse> {
@@ -156,7 +156,7 @@ export class UserController {
       res.status(403).json({ message: 'The user is invalid' });
       return;
     }
-    const deleted = await this._userService.DeleteAccount(user.id_user);
+    const deleted = await this._userService.deleteAccount(user.id_user);
     if (!deleted) {
       res
         .status(400)
@@ -266,7 +266,7 @@ export class UserController {
         return res.json({});
       }
 
-      const hasInAppPurchase = await this._subscriptionService.HasInAppPurchase(
+      const hasInAppPurchase = await this._subscriptionService.hasInAppPurchase(
         rc_id as string,
       );
 

@@ -68,8 +68,8 @@ export const mockLoggerService = {
 
 // Mock for user service
 export const mockUserService = {
-  GetUser: jest.fn<() => Promise<any>>().mockResolvedValue(null),
-  AddNewUser: jest.fn<() => Promise<any>>(),
+  getUser: jest.fn<() => Promise<any>>().mockResolvedValue(null),
+  addNewUser: jest.fn<() => Promise<any>>(),
 };
 
 // Helper to create test users

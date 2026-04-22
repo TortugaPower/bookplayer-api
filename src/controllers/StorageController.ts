@@ -1,6 +1,6 @@
 import { IRequest, IResponse } from '../types/http';
 import { StorageService } from '../services/StorageService';
-import { LibraryService } from '../services/LibraryService';
+import { LibraryDB } from '../services/db/LibraryDB';
 import { Writable } from 'stream';
 import { S3ClientHeaders, S3ValidHeader } from '../types/user';
 import { logger } from '../services/LoggerService';
@@ -10,7 +10,7 @@ export class StorageController {
 
   constructor(
     private _storageService: StorageService = new StorageService(),
-    private _libraryService: LibraryService = new LibraryService(),
+    private _libraryDB: LibraryDB = new LibraryDB(),
   ) {}
 
   public async getProxyLibrary(
@@ -24,7 +24,7 @@ export class StorageController {
     let filepath: string;
     switch (rootFolder) {
       case '_thumbnail':
-        const itemThumbnail = await this._libraryService.getItemByThumbnail(
+        const itemThumbnail = await this._libraryDB.getItemByThumbnail(
           user.id_user,
           pathArray.slice(1)?.join('/'),
         );
@@ -33,12 +33,10 @@ export class StorageController {
           : null;
         break;
       default:
-        const userItemDB = await this._libraryService.dbGetLibrary(
+        const userItemDB = await this._libraryDB.getLibrary(
           user.id_user,
           key,
-          {
-            exactly: true,
-          },
+          { exactly: true },
         );
         filepath = userItemDB?.length
           ? `/${userItemDB[0].source_path || userItemDB[0].key}`
@@ -66,7 +64,7 @@ export class StorageController {
         }
       }
       const userKey = `${user.email}${filepath}`;
-      const s3Stream = await this._storageService.GetObjectStream({
+      const s3Stream = await this._storageService.getObjectStream({
         key: userKey,
         clientHeaders,
       });

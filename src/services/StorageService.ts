@@ -39,7 +39,7 @@ export class StorageService {
     }
   }
 
-  async GetDirectoryContent(params: {
+  async getDirectoryContent(params: {
     path: string;
     isFolder: boolean;
     origin?: StorageOrigin;
@@ -50,7 +50,7 @@ export class StorageService {
       let content: StorageItem[] = [];
       switch (storageOrigin) {
         case StorageOrigin.S3:
-          content = await this._s3Service.GetDirectoryContent(path, isFolder);
+          content = await this._s3Service.getDirectoryContent(path, isFolder);
           break;
         default:
           break;
@@ -58,7 +58,7 @@ export class StorageService {
       return content;
     } catch (err) {
       this._logger.log({
-        origin: 'Storage: GetDirectoryContent',
+        origin: 'StorageService.getDirectoryContent',
         message: err.message,
         data: params,
       });
@@ -66,7 +66,7 @@ export class StorageService {
     }
   }
 
-  async GetPresignedUrl(params: {
+  async getPresignedUrl(params: {
     key: string;
     type: StorageAction;
     bucket?: string;
@@ -84,7 +84,7 @@ export class StorageService {
       };
       switch (storageOrigin) {
         case StorageOrigin.S3:
-          response = await this._s3Service.GetPresignedUrl(key, type, bucket);
+          response = await this._s3Service.getPresignedUrl(key, type, bucket);
           break;
         default:
           break;
@@ -92,7 +92,7 @@ export class StorageService {
       return response;
     } catch (error) {
       this._logger.log({
-        origin: 'Storage: GetPresignedUrl',
+        origin: 'StorageService.getPresignedUrl',
         message: error.message,
         data: params,
       });
@@ -180,7 +180,7 @@ export class StorageService {
     }
   }
 
-  async GetObjectStream(params: {
+  async getObjectStream(params: {
     key: string;
     origin?: StorageOrigin;
     clientHeaders?: S3ClientHeaders;
@@ -195,7 +195,7 @@ export class StorageService {
       let response = null;
       switch (storageOrigin) {
         case StorageOrigin.S3:
-          response = await this._s3Service.GetObjectStream(key, clientHeaders);
+          response = await this._s3Service.getObjectStream(key, clientHeaders);
           break;
         default:
           break;
@@ -203,7 +203,7 @@ export class StorageService {
       return response;
     } catch (error) {
       this._logger.log({
-        origin: 'Storage: GetObjectStream',
+        origin: 'StorageService.getObjectStream',
         message: error.message,
         data: params,
       });

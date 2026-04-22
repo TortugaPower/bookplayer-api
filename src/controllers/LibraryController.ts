@@ -1,13 +1,17 @@
 import { IRequest, IResponse } from '../types/http';
 import { LibraryService } from '../services/LibraryService';
 import { logger } from '../services/LoggerService';
+import { LibraryDB } from '../services/db/LibraryDB';
 import { Bookmark, LibraryItem } from '../types/user';
 import { isValidUUID } from '../utils';
 
 export class LibraryController {
   private readonly _logger = logger;
 
-  constructor(private _libraryService: LibraryService = new LibraryService()) {}
+  constructor(
+    private _libraryService: LibraryService = new LibraryService(),
+    private _libraryDB: LibraryDB = new LibraryDB(),
+  ) {}
 
   public async getUserLibraryKeys(
     req: IRequest,
@@ -15,10 +19,10 @@ export class LibraryController {
   ): Promise<IResponse> {
     try {
       const user = req.user;
-      const content = await this._libraryService.dbGetAllKeys(user.id_user);
+      const content = await this._libraryDB.getAllKeys(user.id_user);
       return res.json({ content });
     } catch (err) {
-      this._logger.log({ origin: 'getUserLibraryKeys', message: err.message, data: { user: req.user } }, 'error');
+      this._logger.log({ origin: 'LibraryController.getUserLibraryKeys', message: err.message, data: { user: req.user } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -37,18 +41,18 @@ export class LibraryController {
         withPresign: sign,
         appVersion: req.app_version,
       };
-      const content = await this._libraryService.GetLibrary(user, path, options, uuid);
+      const content = await this._libraryService.getLibrary(user, path, options, uuid);
       let lastItemPlayed;
       if (
         ((!relativePath || relativePath === '/' || relativePath === '') &&
           !noLastItemPlayed) ||
         forceLastItem
       ) {
-        lastItemPlayed = await this._libraryService.dbGetLastItemPlayed(user, options);
+        lastItemPlayed = await this._libraryService.getLastItemPlayed(user, options);
       }
       return res.json({ content, lastItemPlayed });
     } catch (err) {
-      this._logger.log({ origin: 'getLibraryContentPath', message: err.message, data: { user: req.user, query: req.query } }, 'error');
+      this._logger.log({ origin: 'LibraryController.getLibraryContentPath', message: err.message, data: { user: req.user, query: req.query } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -61,13 +65,13 @@ export class LibraryController {
     try {
       const { sign } = req.query;
       const user = req.user;
-      const lastItemPlayed = await this._libraryService.dbGetLastItemPlayed(user, {
+      const lastItemPlayed = await this._libraryService.getLastItemPlayed(user, {
         withPresign: sign,
         appVersion: req.app_version,
       });
       return res.json({ lastItemPlayed });
     } catch (err) {
-      this._logger.log({ origin: 'getLastPlayedItem', message: err.message, data: { user: req.user, query: req.query } }, 'error');
+      this._logger.log({ origin: 'LibraryController.getLastPlayedItem', message: err.message, data: { user: req.user, query: req.query } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -93,17 +97,17 @@ export class LibraryController {
           },
           {},
         );
-        await this._libraryService.UpdateObject(
+        await this._libraryService.updateObject(
           user,
           relativePath,
           updateObj as unknown as LibraryItem,
-          uuid
+          uuid,
         );
       }
 
       return res.json({ content: { url: null } });
     } catch (err) {
-      this._logger.log({ origin: 'getLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
+      this._logger.log({ origin: 'LibraryController.getLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -116,10 +120,10 @@ export class LibraryController {
     try {
       const params = req.body;
       const user = req.user;
-      const content = (await this._libraryService.PutObject(user, params)) ?? {};
+      const content = (await this._libraryService.putObject(user, params)) ?? {};
       return res.json({ content });
     } catch (err) {
-      this._logger.log({ origin: 'putLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
+      this._logger.log({ origin: 'LibraryController.putLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -132,10 +136,10 @@ export class LibraryController {
     try {
       const params = req.body;
       const user = req.user;
-      const content = await this._libraryService.DeleteObject(user, params);
+      const content = await this._libraryService.deleteObject(user, params);
       return res.json({ content });
     } catch (err) {
-      this._logger.log({ origin: 'deleteLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
+      this._logger.log({ origin: 'LibraryController.deleteLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -151,7 +155,7 @@ export class LibraryController {
       const content = await this._libraryService.reOrderObject(user, params);
       return res.json({ content });
     } catch (err) {
-      this._logger.log({ origin: 'reorderLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
+      this._logger.log({ origin: 'LibraryController.reorderLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -165,15 +169,15 @@ export class LibraryController {
       const params = req.body;
       const user = req.user;
       const { origin, destination } = params;
-      const useUuids = (isValidUUID(origin) && isValidUUID(destination)) 
-        || (isValidUUID(origin) && destination === '') 
+      const useUuids = (isValidUUID(origin) && isValidUUID(destination))
+        || (isValidUUID(origin) && destination === '')
         || (isValidUUID(destination) && origin === '');
       const content = useUuids
         ? await this._libraryService.moveLibraryObjectByUuid(user, params)
         : await this._libraryService.moveLibraryObject(user, params);
       return res.json({ content });
     } catch (err) {
-      this._logger.log({ origin: 'moveLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
+      this._logger.log({ origin: 'LibraryController.moveLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -188,7 +192,7 @@ export class LibraryController {
       const user = req.user;
       let folderPath: string | undefined = relativePath;
       if (isValidUUID(uuid)) {
-        const items = await this._libraryService.dbGetLibraryByUuid(user.id_user, uuid, {
+        const items = await this._libraryDB.getLibraryByUuid(user.id_user, uuid, {
           exactly: true,
         });
         const item = items?.[0];
@@ -202,7 +206,7 @@ export class LibraryController {
       const success = await this._libraryService.deleteFolderMoving(user, folderPath);
       return res.json({ success });
     } catch (err) {
-      this._logger.log({ origin: 'deleteFolderMoving', message: err.message, data: { user: req.user, body: req.body } }, 'error');
+      this._logger.log({ origin: 'LibraryController.deleteFolderMoving', message: err.message, data: { user: req.user, body: req.body } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -215,10 +219,10 @@ export class LibraryController {
     try {
       const user = req.user;
       const { relativePath, uuid } = req.method === 'POST' ? req.body : req.query;
-      const bookmarks = await this._libraryService.getBookmarks({
+      const bookmarks = await this._libraryDB.getBookmarks({
         user_id: user.id_user,
         key: relativePath,
-        uuid: uuid
+        uuid: uuid,
       });
       const response: { bookmarks: Bookmark[]; warning?: string } = {
         bookmarks,
@@ -231,7 +235,7 @@ export class LibraryController {
       }
       return res.json(response);
     } catch (err) {
-      this._logger.log({ origin: 'getAllUserBookmarks', message: err.message, data: { user: req.user, body: req.body, query: req.query } }, 'error');
+      this._logger.log({ origin: 'LibraryController.getAllUserBookmarks', message: err.message, data: { user: req.user, body: req.body, query: req.query } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -245,17 +249,17 @@ export class LibraryController {
       const user = req.user;
       const bookmark = req.body as Bookmark;
       const itemDB = isValidUUID(bookmark.uuid)
-        ? await this._libraryService.dbGetLibraryByUuid(user.id_user, bookmark.uuid, {
+        ? await this._libraryDB.getLibraryByUuid(user.id_user, bookmark.uuid, {
           exactly: true,
         })
-        : await this._libraryService.dbGetLibrary(user.id_user, bookmark.key, {
+        : await this._libraryDB.getLibrary(user.id_user, bookmark.key, {
           exactly: true,
         });
       if (!itemDB || !itemDB[0]) {
         throw new Error('Invalid key');
       }
       bookmark.library_item_id = itemDB[0].id_library_item;
-      const inserted = await this._libraryService.upsertBookmark(bookmark);
+      const inserted = await this._libraryDB.upsertBookmark(bookmark);
       if (!inserted) {
         throw new Error('problem creating the bookmark');
       }
@@ -267,7 +271,7 @@ export class LibraryController {
         },
       });
     } catch (err) {
-      this._logger.log({ origin: 'upsertBookmark', message: err.message, data: { user: req.user, body: req.body } }, 'error');
+      this._logger.log({ origin: 'LibraryController.upsertBookmark', message: err.message, data: { user: req.user, body: req.body } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -288,7 +292,7 @@ export class LibraryController {
       if (!thumbnailData.thumbnail_name || !thumbnailData.relativePath) {
         throw new Error('Invalid parameters');
       }
-      const url = await this._libraryService.thumbailPutRequest(user, thumbnailData);
+      const url = await this._libraryService.thumbnailPutRequest(user, thumbnailData);
       if (!url) {
         throw new Error('problem creating the request url');
       }
@@ -298,7 +302,7 @@ export class LibraryController {
         uploaded: thumbnailData.uploaded && url,
       });
     } catch (err) {
-      this._logger.log({ origin: 'itemThumbnailPutRequest', message: err.message, data: { user: req.user, body: req.body } }, 'error');
+      this._logger.log({ origin: 'LibraryController.itemThumbnailPutRequest', message: err.message, data: { user: req.user, body: req.body } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -314,10 +318,10 @@ export class LibraryController {
         throw new Error('Invalid parameters');
       }
       const user = req.user;
-      const cleanPath = (relativePath || "").replace(`${user.email}/`, '');
+      const cleanPath = (relativePath || '').replace(`${user.email}/`, '');
       const objectDB = isValidUUID(uuid)
-        ? await this._libraryService.dbGetLibraryByUuid(user.id_user, uuid, { exactly: true })
-        : await this._libraryService.dbGetLibrary(user.id_user, cleanPath, {
+        ? await this._libraryDB.getLibraryByUuid(user.id_user, uuid, { exactly: true })
+        : await this._libraryDB.getLibrary(user.id_user, cleanPath, {
           exactly: true,
         });
       const itemDb = objectDB[0];
@@ -330,7 +334,7 @@ export class LibraryController {
       });
       return res.json({ content });
     } catch (err) {
-      this._logger.log({ origin: 'renameLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
+      this._logger.log({ origin: 'LibraryController.renameLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -344,19 +348,18 @@ export class LibraryController {
       const MAX_RECORDS_LIMIT = 1000;
       const user = req.user;
       const processData = req.body as {
-        items: Record<string, string>
+        items: Record<string, string>;
       };
       if (Object.keys(processData.items).length > MAX_RECORDS_LIMIT) throw new Error(`Too many records, the maximum to process at a time is ${MAX_RECORDS_LIMIT}.`);
 
-      const updates = Object.keys(processData.items).map(key => ({key, uuid: processData.items[key]})); 
+      const updates = Object.keys(processData.items).map((key) => ({ key, uuid: processData.items[key] }));
       const { applied, conflicts } = await this._libraryService.processItemUUIDs(user, updates);
       // Return both the successes and the conflicts so the client can patch its local DB
       return res.json({ applied, conflicts });
-
     } catch (err) {
-      this._logger.log({ origin: 'postLibraryUuids', message: err.message, data: { user: req.user, body: req.body } }, 'error');
+      this._logger.log({ origin: 'LibraryController.postLibraryUuids', message: err.message, data: { user: req.user, body: req.body } }, 'error');
       res.status(400).json({ message: err.message });
-      return
+      return;
     }
   }
 }

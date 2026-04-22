@@ -72,6 +72,7 @@ src/
 │       └── subscription.ts # Subscription check
 ├── controllers/           # HTTP handlers
 ├── services/              # Business logic
+│   └── db/                # DB classes — one per aggregate (UserDB, LibraryDB, etc.)
 ├── types/                 # Type definitions (including http.ts for IRequest/IResponse/INext)
 ├── database/
 │   ├── index.ts          # Knex connection
@@ -103,28 +104,37 @@ No framework, no decorators, no composition root. Two conventions:
 
 This matches the pattern used in core-api (`Karta/core-api/src/controllers/dispute-controller.ts:32-46`, `Karta/core-api/src/services/stripe-service.ts:24`).
 
+## Layered Architecture
+
+Three layers — controllers → services → DB classes:
+
+- **DB classes** (`src/services/db/`) — Each wraps a single aggregate (e.g. `UserDB` for users/devices/params/events/auth_methods; `LibraryDB` for library_items/bookmarks). They own every `this.db('table')` call. Methods are camelCase (`getUser`, `insertUser`, `softDeleteUser`), accept optional `trx?: Knex.Transaction`, and return `null` on error after logging.
+- **Services** (`src/services/`) — Own business logic, orchestration, and cross-DB transactions. Call DB classes for queries; never touch `this.db('table')` directly. Services may still hold `private db = database` solely to start transactions (`this.db.transaction()`) that span multiple DB classes.
+- **Controllers** (`src/controllers/`) — HTTP handlers. Call services for business operations. For simple query-only reads, they may hold a DB class field directly (e.g., `LibraryController._libraryDB`) — matches `core-api/src/controllers/stripe-controller.ts:16` precedent.
+
+Every method is camelCase. Class names stay PascalCase (`UserDB`, `LibraryService`). Log origins use `ClassName.methodName` format.
+
 ### Adding a New Service
 
-1. **Create the service** (`src/services/MyService.ts`):
+1. **Create the DB class** (`src/services/db/MyDB.ts`) if the tables aren't already owned by an existing one:
 ```typescript
-import { logger } from './LoggerService';
+import { Knex } from 'knex';
+import database from '../../database';
+import { logger } from '../LoggerService';
 
-export class MyService {
+export class MyDB {
   private readonly _logger = logger;
   private db = database;
 
-  // No constructor needed if logger is the only dep.
-  // With other deps:
-  // constructor(private _userService: UserServices = new UserServices()) {}
-
-  async DoSomething(param: string): Promise<Result> {
+  async getById(id: number, trx?: Knex.Transaction): Promise<MyRow | null> {
     try {
-      return result;
+      const db = trx || this.db;
+      return (await db('my_table').where({ id }).first()) || null;
     } catch (err) {
       this._logger.log({
-        origin: 'MyService.DoSomething',
+        origin: 'MyDB.getById',
         message: err.message,
-        data: { param }
+        data: { id },
       });
       return null;
     }
@@ -132,14 +142,45 @@ export class MyService {
 }
 ```
 
-2. **Inject in a controller** — add a constructor param with a default:
+2. **Create the service** (`src/services/MyService.ts`) that composes DB + other deps:
+```typescript
+import { logger } from './LoggerService';
+import { MyDB } from './db/MyDB';
+
+export class MyService {
+  private readonly _logger = logger;
+
+  constructor(private _myDB: MyDB = new MyDB()) {}
+
+  async doSomething(id: number): Promise<Result> {
+    try {
+      const row = await this._myDB.getById(id);
+      // orchestrate, call external APIs, etc.
+      return result;
+    } catch (err) {
+      this._logger.log({
+        origin: 'MyService.doSomething',
+        message: err.message,
+        data: { id },
+      });
+      return null;
+    }
+  }
+}
+```
+
+3. **Inject in a controller** — add constructor params with defaults (both for the service and, if the controller needs raw reads, the DB class):
 ```typescript
 import { MyService } from '../services/MyService';
+import { MyDB } from '../services/db/MyDB';
 
 export class MyController {
   private readonly _logger = logger;
 
-  constructor(private _myService: MyService = new MyService()) {}
+  constructor(
+    private _myService: MyService = new MyService(),
+    private _myDB: MyDB = new MyDB(),
+  ) {}
 }
 ```
 
@@ -148,12 +189,14 @@ No composition file to update — each class self-instantiates its deps. `main.t
 **Notes:**
 - `constructor(private _foo: Foo = new Foo())` is TypeScript **parameter-property** sugar plus a default value. Method bodies keep `this._foo.x()` unchanged.
 - Controller handler signatures are `async method(req: IRequest, res: IResponse): Promise<IResponse>`. The router wraps calls with `.catch(next)` for error handling; controllers don't accept `next` unless they actually use it (see `PasskeyController` for the exception).
-- Tests instantiate services with no args, then assign mocks to private fields:
+- Tests instantiate services with no args (all constructor params have defaults), then assign mocks to private fields. For DB classes the test typically swaps the internal `db` to the test transaction:
   ```typescript
   const service = new MyService();
   (service as any)._logger = mockLogger;
-  (service as any)._userService = mockUserService;
+  (service as any)._myDB.db = getTestTransaction();  // test tx on the DB instance
+  (service as any)._myDB._logger = mockLogger;
   ```
+  Alternatively, pass a mock DB through the constructor: `new MyService(mockMyDB)`.
 
 ## Request Flow
 
@@ -202,7 +245,7 @@ export class UserController {
       // Response
       return res.json({ email: user.email, token: user.token });
     } catch (err) {
-      this._logger.log({ origin: 'InitLogin', message: err.message });
+      this._logger.log({ origin: 'UserController.initLogin', message: err.message });
       return res.status(400).json({ message: err.message });
     }
   }
@@ -213,16 +256,32 @@ export class UserController {
 
 ### Connection
 
-```typescript
-import database from '../database';
+Queries live in **DB classes** under `src/services/db/`. Each DB class holds the Knex connection as a field initializer:
 
-export class MyService {
+```typescript
+import { Knex } from 'knex';
+import database from '../../database';
+import { logger } from '../LoggerService';
+
+export class MyDB {
+  private readonly _logger = logger;
   private db = database;
 
-  async getUser(email: string) {
-    return this.db('users')
-      .where({ email, active: true })
-      .first();
+  async getUser(email: string, trx?: Knex.Transaction) {
+    const db = trx || this.db;
+    return db('users').where({ email, active: true }).first();
+  }
+}
+```
+
+Services consume DB classes — they don't query directly:
+
+```typescript
+export class MyService {
+  private _myDB = new MyDB();
+
+  async findUser(email: string) {
+    return this._myDB.getUser(email);
   }
 }
 ```
@@ -231,29 +290,29 @@ export class MyService {
 
 ```typescript
 // Simple select
-const user = await this.db('users').where({ id_user }).first();
+const user = await db('users').where({ id_user }).first();
 
 // Insert with returning
-const [newUser] = await this.db('users')
+const [newUser] = await db('users')
   .insert({ email, password: '' })
   .returning('*');
 
 // Update
-await this.db('users')
+await db('users')
   .where({ id_user })
   .update({ active: false, updated_at: new Date() });
 
 // Join
-const items = await this.db('library_items as li')
+const items = await db('library_items as li')
   .select('li.*', 'b.note')
   .leftJoin('bookmarks as b', 'li.id', 'b.library_item_id')
   .where({ 'li.user_id': userId });
 
-// Transaction
+// Transaction — started in a service, threaded through multiple DB classes
 const tx = await this.db.transaction();
 try {
-  await tx('users').insert({ ... });
-  await tx('user_params').insert({ ... });
+  await this._userDB.insertUser({ email, password: '' }, tx);
+  await this._userDB.insertSubscriptionParam(user_id, subscription, tx);
   await tx.commit();
 } catch (err) {
   await tx.rollback();
@@ -566,8 +625,9 @@ Routers are `express.Router()` modules (not classes): the file instantiates the 
      controller.myMethod(req, res).catch(next),
    );
    ```
-2. Add the controller method (`src/controllers/*Controller.ts`) — signature is `async myMethod(req: IRequest, res: IResponse): Promise<IResponse>`.
-3. Add a service method if needed (`src/services/*Service.ts`).
+2. Add the controller method (`src/controllers/*Controller.ts`) — signature is `async myMethod(req: IRequest, res: IResponse): Promise<IResponse>`. camelCase only.
+3. Add a service method if the endpoint needs orchestration beyond a plain DB read (`src/services/*Service.ts`). camelCase only.
+4. Add query methods to the appropriate DB class (`src/services/db/*DB.ts`) — every `db('table')` call lives here. camelCase, optional `trx?: Knex.Transaction` for composition.
 
 Middlewares are plain exported functions (not classes) — import them by name and pass them straight to `router.use(...)` or the route call, e.g. `checkSubscription`, `checkVersion`.
 
@@ -613,8 +673,8 @@ See `docker/ecs/README.md` for deployment instructions.
 | Services | PascalCase | `UserServices` |
 | Controllers | PascalCase + Controller | `UserController` |
 | Routers | PascalCase + Router | `UserRouter` |
-| Methods (services) | PascalCase | `GetUser`, `AddNewUser` |
-| Methods (controllers) | PascalCase | `InitLogin`, `DeleteAccount` |
+| Methods (services) | camelCase | `getUser`, `addNewUser` |
+| Methods (controllers) | camelCase | `initLogin`, `deleteAccount` |
 | Private properties | `_` prefix | `_userService`, `_logger` |
 | Database tables | snake_case | `user_params`, `library_items` |
 | Environment vars | SCREAMING_SNAKE | `DB_HOST`, `APP_SECRET` |

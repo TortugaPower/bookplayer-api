@@ -19,12 +19,14 @@ describe('EmailVerificationService', () => {
     (service as any)._emailService = mockEmailService;
     (service as any)._userService = mockUserService;
     (service as any).db = getTestTransaction();
+    (service as any)._emailVerificationDB.db = getTestTransaction();
+    (service as any)._emailVerificationDB._logger = mockLoggerService;
 
     // Clear mock calls
     mockEmailService.sendEmail.mockClear();
     mockLoggerService.log.mockClear();
-    mockUserService.GetUser.mockClear();
-    mockUserService.GetUser.mockResolvedValue(null); // Default: no existing user
+    mockUserService.getUser.mockClear();
+    mockUserService.getUser.mockResolvedValue(null); // Default: no existing user
   });
 
   describe('sendVerificationCode', () => {

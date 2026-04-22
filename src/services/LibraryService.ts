@@ -21,517 +21,100 @@ import {
   sanitizeLibraryPath,
   isValidUUID,
 } from '../utils';
+import { LibraryDB } from './db/LibraryDB';
 
 export class LibraryService {
   private readonly _logger = logger;
   private db = database;
 
-  constructor(private _storage: StorageService = new StorageService()) {}
+  constructor(
+    private _storage: StorageService = new StorageService(),
+    private _libraryDB: LibraryDB = new LibraryDB(),
+  ) {}
 
-  async dbGetAllKeys(user_id: number): Promise<string[]> {
-    try {
-      const objects = await this.db('library_items as li')
-        .where({
-          user_id,
-          active: true,
-          synced: true,
-        })
-        .orderBy('key', 'asc')
-        .debug(false);
-      return objects.map((item) => item.key);
-    } catch (err) {
-      this._logger.log({
-        origin: 'dbGetAlKeys',
-        message: err.message,
-        data: { user_id },
-      });
-      return null;
-    }
-  }
-
-  async dbGetLibrary(
-    user_id: number,
-    path: string,
-    filter?: {
-      rawFilter?: string;
-      exactly?: boolean;
-    },
-    trx?: Knex.Transaction,
-  ): Promise<LibraryItemDB[]> {
-    try {
-      const db = trx || this.db;
-      const pathNumber = path.split('/').length;
-      const objects = await db('library_items as li')
-        .where({
-          user_id,
-          active: true,
-        })
-        .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [
-          pathNumber,
-        ])
-        .whereRaw('key like ?', [`${path}${filter?.exactly ? '' : '%'}`])
-        .andWhere((builder) => {
-          if (!!filter?.rawFilter) {
-            builder.whereRaw(filter?.rawFilter);
-          } else {
-            builder.where(true);
-          }
-        })
-        .orderBy('order_rank', 'asc')
-        .debug(false);
-      return objects;
-    } catch (err) {
-      this._logger.log({
-        origin: 'dbGetLibrary',
-        message: err.message,
-        data: { user_id, path, filter },
-      });
-      return null;
-    }
-  }
-
-  async dbGetLibraryByUuid(
-    user_id: number,
-    uuid: string,
-    filter?: {
-      rawFilter?: string;
-      exactly?: boolean;
-    },
-    trx?: Knex.Transaction,
-  ): Promise<LibraryItemDB[]> {
-    try {
-      const db = trx || this.db;
-      const objects = await db('library_items as li')
-        .where({
-          user_id,
-          active: true,
-          uuid
-        })
-        .andWhere((builder) => {
-          if (!!filter?.rawFilter) {
-            builder.whereRaw(filter?.rawFilter);
-          } else {
-            builder.where(true);
-          }
-        })
-        .orderBy('order_rank', 'asc')
-        .debug(false);
-      return objects;
-    } catch (err) {
-      this._logger.log({
-        origin: 'dbGetLibraryByUuid',
-        message: err.message,
-        data: { user_id, uuid, filter },
-      });
-      return null;
-    }
-  }
-
-  async getItemByThumbnail(
-    user_id: number,
-    thumbnail: string,
-    trx?: Knex.Transaction,
-  ): Promise<LibraryItemDB> {
-    try {
-      const db = trx || this.db;
-      const item = await db('library_items as li')
-        .where({
-          user_id,
-          active: true,
-          thumbnail,
-        })
-        .first();
-      return item;
-    } catch (err) {
-      this._logger.log({
-        origin: 'getItemByThumbnail',
-        message: err.message,
-        data: { user_id, thumbnail },
-      });
-      return null;
-    }
-  }
-
-  async dbDeleteLibrary(
-    params: {
-      user_id: number;
-      path: string;
-      exactly?: boolean;
-      active?: boolean;
-    },
-    trx?: Knex.Transaction,
-  ): Promise<LibraryItemDB[]> {
-    try {
-      const { user_id, path, exactly, active } = params;
-      const db = trx || this.db;
-      const objectsDeleted = await db('library_items as li')
-        .update({
-          active: false,
-        })
-        .where({
-          user_id,
-          active: active === false ? active : true,
-        })
-        .whereRaw('key like ?', [`${path}${exactly ? '' : '%'}`])
-        .returning('*');
-      return objectsDeleted;
-    } catch (err) {
-      this._logger.log({
-        origin: 'dbDeleteLibrary',
-        message: err.message,
-        data: params,
-      });
-      return null;
-    }
-  }
-
-  async dbDeleteLibraryByUuid(
-    params: {
-      user_id: number;
-      uuid: string;
-      exactly?: boolean;
-      active?: boolean;
-    },
-    trx?: Knex.Transaction,
-  ): Promise<LibraryItemDB[]> {
-    try {
-      const { user_id, uuid, active, exactly } = params;
-      if (!isValidUUID(uuid)) throw Error(`Invalid UUID ${uuid}. Wrong format`);
-      const db = trx || this.db;
-      const targetItem = await db('library_items')
-        .select('key')
-        .where({ user_id, uuid })
-        .first();
-
-      if (!targetItem) {
-        return [];
-      }
-
-      const objectsDeleted = await db('library_items as li')
-        .update({
-          active: false,
-        })
-        .where({
-          user_id,
-          active: active === false ? active : true,
-        })
-        .whereRaw('key like ?', [`${targetItem.key}${exactly ? '' : '%'}`])
-        .returning('*');
-      return objectsDeleted;
-    } catch (err) {
-      this._logger.log({
-        origin: 'dbDeleteLibraryByUuid',
-        message: err.message,
-        data: params,
-      });
-      return null;
-    }
-  }
-
-  async dbNestedObjects(
-    user_id: number,
-    folderPath: string,
-    trx?: Knex.Transaction,
-  ): Promise<LibraryItemDB[]> {
-    try {
-      const db = trx || this.db;
-      const nestedObjects = await db
-        .raw(
-          `
-          select id_library_item, key, type
-          from library_items
-          where user_id=? and active=true and key like ?
-      `,
-          [user_id, `${folderPath}/%`],
-        )
-        .then((result) => result.rows);
-      return nestedObjects;
-    } catch (err) {
-      this._logger.log({
-        origin: 'dbNestedObjects',
-        message: err.message,
-        data: { user_id, folderPath },
-      });
-      return null;
-    }
-  }
-
-  async dbMoveFiles(
-    user_id: number,
-    origin: string,
-    destination: string,
-    trx?: Knex.Transaction,
-  ): Promise<LibraryItemMovedDB[]> {
-    try {
-      const destinationPath = destination !== '' ? `${destination}/` : '';
-      const db = trx || this.db;
-      const objectsMoved = await db
-        .raw(
-          `
-      update library_items ss
-      set key=filtro.newKey
-      from (select filtroKey.id_library_item,
-              concat(cast(? as text), array_to_string(removing[removeIndex:array_length(removing, 1)], '/')) as newKey,
-              filtroKey.old_key as old_key
-            from (
-                select id_library_item,
-                        string_to_array(key, '/') as removing,
-                        array_length(string_to_array(?, '/'), 1) as removeIndex,
-                        key as old_key
-                from library_items
-                where user_id=? and active=true and key like ?
-            ) as filtroKey) as filtro
-      where ss.id_library_item = filtro.id_library_item
-      returning ss.id_library_item, ss.key, ss.type, filtro.old_key, ss.original_filename, ss.source_path;
-      `,
-          [destinationPath, origin, user_id, `${origin}%`],
-        )
-        .then((result) => result.rows);
-      return objectsMoved;
-    } catch (err) {
-      this._logger.log({
-        origin: 'dbMoveFiles',
-        message: err.message,
-        data: { origin, destination },
-      });
-      return null;
-    }
-  }
-
-  async dbRenameFiles(
-    user_id: number,
-    origin: string,
-    destination: string,
-    trx?: Knex.Transaction,
-  ): Promise<LibraryItemMovedDB[]> {
-    try {
-      const db = trx || this.db;
-      const objectsMoved = await db
-        .raw(
-          `
-      update library_items ss
-      set key=filtro.newKey
-      from (select filtroKey.id_library_item,
-              concat(
-                cast(? as text),
-                case when array_to_string(removing[removeIndex::int + 1:array_length(removing, 1)], '') != '' then '/' else '' end,
-                array_to_string(removing[removeIndex::int + 1:array_length(removing, 1)], '/')
-              ) as newKey,
-              filtroKey.old_key as old_key
-            from (
-                select id_library_item,
-                        string_to_array(key, '/') as removing,
-                        array_length(string_to_array(?, '/'), 1) as removeIndex,
-                        key as old_key
-                from library_items
-                where user_id=? and active=true and key like ?
-            ) as filtroKey) as filtro
-      where ss.id_library_item = filtro.id_library_item
-      returning ss.id_library_item, ss.key, ss.type, filtro.old_key, ss.source_path, ss.original_filename;
-      `,
-          [destination, origin, user_id, `${origin}%`],
-        )
-        .debug(false)
-        .then((result) => result.rows);
-      return objectsMoved;
-    } catch (err) {
-      this._logger.log({
-        origin: 'dbRenameFiles',
-        message: err.message,
-        data: { user_id, origin, destination },
-      });
-      return null;
-    }
-  }
-
-  async processMovedFiles(
-    user: User,
-    movedFiles: LibraryItemMovedDB[],
-    trx: Knex.Transaction,
-  ): Promise<void> {
-    const groupCounts = parseInt(`${movedFiles.length / 10}`);
-    const groups =
-      groupCounts > 1
-        ? splitArrayGroups(movedFiles, groupCounts)
-        : [movedFiles];
-
-    await Promise.all(
-      groups.map(async (group: LibraryItemMovedDB[]) => {
-        for (let indexTrx = 0; indexTrx < group.length; indexTrx++) {
-          const fileMoved = group[indexTrx];
-          if (
-            !fileMoved.source_path &&
-            parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
-          ) {
-            const suffix =
-              parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
-                ? ''
-                : '/';
-            const sourceKey = `${user.email}/${fileMoved.old_key}${suffix}`;
-            const original_filename = `${
-              process.env.ROOT_FOLDER
-            }/${moment().format('YYYYMMDDHHmmss')}_${
-              fileMoved.original_filename
-            }`;
-            const targetKey = `${user.email}/${original_filename}`;
-            const isMoved = await this._storage.moveFile({
-              sourceKey,
-              targetKey,
-            });
-            if (isMoved) {
-              await trx('library_items')
-                .update({
-                  source_path: original_filename,
-                })
-                .where({
-                  user_id: user.id_user,
-                  key: fileMoved.key,
-                });
-            }
-          }
-        }
-      }),
-    );
-  }
-
-  /// TODO: replace this function in favor of `dbMoveFiles`
-  async dbMoveFilesUp(
-    user_id: number,
-    folderPath: string,
-    trx?: Knex.Transaction,
-  ): Promise<LibraryItemDB[]> {
-    try {
-      const db = trx || this.db;
-      const objectsMoved = await db
-        .raw(
-          `
-      update library_items ss
-      set key=filtro.newKey
-      from (select filtroKey.id_library_item,
-                  array_to_string(removing[1:removeIndex-1] || removing[removeIndex+1:], '/') as newKey
-            from (
-                    select id_library_item,
-                            string_to_array(key, '/') as removing,
-                            array_length(string_to_array(?, '/'), 1) as removeIndex
-                    from library_items
-                    where user_id=? and active=true and key like ?
-                ) as filtroKey) as filtro
-      where ss.id_library_item = filtro.id_library_item
-      returning ss.id_library_item, ss.key, ss.type, ss.original_filename, ss.source_path;
-      `,
-          [folderPath, user_id, `${folderPath}/%`],
-        )
-        .then((result) => result.rows);
-      return objectsMoved;
-    } catch (err) {
-      this._logger.log({
-        origin: 'dbMoveFilesUp',
-        message: err.message,
-        data: { user_id, folderPath },
-      });
-      return null;
-    }
-  }
-
-  async dbInsertLibraryItem(
-    user_id: number,
-    item: LibraryItemDB,
-    trx?: Knex.Transaction,
-  ): Promise<LibraryItemDB> {
-    try {
-      const db = trx || this.db;
-      const objects = await db('library_items as li')
-        .insert({
-          user_id,
-          key: item.key,
-          title: item.title.substring(0, 255),
-          original_filename: item.original_filename,
-          speed: item.speed,
-          actual_time: item.actual_time || '0',
-          details: item.details.substring(0, 255),
-          duration: item.duration,
-          percent_completed: item.percent_completed,
-          order_rank: item.order_rank || 0,
-          last_play_date: !!item.last_play_date
-            ? parseInt(`${item.last_play_date}`)
-            : null,
-          type: item.type,
-          is_finish: item.is_finish,
-          thumbnail: item.thumbnail || null,
-          source_path: item.source_path,
-          uuid: item.uuid
-        })
-        .returning('*');
-      return objects[0];
-    } catch (err) {
-      this._logger.log({
-        origin: 'dbInsertLibraryItem',
-        message: err.message,
-        data: { user_id, item },
-      });
-      return null;
-    }
-  }
-
-  async dbUpdateLibraryItem(
-    user_id: number,
-    key: string,
-    item: LibraryItemDB,    
-    uuid?: string,
-    trx?: Knex.Transaction,
-  ): Promise<boolean> {
-    try {
-      const db = trx || this.db;
-      const updateObject = Object.keys(item).reduce(
-        (cleanItem: { [k: string]: unknown }, column: string) => {
-          const itemUnknow = item as unknown as { [k: string]: unknown };
-          if (itemUnknow[column] !== undefined) {
-            cleanItem[column] = itemUnknow[column];
-          }
-          return cleanItem;
-        },
-        {},
-      );
-      const whereClause = isValidUUID(uuid)
-        ? {
-          user_id,
-          uuid: uuid as string,
-        }
-        : {
-          user_id,
-          key: key,
+  async parseLibraryItemDb(
+    item: LibraryItemDB | LibraryItem,
+    output: LibraryItemOutput,
+  ): Promise<LibraryItemDB | LibraryItem> {
+    let parsed: LibraryItem | LibraryItemDB;
+    switch (output) {
+      case LibraryItemOutput.API:
+        const itemTemp = item as LibraryItemDB;
+        parsed = {
+          relativePath: itemTemp.key,
+          originalFileName: itemTemp.original_filename,
+          title: itemTemp.title,
+          details: itemTemp.details,
+          speed: itemTemp.speed,
+          currentTime: itemTemp.actual_time
+            ? parseFloat(itemTemp.actual_time)
+            : 0,
+          duration: parseFloat(itemTemp.duration),
+          percentCompleted: itemTemp.percent_completed,
+          isFinished: itemTemp.is_finish,
+          orderRank: itemTemp.order_rank || 0,
+          lastPlayDateTimestamp: itemTemp.last_play_date,
+          type: itemTemp.type,
+          thumbnail: itemTemp.thumbnail,
+          url: '',
+          synced: itemTemp.synced,
+          source_path: itemTemp.source_path,
+          uuid: itemTemp.uuid,
         };
-      const updatedCount = await db('library_items')
-        .update(updateObject)
-        .where(whereClause);
-
-      if (updatedCount !== 1) throw new Error(`Multiple rows (${updatedCount}) matched the update criteria.`);
-
-      return true;
-    } catch (err) {
-      this._logger.log({
-        origin: 'dbUpdateLibraryItem',
-        message: err.message,
-        data: { user_id, key, item },
-      });
-      return false;
+        break;
+      case LibraryItemOutput.DB:
+        const itemApi = item as LibraryItem;
+        parsed = {
+          key: itemApi.relativePath,
+          title: itemApi.title,
+          original_filename: itemApi.originalFileName,
+          speed:
+            itemApi.speed != null
+              ? parseFloat(`${itemApi.speed || 1}`)
+              : undefined,
+          details: itemApi.details,
+          actual_time:
+            itemApi.currentTime != null ? `${itemApi.currentTime}` : undefined,
+          duration: !!itemApi.duration ? `${itemApi.duration}` : undefined,
+          percent_completed:
+            itemApi.percentCompleted != null
+              ? parseFloat(`${itemApi.percentCompleted || 0}`)
+              : undefined,
+          order_rank:
+            itemApi.orderRank != null
+              ? parseInt(`${itemApi.orderRank}`)
+              : undefined,
+          last_play_date:
+            !!itemApi.lastPlayDateTimestamp &&
+            `${itemApi.lastPlayDateTimestamp}`.trim() !== ''
+              ? parseInt(`${itemApi.lastPlayDateTimestamp}`)
+              : undefined,
+          type: itemApi.type,
+          is_finish: itemApi.isFinished,
+          thumbnail: itemApi.thumbnail,
+          synced: itemApi.synced !== undefined ? itemApi.synced : undefined,
+          source_path: itemApi.source_path,
+          uuid: itemApi.uuid,
+        };
+        break;
     }
+    return parsed;
   }
 
-  async GetLibrary(
+  async getLibrary(
     user: User,
     path: string,
     options: {
       withPresign?: boolean; // deprecated
       appVersion: string;
     },
-    uuid?: string
+    uuid?: string,
   ): Promise<LibraryItem[]> {
     try {
       const cleanPath = path.replace(`${user.email}/`, '');
       const objectDB = isValidUUID(uuid)
-        ? await this.dbGetLibraryByUuid(user.id_user, uuid)
-        : await this.dbGetLibrary(user.id_user, cleanPath);
+        ? await this._libraryDB.getLibraryByUuid(user.id_user, uuid)
+        : await this._libraryDB.getLibrary(user.id_user, cleanPath);
       const library: LibraryItem[] = [];
       if (objectDB?.length) {
         for (let index = 0; index < objectDB.length; index++) {
@@ -556,14 +139,14 @@ export class LibraryService {
             default: // deprecated old part
               if (options.withPresign) {
                 const originalFile = itemDb.source_path || itemDb.key;
-                const { url } = await this._storage.GetPresignedUrl({
+                const { url } = await this._storage.getPresignedUrl({
                   key: `${user.email}/${originalFile}`,
                   type: StorageAction.GET,
                 });
                 fileUrl = url;
 
                 if (itemDb.thumbnail) {
-                  const { url } = await this._storage.GetPresignedUrl({
+                  const { url } = await this._storage.getPresignedUrl({
                     key: `${user.email}_thumbnail/${itemDb.thumbnail}`,
                     type: StorageAction.GET,
                   });
@@ -599,7 +182,7 @@ export class LibraryService {
       return library;
     } catch (err) {
       this._logger.log({
-        origin: 'GetLibrary',
+        origin: 'LibraryService.getLibrary',
         message: err.message,
         data: { user, path },
       });
@@ -607,88 +190,19 @@ export class LibraryService {
     }
   }
 
-  async ParseLibraryItemDbB(
-    item: LibraryItemDB | LibraryItem,
-    output: LibraryItemOutput,
-  ): Promise<LibraryItemDB | LibraryItem> {
-    let parsed: LibraryItem | LibraryItemDB;
-    switch (output) {
-      case LibraryItemOutput.API:
-        const itemTemp = item as LibraryItemDB;
-        parsed = {
-          relativePath: itemTemp.key,
-          originalFileName: itemTemp.original_filename,
-          title: itemTemp.title,
-          details: itemTemp.details,
-          speed: itemTemp.speed,
-          currentTime: itemTemp.actual_time
-            ? parseFloat(itemTemp.actual_time)
-            : 0,
-          duration: parseFloat(itemTemp.duration),
-          percentCompleted: itemTemp.percent_completed,
-          isFinished: itemTemp.is_finish,
-          orderRank: itemTemp.order_rank || 0,
-          lastPlayDateTimestamp: itemTemp.last_play_date,
-          type: itemTemp.type,
-          thumbnail: itemTemp.thumbnail,
-          url: '',
-          synced: itemTemp.synced,
-          source_path: itemTemp.source_path,
-          uuid: itemTemp.uuid
-        };
-        break;
-      case LibraryItemOutput.DB:
-        const itemApi = item as LibraryItem;
-        parsed = {
-          key: itemApi.relativePath,
-          title: itemApi.title,
-          original_filename: itemApi.originalFileName,
-          speed:
-            itemApi.speed != null
-              ? parseFloat(`${itemApi.speed || 1}`)
-              : undefined,
-          details: itemApi.details,
-          actual_time:
-            itemApi.currentTime != null ? `${itemApi.currentTime}` : undefined,
-          duration: !!itemApi.duration ? `${itemApi.duration}` : undefined,
-          percent_completed:
-            itemApi.percentCompleted != null
-              ? parseFloat(`${itemApi.percentCompleted || 0}`)
-              : undefined,
-          order_rank:
-            itemApi.orderRank != null
-              ? parseInt(`${itemApi.orderRank}`)
-              : undefined,
-          last_play_date:
-            !!itemApi.lastPlayDateTimestamp &&
-            `${itemApi.lastPlayDateTimestamp}`.trim() !== ''
-              ? parseInt(`${itemApi.lastPlayDateTimestamp}`)
-              : undefined,
-          type: itemApi.type,
-          is_finish: itemApi.isFinished,
-          thumbnail: itemApi.thumbnail,
-          synced: itemApi.synced !== undefined ? itemApi.synced : undefined,
-          source_path: itemApi.source_path,
-          uuid: itemApi.uuid
-        };
-        break;
-    }
-    return parsed;
-  }
-
-  async GetObject(
+  async getObject(
     user: User,
     path: string,
     appVersion?: string,
   ): Promise<LibraryItem> {
     try {
       const cleanPath = path.replace(`${user.email}/`, '');
-      const objectDB = await this.dbGetLibrary(user.id_user, cleanPath);
+      const objectDB = await this._libraryDB.getLibrary(user.id_user, cleanPath);
       const itemDb = objectDB?.[0];
       if (!itemDb) {
         throw Error('Item not found');
       }
-      const libObj = (await this.ParseLibraryItemDbB(
+      const libObj = (await this.parseLibraryItemDb(
         itemDb,
         LibraryItemOutput.API,
       )) as LibraryItem;
@@ -705,7 +219,7 @@ export class LibraryService {
           break;
         default: // deprecated old part
           const originalFile = itemDb.source_path || itemDb.key;
-          const { url, expires_in } = await this._storage.GetPresignedUrl({
+          const { url, expires_in } = await this._storage.getPresignedUrl({
             key: `${user.email}/${originalFile}`,
             type: StorageAction.GET,
           });
@@ -717,7 +231,7 @@ export class LibraryService {
       return libObj;
     } catch (err) {
       this._logger.log({
-        origin: 'GetObject',
+        origin: 'LibraryService.getObject',
         message: err.message,
         data: { user, path },
       });
@@ -725,7 +239,7 @@ export class LibraryService {
     }
   }
 
-  async PutObject(user: User, params: LibraryItem): Promise<LibraryItem> {
+  async putObject(user: User, params: LibraryItem): Promise<LibraryItem> {
     try {
       const { relativePath } = params;
 
@@ -734,7 +248,7 @@ export class LibraryService {
       if (nestingCheck.isExcessive) {
         // Log the anomaly and return success without processing
         this._logger.log({
-          origin: 'PutObject',
+          origin: 'LibraryService.putObject',
           message: `Excessive folder nesting detected and ignored: ${nestingCheck.consecutiveCount} consecutive "${nestingCheck.repeatedFolder}" folders`,
           data: {
             user: { id_user: user.id_user, email: user.email },
@@ -751,13 +265,13 @@ export class LibraryService {
       }
 
       // Parse incoming params into library object
-      const libObj = (await this.ParseLibraryItemDbB(
+      const libObj = (await this.parseLibraryItemDb(
         params,
         LibraryItemOutput.DB,
       )) as LibraryItemDB;
 
       const cleanPath = relativePath.replace(`${user.email}/`, '');
-      const objectDB = await this.dbGetLibrary(user.id_user, cleanPath, {
+      const objectDB = await this._libraryDB.getLibrary(user.id_user, cleanPath, {
         exactly: true,
       });
       let itemDb = objectDB[0];
@@ -776,15 +290,15 @@ export class LibraryService {
           libObj.source_path = itemDb.source_path;
         }
       } else {
-        itemDb = await this.dbInsertLibraryItem(user.id_user, libObj);
+        itemDb = await this._libraryDB.insertLibraryItem(user.id_user, libObj);
       }
       const resourcePath = `${user.email}/${libObj.source_path}`;
 
-      const { url, expires_in } = await this._storage.GetPresignedUrl({
+      const { url, expires_in } = await this._storage.getPresignedUrl({
         key: resourcePath,
         type: StorageAction.PUT,
       });
-      const apiResponse = (await this.ParseLibraryItemDbB(
+      const apiResponse = (await this.parseLibraryItemDb(
         itemDb,
         LibraryItemOutput.API,
       )) as LibraryItem;
@@ -793,7 +307,7 @@ export class LibraryService {
       return apiResponse;
     } catch (err) {
       this._logger.log({
-        origin: 'PutObject',
+        origin: 'LibraryService.putObject',
         message: err.stack || err.message,
         data: { user, params },
       });
@@ -801,15 +315,15 @@ export class LibraryService {
     }
   }
 
-  async DeleteObject(user: User, params: LibraryItem): Promise<string[]> {
+  async deleteObject(user: User, params: LibraryItem): Promise<string[]> {
     try {
       const { relativePath, uuid } = params;
       const deletedObjects = isValidUUID(uuid)
-        ? await this.dbDeleteLibraryByUuid({
+        ? await this._libraryDB.deleteLibraryByUuid({
           user_id: user.id_user,
           uuid,
         })
-        : await this.dbDeleteLibrary({
+        : await this._libraryDB.deleteLibrary({
           user_id: user.id_user,
           path: relativePath.replace(`${user.email}/`, ''),
         });
@@ -817,12 +331,12 @@ export class LibraryService {
 
       if (!itemDb) {
         const alreadyDeleted = isValidUUID(uuid)
-          ? await this.dbDeleteLibraryByUuid({
+          ? await this._libraryDB.deleteLibraryByUuid({
             user_id: user.id_user,
             uuid,
             active: false,
           })
-          : await this.dbDeleteLibrary({
+          : await this._libraryDB.deleteLibrary({
             user_id: user.id_user,
             path: relativePath.replace(`${user.email}/`, ''),
             active: false,
@@ -837,14 +351,12 @@ export class LibraryService {
             ? `${item.key}`
             : `${item.key}/`;
         const sourceKey = `${user.email}/${item.source_path || keyPath}`;
-        await this._storage.deleteFile({
-          sourceKey,
-        });
+        await this._storage.deleteFile({ sourceKey });
       }
       return deletedObjects.map((i) => i.key);
     } catch (err) {
       this._logger.log({
-        origin: 'DeleteObject',
+        origin: 'LibraryService.deleteObject',
         message: err.message,
         data: { user, params },
       });
@@ -852,33 +364,30 @@ export class LibraryService {
     }
   }
 
-  async UpdateObject(
+  async updateObject(
     user: User,
     relativePath: string,
     params: LibraryItem,
-    uuid?: string
+    uuid?: string,
   ): Promise<boolean> {
     try {
-      const cleanPath = (relativePath || "").replace(`${user.email}/`, '');
+      const cleanPath = (relativePath || '').replace(`${user.email}/`, '');
 
-      const libraryItem = (await this.ParseLibraryItemDbB(
-        {
-          relativePath,
-          ...params,
-        },
+      const libraryItem = (await this.parseLibraryItemDb(
+        { relativePath, ...params },
         LibraryItemOutput.DB,
       )) as LibraryItemDB;
-      const result = await this.dbUpdateLibraryItem(
+      const result = await this._libraryDB.updateLibraryItem(
         user.id_user,
         cleanPath,
         libraryItem,
-        uuid
+        uuid,
       );
 
       return result;
     } catch (err) {
       this._logger.log({
-        origin: 'UpdateObject',
+        origin: 'LibraryService.updateObject',
         message: err.message,
         data: { user, relativePath, params },
       });
@@ -887,11 +396,11 @@ export class LibraryService {
   }
 
   async reOrderObject(user: User, params: LibraryItem): Promise<boolean> {
-    let trx;
+    let trx: Knex.Transaction;
     try {
       const { relativePath, orderRank } = params;
       const cleanPath = relativePath.replace(`${user.email}/`, '');
-      const objectDB = await this.dbGetLibrary(user.id_user, cleanPath);
+      const objectDB = await this._libraryDB.getLibrary(user.id_user, cleanPath);
 
       if (objectDB.length !== 1) {
         throw Error('Item not found');
@@ -910,28 +419,21 @@ export class LibraryService {
       pathArray.pop();
       const path = pathArray.join('/');
       trx = await this.db.transaction();
-      await trx('library_items as li')
-        .update({
-          order_rank: trx.raw(`order_rank ${isGreater ? '-' : '+'} 1`),
-        })
-        .where({
+      await this._libraryDB.shiftOrderRanks(
+        {
           user_id: user.id_user,
-          active: true,
-        })
-        .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [
-          pathArray.length || 1,
-        ])
-        .whereRaw('key like ?', [`${path}%`])
-        .whereBetween('order_rank', orderFilter)
-        .debug(false);
+          path,
+          pathDepth: pathArray.length || 1,
+          orderRange: orderFilter,
+          direction: isGreater ? 'decrement' : 'increment',
+        },
+        trx,
+      );
 
-      await this.dbUpdateLibraryItem(
+      await this._libraryDB.updateLibraryItem(
         user.id_user,
         cleanPath,
-        {
-          ...objectDB[0],
-          order_rank: orderRank,
-        },
+        { ...objectDB[0], order_rank: orderRank },
         null,
         trx,
       );
@@ -941,7 +443,7 @@ export class LibraryService {
     } catch (err) {
       await trx?.rollback();
       this._logger.log({
-        origin: 'reOrderObject',
+        origin: 'LibraryService.reOrderObject',
         message: err.message,
         data: { user, params },
       });
@@ -951,10 +453,7 @@ export class LibraryService {
 
   async moveLibraryObject(
     user: User,
-    params: {
-      origin: string;
-      destination: string;
-    },
+    params: { origin: string; destination: string },
   ): Promise<LibraryItemMovedDB[]> {
     const trx = await this.db.transaction();
     try {
@@ -970,7 +469,7 @@ export class LibraryService {
 
       /// Verify destination folder if not moving to the library
       if (destinationPathFolder !== '') {
-        let destinationDB = await this.dbGetLibrary(
+        let destinationDB = await this._libraryDB.getLibrary(
           user.id_user,
           destinationPathFolder,
           { exactly: true },
@@ -979,7 +478,7 @@ export class LibraryService {
 
         if (destinationDB.length !== 1) {
           const name = destinationPathFolder.split('/').pop();
-          await this.dbInsertLibraryItem(
+          await this._libraryDB.insertLibraryItem(
             user.id_user,
             {
               key: destinationPathFolder,
@@ -1000,7 +499,7 @@ export class LibraryService {
             trx,
           );
 
-          destinationDB = await this.dbGetLibrary(
+          destinationDB = await this._libraryDB.getLibrary(
             user.id_user,
             destinationPathFolder,
             { exactly: true },
@@ -1015,7 +514,7 @@ export class LibraryService {
           throw Error('The destination is invalid');
         }
       }
-      const originObj = await this.dbGetLibrary(
+      const originObj = await this._libraryDB.getLibrary(
         user.id_user,
         origin,
         { exactly: true },
@@ -1029,7 +528,7 @@ export class LibraryService {
             ? originFilename
             : `${destinationPathFolder}/${originFilename}`;
 
-        const destinationObj = await this.dbGetLibrary(
+        const destinationObj = await this._libraryDB.getLibrary(
           user.id_user,
           expectedDestinationPath,
           { exactly: true },
@@ -1047,7 +546,7 @@ export class LibraryService {
           `Item not found at origin "${origin}" or destination "${expectedDestinationPath}"`,
         );
       }
-      const dbMoved = await this.dbMoveFiles(
+      const dbMoved = await this._libraryDB.moveFiles(
         user.id_user,
         origin,
         destinationPathFolder,
@@ -1061,7 +560,7 @@ export class LibraryService {
     } catch (err) {
       await trx?.rollback();
       this._logger.log({
-        origin: 'moveLibraryObject',
+        origin: 'LibraryService.moveLibraryObject',
         message: err.message,
         data: { user, params },
       });
@@ -1071,25 +570,29 @@ export class LibraryService {
 
   async moveLibraryObjectByUuid(
     user: User,
-    params: {
-      origin: string;
-      destination: string;
-    },
+    params: { origin: string; destination: string },
   ): Promise<LibraryItemMovedDB[]> {
     const trx = await this.db.transaction();
     try {
-      // Sanitize paths to handle whitespace issues in folder names
-      const [originDB] = await this.dbGetLibraryByUuid(user.id_user, params.origin, null, trx);
+      const [originDB] = await this._libraryDB.getLibraryByUuid(
+        user.id_user,
+        params.origin,
+        null,
+        trx,
+      );
       const [destinationDB] = params.destination
-        ? await this.dbGetLibraryByUuid(user.id_user, params.destination, null, trx)
+        ? await this._libraryDB.getLibraryByUuid(
+            user.id_user,
+            params.destination,
+            null,
+            trx,
+          )
         : [null];
 
       if (!originDB) {
-        throw Error(
-          `Item not found: "${params.origin}"`,
-        );
+        throw Error(`Item not found: "${params.origin}"`);
       }
-      
+
       if (destinationDB) {
         const destType = `${destinationDB.type}`;
         if (
@@ -1101,18 +604,17 @@ export class LibraryService {
       }
 
       const originFilename = originDB.key.split('/').pop();
-      const expectedDestinationPath =
-        !destinationDB
-          ? originFilename
-          : `${destinationDB.key}/${originFilename}`;
+      const expectedDestinationPath = !destinationDB
+        ? originFilename
+        : `${destinationDB.key}/${originFilename}`;
 
       // If origin and destination are the same, return early
       if (originDB.key === expectedDestinationPath) {
         await trx.commit();
         return [];
       }
-      
-      const dbMoved = await this.dbMoveFiles(
+
+      const dbMoved = await this._libraryDB.moveFiles(
         user.id_user,
         originDB.key,
         destinationDB?.key || '',
@@ -1126,7 +628,7 @@ export class LibraryService {
     } catch (err) {
       await trx?.rollback();
       this._logger.log({
-        origin: 'moveLibraryObjectByUuid',
+        origin: 'LibraryService.moveLibraryObjectByUuid',
         message: err.message,
         data: { user, params },
       });
@@ -1139,7 +641,7 @@ export class LibraryService {
     // Sanitize path to handle whitespace issues in folder names
     const sanitizedFolderPath = sanitizeLibraryPath(folderPath);
     try {
-      const folderDB = await this.dbGetLibrary(
+      const folderDB = await this._libraryDB.getLibrary(
         user.id_user,
         sanitizedFolderPath,
         { exactly: true },
@@ -1149,7 +651,7 @@ export class LibraryService {
         // Folder no longer exists
         return true;
       }
-      const folderDeleted = await this.dbDeleteLibrary(
+      const folderDeleted = await this._libraryDB.deleteLibrary(
         {
           user_id: user.id_user,
           path: sanitizedFolderPath,
@@ -1160,11 +662,15 @@ export class LibraryService {
       if (!folderDeleted) {
         throw Error('folder not deleted');
       }
-      const allFilesInside = await this.dbNestedObjects(
+      const allFilesInside = await this._libraryDB.getNestedObjects(
         user.id_user,
         sanitizedFolderPath,
       );
-      const dbMoved = await this.dbMoveFilesUp(user.id_user, sanitizedFolderPath, trx);
+      const dbMoved = await this._libraryDB.moveFilesUp(
+        user.id_user,
+        sanitizedFolderPath,
+        trx,
+      );
       const groupCounts = parseInt(`${dbMoved.length / 10}`);
       const groups =
         groupCounts > 1 ? splitArrayGroups(dbMoved, groupCounts) : [dbMoved];
@@ -1198,14 +704,14 @@ export class LibraryService {
                 targetKey,
               });
               if (isMoved) {
-                await trx('library_items')
-                  .update({
-                    source_path: original_filename,
-                  })
-                  .where({
+                await this._libraryDB.updateBySourcePath(
+                  {
                     user_id: user.id_user,
                     key: fileMoved.key,
-                  });
+                    source_path: original_filename,
+                  },
+                  trx,
+                );
               }
             }
           }
@@ -1214,13 +720,9 @@ export class LibraryService {
 
       const keyPath = `${folderDB[0].key}/`;
       const folderKey = `${user.email}/${folderDB[0].source_path || keyPath}`;
-      const folderExist = await this._storage.fileExists({
-        key: folderKey,
-      });
+      const folderExist = await this._storage.fileExists({ key: folderKey });
       if (folderExist) {
-        await this._storage.deleteFile({
-          sourceKey: folderKey,
-        });
+        await this._storage.deleteFile({ sourceKey: folderKey });
       }
 
       await trx.commit();
@@ -1228,7 +730,7 @@ export class LibraryService {
     } catch (err) {
       await trx?.rollback();
       this._logger.log({
-        origin: 'deleteFolderMoving',
+        origin: 'LibraryService.deleteFolderMoving',
         message: err.message,
         data: { user, folderPath },
       });
@@ -1236,28 +738,15 @@ export class LibraryService {
     }
   }
 
-  async dbGetLastItemPlayed(
+  async getLastItemPlayed(
     user: User,
-    options: {
-      withPresign?: boolean; // deprecated
-      appVersion: string;
-    },
+    options: { withPresign?: boolean; appVersion: string },
     trx?: Knex.Transaction,
   ): Promise<LibraryItem> {
     try {
-      const db = trx || this.db;
-      const itemDb = await db('library_items as li')
-        .where({
-          user_id: user.id_user,
-          active: true,
-        })
-        .andWhereNot('type', 0)
-        .andWhereRaw('last_play_date is not null')
-        .orderBy('last_play_date', 'desc')
-        .first()
-        .debug(false);
+      const itemDb = await this._libraryDB.getLastItemPlayed(user.id_user, trx);
 
-      const item = (await this.ParseLibraryItemDbB(
+      const item = (await this.parseLibraryItemDb(
         itemDb,
         LibraryItemOutput.API,
       )) as LibraryItem;
@@ -1279,7 +768,7 @@ export class LibraryService {
         default: // deprecated old part
           if (options.withPresign) {
             const originalFile = item.source_path || itemDb.key;
-            const { url, expires_in } = await this._storage.GetPresignedUrl({
+            const { url, expires_in } = await this._storage.getPresignedUrl({
               key: `${user.email}/${originalFile}`,
               type: StorageAction.GET,
             });
@@ -1291,7 +780,7 @@ export class LibraryService {
       return item;
     } catch (err) {
       this._logger.log({
-        origin: 'dbGetLastItemPlayed',
+        origin: 'LibraryService.getLastItemPlayed',
         message: err.message,
         data: { user },
       });
@@ -1299,79 +788,7 @@ export class LibraryService {
     }
   }
 
-  async getBookmarks(
-    params: {
-      key?: string;
-      uuid?: string;
-      user_id: number;
-    },
-    trx?: Knex.Transaction,
-  ): Promise<Bookmark[]> {
-    try {
-      const { key, user_id, uuid } = params;
-      const db = trx || this.db;
-      const filter: (number | string)[] = [user_id];
-      let whereFilter = '';
-      if (uuid && isValidUUID(uuid)) {
-        filter.push(uuid);
-        whereFilter += ' and li.uuid=? ';
-      } else if (key) {
-        filter.push(key);
-        whereFilter += ' and li.key=? ';
-      }
-      const bookmarks = await db
-        .raw(
-          `
-        select li.title, li.key, b.note, b.time, b.active from library_items li
-        join bookmarks b on li.id_library_item = b.library_item_id and b.active=true
-        where li.user_id=? and li.active=true ${whereFilter}
-      `,
-          filter,
-        )
-        .then((result) => result.rows);
-
-      return bookmarks;
-    } catch (err) {
-      this._logger.log({
-        origin: 'getBookmarks',
-        message: err.message,
-        data: { params },
-      });
-      return null;
-    }
-  }
-
-  async upsertBookmark(
-    bookmark: Bookmark,
-    trx?: Knex.Transaction,
-  ): Promise<Bookmark> {
-    try {
-      const db = trx || this.db;
-      const selectColumns = ['note', 'time', 'active'];
-      const updated = await db('bookmarks')
-        .insert({
-          note: bookmark.note,
-          time: bookmark.time,
-          library_item_id: bookmark.library_item_id,
-        })
-        .onConflict(['library_item_id', 'time'])
-        .merge({
-          note: bookmark.note,
-          active: bookmark.active,
-        })
-        .returning(selectColumns);
-      return updated[0];
-    } catch (err) {
-      this._logger.log({
-        origin: 'upsertBookmark',
-        message: err.message,
-        data: { bookmark },
-      });
-      return null;
-    }
-  }
-
-  async thumbailPutRequest(
+  async thumbnailPutRequest(
     user: User,
     params: {
       relativePath: string;
@@ -1384,10 +801,10 @@ export class LibraryService {
       const { relativePath, uuid, thumbnail_name, uploaded } = params;
       const cleanPath = relativePath.replace(`${user.email}/`, '');
       const objectDB = isValidUUID(uuid)
-        ? await this.dbGetLibraryByUuid(user.id_user, uuid, {
+        ? await this._libraryDB.getLibraryByUuid(user.id_user, uuid, {
           exactly: true,
         })
-        : await this.dbGetLibrary(user.id_user, cleanPath, {
+        : await this._libraryDB.getLibrary(user.id_user, cleanPath, {
           exactly: true,
         });
       const itemDb = objectDB?.[0];
@@ -1395,24 +812,20 @@ export class LibraryService {
         throw new Error('Item not exists');
       }
       if (uploaded) {
-        const idUpdated = await this.db('library_items')
-          .update({
-            thumbnail: thumbnail_name,
-          })
-          .where({
-            id_library_item: itemDb.id_library_item,
-          })
-          .returning('id_library_item');
-        return !!idUpdated[0].id_library_item;
+        const idUpdated = await this._libraryDB.updateThumbnail({
+          id_library_item: itemDb.id_library_item,
+          thumbnail: thumbnail_name,
+        });
+        return !!idUpdated;
       }
-      const { url } = await this._storage.GetPresignedUrl({
+      const { url } = await this._storage.getPresignedUrl({
         key: `${user.email}_thumbnail/${thumbnail_name}`,
         type: StorageAction.PUT,
       });
       return url;
     } catch (err) {
       this._logger.log({
-        origin: 'thumbailPutRequest',
+        origin: 'LibraryService.thumbnailPutRequest',
         message: err.message,
         data: { user, params },
       });
@@ -1422,24 +835,21 @@ export class LibraryService {
 
   async renameLibraryObject(
     user: User,
-    params: {
-      item: LibraryItemDB;
-      newName: string;
-    },
+    params: { item: LibraryItemDB; newName: string },
   ): Promise<LibraryItemMovedDB[]> {
     const trx = await this.db.transaction();
     try {
       const { item, newName } = params;
-      const itemDb = await trx('library_items')
-        .update({
-          title: newName,
-        })
-        .where({
+      const itemDb = await this._libraryDB.renameItemTitle(
+        {
           user_id: user.id_user,
           id_library_item: item.id_library_item,
-        })
-        .returning('*');
+          title: newName,
+        },
+        trx,
+      );
       if (parseInt(item.type) === parseInt(LibraryItemType.BOOK)) {
+        await trx.commit();
         return [
           {
             id_library_item: itemDb[0].id_library_item,
@@ -1455,7 +865,7 @@ export class LibraryService {
       const destinationPathFolder = `${
         samePrefix === '' ? '' : `${samePrefix}/`
       }${newName}`;
-      const destinationDB = await this.dbGetLibrary(
+      const destinationDB = await this._libraryDB.getLibrary(
         user.id_user,
         destinationPathFolder,
         { exactly: true },
@@ -1476,21 +886,21 @@ export class LibraryService {
         // Only merge if destination is empty AND origin has data
         if (isDestinationEmpty && originHasData) {
           // Merge: Update destination with origin's data
-          await trx('library_items')
-            .update({
+          await this._libraryDB.updateFolderMergeFields(
+            {
+              id_library_item: destination.id_library_item,
               duration: item.duration,
               details: item.details,
               actual_time: item.actual_time,
               percent_completed: item.percent_completed,
               last_play_date: item.last_play_date,
-            })
-            .where({
-              id_library_item: destination.id_library_item,
-            });
+            },
+            trx,
+          );
         }
 
         // Check for nested children and update their keys
-        const nestedChildren = await this.dbNestedObjects(
+        const nestedChildren = await this._libraryDB.getNestedObjects(
           user.id_user,
           item.key,
           trx,
@@ -1499,8 +909,7 @@ export class LibraryService {
         let movedChildren: LibraryItemMovedDB[] = [];
 
         if (nestedChildren.length > 0) {
-          // Use dbRenameFiles to update all children keys from origin to destination
-          movedChildren = await this.dbRenameFiles(
+          movedChildren = await this._libraryDB.renameFiles(
             user.id_user,
             item.key,
             destination.key,
@@ -1512,13 +921,7 @@ export class LibraryService {
         }
 
         // Always soft delete origin folder when destination exists
-        await trx('library_items')
-          .update({
-            active: false,
-          })
-          .where({
-            id_library_item: item.id_library_item,
-          });
+        await this._libraryDB.softDeleteItem(item.id_library_item, trx);
 
         await trx.commit();
 
@@ -1536,7 +939,7 @@ export class LibraryService {
         ];
       }
 
-      const dbMoved = await this.dbRenameFiles(
+      const dbMoved = await this._libraryDB.renameFiles(
         user.id_user,
         item.key,
         destinationPathFolder,
@@ -1551,7 +954,7 @@ export class LibraryService {
     } catch (err) {
       await trx?.rollback();
       this._logger.log({
-        origin: 'renameLibraryObject',
+        origin: 'LibraryService.renameLibraryObject',
         message: err.message,
         data: { user, params },
       });
@@ -1559,67 +962,112 @@ export class LibraryService {
     }
   }
 
-  async processItemUUIDs(user: User, updates: ItemMatchPayload[]): Promise<MatchUuidsResult> {
+  async processItemUUIDs(
+    user: User,
+    updates: ItemMatchPayload[],
+  ): Promise<MatchUuidsResult> {
     const trx = await this.db.transaction();
 
     try {
-      const serverKeys = updates.map(u => u.key);
-      
-      // 2. Fetch current state using the 'trx' object
-      const existingItems = await trx('library_items')
-        .select('key', 'uuid')
-        .where({ user_id: user.id_user })
-        .whereIn('key', serverKeys)
-        .forUpdate();
+      const serverKeys = updates.map((u) => u.key);
 
-      const existingItemsMap = new Map(existingItems.map((item: any) => [item.key, item.uuid]));
+      const existingItems = await this._libraryDB.selectForUpdateByKeys(
+        { user_id: user.id_user, keys: serverKeys },
+        trx,
+      );
+
+      const existingItemsMap = new Map(
+        existingItems.map((item) => [item.key, item.uuid]),
+      );
 
       const conflicts: ItemMatchPayload[] = [];
       const applied: string[] = [];
       const toUpdate: ItemMatchPayload[] = [];
 
-      // 3. Sort into conflicts and safe updates
+      // Sort into conflicts and safe updates
       for (const item of updates) {
         const currentUuid = existingItemsMap.get(item.key);
-        
+
         if (currentUuid === undefined || currentUuid === item.uuid) continue;
 
         if (currentUuid !== null) {
           if (currentUuid !== item.uuid) {
-              conflicts.push({ key: item.uuid, uuid: currentUuid });
+            conflicts.push({ key: item.uuid, uuid: currentUuid });
           }
         } else {
           toUpdate.push(item);
         }
       }
 
-      // 4. Perform updates using the 'trx' object
+      // Perform updates
       if (toUpdate.length > 0) {
-        const updatePromises = toUpdate.map(item => 
-          trx('library_items')
-            .where({
-              user_id: user.id_user,
-              key: item.key
-            })
-            .update({ uuid: item.uuid })
+        await Promise.all(
+          toUpdate.map((item) =>
+            this._libraryDB.setItemUuid(
+              { user_id: user.id_user, key: item.key, uuid: item.uuid },
+              trx,
+            ),
+          ),
         );
-        
-        await Promise.all(updatePromises);
-        
-        toUpdate.forEach(item => applied.push(item.uuid));
+        toUpdate.forEach((item) => applied.push(item.uuid));
       }
 
-      // 5. Commit the transaction if everything succeeded
       await trx.commit();
-
       return { applied, conflicts };
-
     } catch (error) {
-      // 6. Rollback the transaction if any error occurs
       await trx.rollback();
-      
-      // Re-throw the error so your Express route catch-block can return a 500 status
-      throw error; 
+      throw error;
     }
+  }
+
+  // Private helper — moves storage files for library items that were moved in the DB
+  private async processMovedFiles(
+    user: User,
+    movedFiles: LibraryItemMovedDB[],
+    trx: Knex.Transaction,
+  ): Promise<void> {
+    const groupCounts = parseInt(`${movedFiles.length / 10}`);
+    const groups =
+      groupCounts > 1
+        ? splitArrayGroups(movedFiles, groupCounts)
+        : [movedFiles];
+
+    await Promise.all(
+      groups.map(async (group: LibraryItemMovedDB[]) => {
+        for (let indexTrx = 0; indexTrx < group.length; indexTrx++) {
+          const fileMoved = group[indexTrx];
+          if (
+            !fileMoved.source_path &&
+            parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
+          ) {
+            const suffix =
+              parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
+                ? ''
+                : '/';
+            const sourceKey = `${user.email}/${fileMoved.old_key}${suffix}`;
+            const original_filename = `${
+              process.env.ROOT_FOLDER
+            }/${moment().format('YYYYMMDDHHmmss')}_${
+              fileMoved.original_filename
+            }`;
+            const targetKey = `${user.email}/${original_filename}`;
+            const isMoved = await this._storage.moveFile({
+              sourceKey,
+              targetKey,
+            });
+            if (isMoved) {
+              await this._libraryDB.updateBySourcePath(
+                {
+                  user_id: user.id_user,
+                  key: fileMoved.key,
+                  source_path: original_filename,
+                },
+                trx,
+              );
+            }
+          }
+        }
+      }),
+    );
   }
 }

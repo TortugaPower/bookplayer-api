@@ -1,5 +1,4 @@
 import crypto from 'crypto';
-import { Knex } from 'knex';
 import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
@@ -11,12 +10,13 @@ import JWT from 'jsonwebtoken';
 import moment from 'moment';
 import database from '../database';
 import { logger } from './LoggerService';
+import { PasskeyDB } from './db/PasskeyDB';
+import { UserDB } from './db/UserDB';
 import type {
-  PasskeyCredential,
   AuthMethod,
-  PasskeyRegistrationOptionsResponse,
   PasskeyAuthOptionsResponse,
   PasskeyInfo,
+  PasskeyRegistrationOptionsResponse,
   UserWithExternalId,
 } from '../types/passkey';
 
@@ -24,11 +24,16 @@ export class PasskeyService {
   private readonly _logger = logger;
   private db = database;
 
+  constructor(
+    private _passkeyDB: PasskeyDB = new PasskeyDB(),
+    private _userDB: UserDB = new UserDB(),
+  ) {}
+
   // WebAuthn configuration
   private readonly rpID = process.env.WEBAUTHN_RP_ID;
   private readonly rpName = process.env.WEBAUTHN_RP_NAME;
   private readonly origin = `https://${this.rpID}`;
-  private readonly challengeTTL = parseInt('300', 10);
+  private readonly challengeTTL = 300;
 
   // Registration
   async generateRegistrationOptions(params: {
@@ -40,7 +45,7 @@ export class PasskeyService {
       const { email, user_id } = params;
 
       // Check if user exists
-      const existingUser = await this.getUserByEmail(email);
+      const existingUser = await this._passkeyDB.getUserByEmail(email);
       const userId = user_id || existingUser?.id_user;
       let userExternalId = existingUser?.external_id;
 
@@ -52,7 +57,7 @@ export class PasskeyService {
       }> = [];
 
       if (userId) {
-        const existingPasskeys = await this.getUserPasskeyCredentials(userId);
+        const existingPasskeys = await this._passkeyDB.getUserPasskeyCredentials(userId);
         for (const passkey of existingPasskeys) {
           excludeCredentials.push({
             id: passkey.credential_id.toString('base64url'),
@@ -84,11 +89,12 @@ export class PasskeyService {
       });
 
       // Store challenge
-      await this.storeChallenge({
+      await this._passkeyDB.storeChallenge({
         challenge: Buffer.from(options.challenge, 'base64url'),
         user_id: userId || null,
         email,
         challenge_type: 'registration',
+        ttlSeconds: this.challengeTTL,
       });
 
       return {
@@ -139,7 +145,7 @@ export class PasskeyService {
       const clientData = JSON.parse(
         Buffer.from(client_data_json, 'base64url').toString('utf-8'),
       );
-      const storedChallenge = await this.getChallengeByValue(
+      const storedChallenge = await this._passkeyDB.getChallengeByValue(
         clientData.challenge,
       );
 
@@ -148,7 +154,7 @@ export class PasskeyService {
       }
 
       // Delete the used challenge
-      await this.deleteChallenge(storedChallenge.id_challenge);
+      await this._passkeyDB.deleteChallenge(storedChallenge.id_challenge);
 
       // Verify the registration response
       const verification = await verifyRegistrationResponse({
@@ -177,44 +183,46 @@ export class PasskeyService {
         verification.registrationInfo;
 
       // Get or create user
-      let user = await this.getUserByEmail(email, tx);
+      let user = await this._passkeyDB.getUserByEmail(email, tx);
 
       if (!user) {
-        // Create new user
-        const [newUser] = await tx('users')
-          .insert({
-            email,
-            password: '',
-            external_id: crypto.randomUUID(),
-          })
-          .returning(['id_user', 'email', 'external_id', 'active']);
-
-        user = newUser;
+        // Create new user via UserDB
+        const newUser = await this._userDB.insertUser(
+          { email, active: true, external_id: crypto.randomUUID() },
+          tx,
+        );
+        if (!newUser) {
+          throw new Error('Failed to create user');
+        }
+        user = newUser as UserWithExternalId;
       }
 
-      // Create auth_method entry
-      const [authMethod] = await tx('auth_methods')
-        .insert({
+      // Create auth_method entry via UserDB
+      const authMethod = await this._userDB.insertAuthMethod(
+        {
           user_id: user.id_user,
           auth_type: 'passkey',
           external_id: credential_id,
-          metadata: JSON.stringify({ device_name }),
+          metadata: { device_name },
           is_primary: false,
-        })
-        .returning('id_auth_method');
+        },
+        tx,
+      );
 
       // Store the passkey credential
-      // Note: credential.id is a Base64URLString in simplewebauthn v11+
-      await tx('passkey_credentials').insert({
-        auth_method_id: authMethod.id_auth_method,
-        credential_id: Buffer.from(credential.id, 'base64url'),
-        public_key: Buffer.from(credential.publicKey),
-        counter: credential.counter,
-        device_type: credentialDeviceType,
-        backed_up: credentialBackedUp,
-        transports: transports || [],
-        device_name: device_name || null,
-      });
+      await this._passkeyDB.insertPasskeyCredential(
+        {
+          auth_method_id: authMethod.id_auth_method,
+          credential_id: Buffer.from(credential.id, 'base64url'),
+          public_key: Buffer.from(credential.publicKey),
+          counter: credential.counter,
+          device_type: credentialDeviceType,
+          backed_up: credentialBackedUp,
+          transports,
+          device_name,
+        },
+        tx,
+      );
 
       await tx.commit();
 
@@ -254,9 +262,9 @@ export class PasskeyService {
 
       // If email is provided, get credentials for that user
       if (email) {
-        const user = await this.getUserByEmail(email);
+        const user = await this._passkeyDB.getUserByEmail(email);
         if (user) {
-          const passkeys = await this.getUserPasskeyCredentials(user.id_user);
+          const passkeys = await this._passkeyDB.getUserPasskeyCredentials(user.id_user);
           allowCredentials = passkeys.map((p) => ({
             id: p.credential_id.toString('base64url'),
             type: 'public-key' as const,
@@ -273,12 +281,13 @@ export class PasskeyService {
       });
 
       // Store challenge
-      const user = email ? await this.getUserByEmail(email) : null;
-      await this.storeChallenge({
+      const user = email ? await this._passkeyDB.getUserByEmail(email) : null;
+      await this._passkeyDB.storeChallenge({
         challenge: Buffer.from(options.challenge, 'base64url'),
         user_id: user?.id_user || null,
         email: email || null,
         challenge_type: 'authentication',
+        ttlSeconds: this.challengeTTL,
       });
 
       return {
@@ -319,7 +328,7 @@ export class PasskeyService {
 
       // Find the credential
       const credentialIdBuffer = Buffer.from(credential_id, 'base64url');
-      const passkey = await this.getPasskeyByCredentialId(credentialIdBuffer);
+      const passkey = await this._passkeyDB.getPasskeyByCredentialId(credentialIdBuffer);
 
       if (!passkey) {
         throw new Error('Credential not found');
@@ -329,7 +338,7 @@ export class PasskeyService {
       const clientData = JSON.parse(
         Buffer.from(client_data_json, 'base64url').toString('utf-8'),
       );
-      const storedChallenge = await this.getChallengeByValue(
+      const storedChallenge = await this._passkeyDB.getChallengeByValue(
         clientData.challenge,
       );
 
@@ -338,7 +347,7 @@ export class PasskeyService {
       }
 
       // Delete the used challenge
-      await this.deleteChallenge(storedChallenge.id_challenge);
+      await this._passkeyDB.deleteChallenge(storedChallenge.id_challenge);
 
       // Verify the authentication response
       const verification = await verifyAuthenticationResponse({
@@ -371,16 +380,13 @@ export class PasskeyService {
       }
 
       // Update counter
-      await this.db('passkey_credentials')
-        .where({ id_passkey: passkey.id_passkey })
-        .update({
-          counter: verification.authenticationInfo.newCounter,
-          last_used_at: this.db.fn.now(),
-          updated_at: this.db.fn.now(),
-        });
+      await this._passkeyDB.updatePasskeyCounter({
+        id_passkey: passkey.id_passkey,
+        counter: verification.authenticationInfo.newCounter,
+      });
 
       // Get user
-      const user = await this.getUserByCredentialId(credentialIdBuffer);
+      const user = await this._passkeyDB.getUserByCredentialId(credentialIdBuffer);
 
       if (!user) {
         throw new Error('User not found');
@@ -405,34 +411,17 @@ export class PasskeyService {
   }
 
   // Challenge management
+
   async storeChallenge(params: {
     challenge: Buffer;
     user_id?: number;
     email?: string;
     challenge_type: 'registration' | 'authentication';
   }): Promise<number> {
-    try {
-      const expiresAt = moment().add(this.challengeTTL, 'seconds').toDate();
-
-      const [result] = await this.db('webauthn_challenges')
-        .insert({
-          challenge: params.challenge,
-          user_id: params.user_id || null,
-          email: params.email || null,
-          challenge_type: params.challenge_type,
-          expires_at: expiresAt,
-        })
-        .returning('id_challenge');
-
-      return result.id_challenge;
-    } catch (err) {
-      this._logger.log({
-        origin: 'PasskeyService.storeChallenge',
-        message: err.message,
-        data: params,
-      });
-      throw err;
-    }
+    return this._passkeyDB.storeChallenge({
+      ...params,
+      ttlSeconds: this.challengeTTL,
+    });
   }
 
   async getAndDeleteChallenge(challengeBase64: string): Promise<{
@@ -441,21 +430,9 @@ export class PasskeyService {
     challenge_type: 'registration' | 'authentication';
   } | null> {
     try {
-      const challengeBuffer = Buffer.from(challengeBase64, 'base64url');
-
-      const challenge = await this.db('webauthn_challenges')
-        .where({ challenge: challengeBuffer })
-        .andWhere('expires_at', '>', new Date())
-        .first();
-
-      if (!challenge) {
-        return null;
-      }
-
-      await this.db('webauthn_challenges')
-        .where({ id_challenge: challenge.id_challenge })
-        .del();
-
+      const challenge = await this._passkeyDB.getChallengeByValue(challengeBase64);
+      if (!challenge) return null;
+      await this._passkeyDB.deleteChallenge(challenge.id_challenge);
       return {
         user_id: challenge.user_id,
         email: challenge.email,
@@ -471,107 +448,10 @@ export class PasskeyService {
     }
   }
 
-  private async getChallengeByValue(challengeBase64: string): Promise<{
-    id_challenge: number;
-    challenge: Buffer;
-    user_id: number | null;
-    email: string | null;
-    challenge_type: 'registration' | 'authentication';
-  } | null> {
-    try {
-      const challengeBuffer = Buffer.from(challengeBase64, 'base64url');
-
-      const challenge = await this.db('webauthn_challenges')
-        .where({ challenge: challengeBuffer })
-        .andWhere('expires_at', '>', new Date())
-        .first();
-
-      return challenge || null;
-    } catch (err) {
-      this._logger.log({
-        origin: 'PasskeyService.getChallengeByValue',
-        message: err.message,
-        data: { challengeBase64 },
-      });
-      return null;
-    }
-  }
-
-  private async deleteChallenge(id_challenge: number): Promise<void> {
-    await this.db('webauthn_challenges').where({ id_challenge }).del();
-  }
-
   // Credential management
+
   async getUserPasskeys(user_id: number): Promise<PasskeyInfo[]> {
-    try {
-      const passkeys = await this.db('passkey_credentials as pc')
-        .select(
-          'pc.id_passkey',
-          'pc.device_name',
-          'pc.device_type',
-          'pc.backed_up',
-          'pc.last_used_at',
-          'pc.created_at',
-        )
-        .join('auth_methods as am', 'am.id_auth_method', 'pc.auth_method_id')
-        .where({
-          'am.user_id': user_id,
-          'am.active': true,
-          'pc.active': true,
-        });
-
-      return passkeys;
-    } catch (err) {
-      this._logger.log({
-        origin: 'PasskeyService.getUserPasskeys',
-        message: err.message,
-        data: { user_id },
-      });
-      return [];
-    }
-  }
-
-  private async getUserPasskeyCredentials(
-    user_id: number,
-  ): Promise<PasskeyCredential[]> {
-    try {
-      const passkeys = await this.db('passkey_credentials as pc')
-        .select('pc.*')
-        .join('auth_methods as am', 'am.id_auth_method', 'pc.auth_method_id')
-        .where({
-          'am.user_id': user_id,
-          'am.active': true,
-          'pc.active': true,
-        });
-
-      return passkeys;
-    } catch (err) {
-      this._logger.log({
-        origin: 'PasskeyService.getUserPasskeyCredentials',
-        message: err.message,
-        data: { user_id },
-      });
-      return [];
-    }
-  }
-
-  private async getPasskeyByCredentialId(
-    credential_id: Buffer,
-  ): Promise<PasskeyCredential | null> {
-    try {
-      const passkey = await this.db('passkey_credentials')
-        .where({ credential_id, active: true })
-        .first();
-
-      return passkey || null;
-    } catch (err) {
-      this._logger.log({
-        origin: 'PasskeyService.getPasskeyByCredentialId',
-        message: err.message,
-        data: { credential_id: credential_id.toString('base64url') },
-      });
-      return null;
-    }
+    return this._passkeyDB.getUserPasskeys(user_id);
   }
 
   async deletePasskey(params: {
@@ -579,43 +459,17 @@ export class PasskeyService {
     passkey_id: number;
   }): Promise<boolean> {
     try {
-      const { user_id, passkey_id } = params;
-
-      // Verify user owns this passkey
-      const passkey = await this.db('passkey_credentials as pc')
-        .join('auth_methods as am', 'am.id_auth_method', 'pc.auth_method_id')
-        .where({
-          'pc.id_passkey': passkey_id,
-          'am.user_id': user_id,
-          'pc.active': true,
-        })
-        .first();
-
-      if (!passkey) {
-        return false;
-      }
+      const passkey = await this._passkeyDB.getPasskeyWithAuthMethod(params);
+      if (!passkey) return false;
 
       // Check if user has other auth methods
-      const authMethodCount = await this.getAuthMethodCount(user_id);
+      const authMethodCount = await this._passkeyDB.getAuthMethodCount(params.user_id);
       if (authMethodCount <= 1) {
         throw new Error('Cannot delete last authentication method');
       }
 
-      // Soft delete
-      await this.db('passkey_credentials')
-        .where({ id_passkey: passkey_id })
-        .update({
-          active: false,
-          updated_at: this.db.fn.now(),
-        });
-
-      await this.db('auth_methods')
-        .where({ id_auth_method: passkey.auth_method_id })
-        .update({
-          active: false,
-          updated_at: this.db.fn.now(),
-        });
-
+      await this._passkeyDB.softDeletePasskey(params.passkey_id);
+      await this._passkeyDB.softDeleteAuthMethod(passkey.auth_method_id);
       return true;
     } catch (err) {
       this._logger.log({
@@ -633,29 +487,16 @@ export class PasskeyService {
     device_name: string;
   }): Promise<boolean> {
     try {
-      const { user_id, passkey_id, device_name } = params;
+      const passkey = await this._passkeyDB.getPasskeyWithAuthMethod({
+        user_id: params.user_id,
+        passkey_id: params.passkey_id,
+      });
+      if (!passkey) return false;
 
-      // Verify user owns this passkey
-      const passkey = await this.db('passkey_credentials as pc')
-        .join('auth_methods as am', 'am.id_auth_method', 'pc.auth_method_id')
-        .where({
-          'pc.id_passkey': passkey_id,
-          'am.user_id': user_id,
-          'pc.active': true,
-        })
-        .first();
-
-      if (!passkey) {
-        return false;
-      }
-
-      await this.db('passkey_credentials')
-        .where({ id_passkey: passkey_id })
-        .update({
-          device_name,
-          updated_at: this.db.fn.now(),
-        });
-
+      await this._passkeyDB.updatePasskeyDeviceName({
+        id_passkey: params.passkey_id,
+        device_name: params.device_name,
+      });
       return true;
     } catch (err) {
       this._logger.log({
@@ -668,96 +509,29 @@ export class PasskeyService {
   }
 
   // Auth method management
-  async getUserAuthMethods(user_id: number): Promise<AuthMethod[]> {
-    try {
-      const authMethods = await this.db('auth_methods')
-        .where({ user_id, active: true })
-        .orderBy('created_at', 'asc');
 
-      return authMethods;
-    } catch (err) {
-      this._logger.log({
-        origin: 'PasskeyService.getUserAuthMethods',
-        message: err.message,
-        data: { user_id },
-      });
-      return [];
-    }
+  async getUserAuthMethods(user_id: number): Promise<AuthMethod[]> {
+    return this._passkeyDB.getUserAuthMethods(user_id);
   }
 
   async getAuthMethodCount(user_id: number): Promise<number> {
-    try {
-      const result = await this.db('auth_methods')
-        .where({ user_id, active: true })
-        .count('id_auth_method as count')
-        .first();
-
-      return parseInt(result?.count as string, 10) || 0;
-    } catch (err) {
-      this._logger.log({
-        origin: 'PasskeyService.getAuthMethodCount',
-        message: err.message,
-        data: { user_id },
-      });
-      return 0;
-    }
+    return this._passkeyDB.getAuthMethodCount(user_id);
   }
 
   // User lookup
-  async getUserByEmail(
-    email: string,
-    trx?: Knex.Transaction,
-  ): Promise<UserWithExternalId | null> {
-    try {
-      const db = trx || this.db;
-      const user = await db('users')
-        .where({ email, active: true })
-        .select('id_user', 'email', 'external_id', 'active')
-        .first();
 
-      return user || null;
-    } catch (err) {
-      this._logger.log({
-        origin: 'PasskeyService.getUserByEmail',
-        message: err.message,
-        data: { email },
-      });
-      return null;
-    }
+  async getUserByEmail(email: string): Promise<UserWithExternalId | null> {
+    return this._passkeyDB.getUserByEmail(email);
   }
 
   async getUserByCredentialId(
     credential_id: Buffer,
   ): Promise<UserWithExternalId | null> {
-    try {
-      const user = await this.db('users as u')
-        .select('u.id_user', 'u.email', 'u.external_id', 'u.active')
-        .join('auth_methods as am', 'am.user_id', 'u.id_user')
-        .join(
-          'passkey_credentials as pc',
-          'pc.auth_method_id',
-          'am.id_auth_method',
-        )
-        .where({
-          'pc.credential_id': credential_id,
-          'pc.active': true,
-          'am.active': true,
-          'u.active': true,
-        })
-        .first();
-
-      return user || null;
-    } catch (err) {
-      this._logger.log({
-        origin: 'PasskeyService.getUserByCredentialId',
-        message: err.message,
-        data: { credential_id: credential_id.toString('base64url') },
-      });
-      return null;
-    }
+    return this._passkeyDB.getUserByCredentialId(credential_id);
   }
 
   // Token generation
+
   async generateToken(user: UserWithExternalId): Promise<string> {
     const token = JWT.sign(
       JSON.stringify({
@@ -774,20 +548,10 @@ export class PasskeyService {
   // Get RevenueCat ID for user (Apple ID if exists, else external_id)
   async getRevenueCatId(user_id: number, external_id: string): Promise<string> {
     try {
-      // Check if user has an Apple auth method
-      const appleAuthMethod = await this.db('auth_methods')
-        .where({
-          user_id,
-          auth_type: 'apple',
-          active: true,
-        })
-        .first();
-
+      const appleAuthMethod = await this._passkeyDB.getAppleAuthMethod(user_id);
       if (appleAuthMethod) {
         return appleAuthMethod.external_id;
       }
-
-      // Fall back to external_id for passkey-only users
       return external_id;
     } catch (err) {
       this._logger.log({
@@ -801,23 +565,6 @@ export class PasskeyService {
 
   // Check if user has active subscription
   async hasSubscription(user_id: number): Promise<boolean> {
-    try {
-      const subscription = await this.db('user_params')
-        .where({
-          user_id,
-          param: 'subscription',
-          active: true,
-        })
-        .first();
-
-      return !!subscription;
-    } catch (err) {
-      this._logger.log({
-        origin: 'PasskeyService.hasSubscription',
-        message: err.message,
-        data: { user_id },
-      });
-      return false;
-    }
+    return this._passkeyDB.hasSubscriptionParam(user_id);
   }
 }

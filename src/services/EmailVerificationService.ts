@@ -5,6 +5,7 @@ import database from '../database';
 import { logger } from './LoggerService';
 import { EmailService } from './EmailService';
 import { UserServices } from './UserServices';
+import { EmailVerificationDB } from './db/EmailVerificationDB';
 
 export class EmailVerificationService {
   private readonly _logger = logger;
@@ -13,6 +14,7 @@ export class EmailVerificationService {
   constructor(
     private _emailService: EmailService = new EmailService(),
     private _userService: UserServices = new UserServices(),
+    private _emailVerificationDB: EmailVerificationDB = new EmailVerificationDB(),
   ) {}
 
   // Configuration
@@ -37,16 +39,8 @@ export class EmailVerificationService {
    */
   private async isRateLimited(email: string): Promise<boolean> {
     const oneHourAgo = moment().subtract(1, 'hour').toDate();
-
-    const recentCodes = await this.db('email_verification_codes')
-      .where('email', email.toLowerCase())
-      .where('created_at', '>', oneHourAgo)
-      .count('id as count')
-      .first();
-
-    return (
-      parseInt(recentCodes?.count as string, 10) >= this.RATE_LIMIT_PER_HOUR
-    );
+    const count = await this._emailVerificationDB.countRecentCodes(email, oneHourAgo);
+    return count >= this.RATE_LIMIT_PER_HOUR;
   }
 
   /**
@@ -59,7 +53,7 @@ export class EmailVerificationService {
       const normalizedEmail = email.toLowerCase().trim();
 
       // Check if email already exists in the database
-      const existingUser = await this._userService.GetUser({ email: normalizedEmail });
+      const existingUser = await this._userService.getUser({ email: normalizedEmail });
       if (existingUser) {
         return {
           success: false,
@@ -78,26 +72,25 @@ export class EmailVerificationService {
         };
       }
 
-      // Invalidate any existing codes for this email
-      await this.db('email_verification_codes')
-        .where('email', normalizedEmail)
-        .where('verified', false)
-        .del();
-
       // Generate new code
       const code = this.generateCode();
       const expiresAt = moment()
         .add(this.CODE_EXPIRY_MINUTES, 'minutes')
         .toDate();
 
-      // Store code in database
-      await this.db('email_verification_codes').insert({
-        email: normalizedEmail,
-        code,
-        expires_at: expiresAt,
-        verified: false,
-        attempts: 0,
-      });
+      // Atomically invalidate existing codes and store the new one
+      const tx = await this.db.transaction();
+      try {
+        await this._emailVerificationDB.invalidateUnverified(normalizedEmail, tx);
+        await this._emailVerificationDB.insertCode(
+          { email: normalizedEmail, code, expires_at: expiresAt },
+          tx,
+        );
+        await tx.commit();
+      } catch (err) {
+        await tx.rollback();
+        throw err;
+      }
 
       // Send email
       const emailHtml = `
@@ -167,12 +160,7 @@ export class EmailVerificationService {
       const normalizedEmail = email.toLowerCase().trim();
 
       // Find the most recent unexpired code for this email
-      const record = await this.db('email_verification_codes')
-        .where('email', normalizedEmail)
-        .where('verified', false)
-        .where('expires_at', '>', new Date())
-        .orderBy('created_at', 'desc')
-        .first();
+      const record = await this._emailVerificationDB.findLatestUnexpired(normalizedEmail);
 
       if (!record) {
         return {
@@ -185,7 +173,7 @@ export class EmailVerificationService {
       // Check max attempts
       if (record.attempts >= this.MAX_ATTEMPTS) {
         // Delete the code after max attempts
-        await this.db('email_verification_codes').where('id', record.id).del();
+        await this._emailVerificationDB.deleteCode(record.id);
 
         return {
           verified: false,
@@ -194,9 +182,7 @@ export class EmailVerificationService {
       }
 
       // Increment attempts
-      await this.db('email_verification_codes')
-        .where('id', record.id)
-        .increment('attempts', 1);
+      await this._emailVerificationDB.incrementAttempts(record.id);
 
       // Check if code matches
       if (record.code !== code) {
@@ -211,10 +197,7 @@ export class EmailVerificationService {
       }
 
       // Code is correct - mark as verified
-      await this.db('email_verification_codes').where('id', record.id).update({
-        verified: true,
-        updated_at: new Date(),
-      });
+      await this._emailVerificationDB.markVerified(record.id);
 
       // Generate verification token (JWT)
       const verificationToken = JWT.sign(
@@ -287,10 +270,6 @@ export class EmailVerificationService {
    * Cleanup expired codes (can be called periodically)
    */
   async cleanupExpiredCodes(): Promise<number> {
-    const result = await this.db('email_verification_codes')
-      .where('expires_at', '<', new Date())
-      .del();
-
-    return result;
+    return this._emailVerificationDB.deleteExpired();
   }
 }
