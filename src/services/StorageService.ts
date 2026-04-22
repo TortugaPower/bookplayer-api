@@ -4,15 +4,14 @@ import {
   StorageItem,
   StorageOrigin,
 } from '../types/user';
-import { LoggerService } from './LoggerService';
+import { logger } from './LoggerService';
 import { S3Service } from './S3Service';
 import { Readable } from 'stream';
 
 export class StorageService {
-  constructor(
-    private _logger: LoggerService,
-    private _s3Service: S3Service,
-  ) {}
+  private readonly _logger = logger;
+
+  constructor(private _s3Service: S3Service = new S3Service()) {}
 
   async fileExists(params: {
     key: string;

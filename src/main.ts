@@ -1,10 +1,6 @@
 import { Envs } from './config/envs';
-import { composeServer } from './composition';
+Envs();
 
-const startApp = async () => {
-  Envs();
-  const server = composeServer();
-  return server.run();
-};
+import { Server } from './server';
 
-startApp();
+new Server().run();

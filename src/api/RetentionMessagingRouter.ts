@@ -2,7 +2,9 @@ import express from 'express';
 import { RetentionMessagingController } from '../controllers/RetentionMessagingController';
 
 export class RetentionMessagingRouter {
-  constructor(private _controller: RetentionMessagingController) {}
+  constructor(
+    private _controller: RetentionMessagingController = new RetentionMessagingController(),
+  ) {}
 
   get(): express.Router {
     const router = express.Router();

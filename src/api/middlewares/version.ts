@@ -4,8 +4,8 @@ import { RedisService } from '../../services/RedisService';
 
 export class VersionMiddleware {
   constructor(
-    private _userService: UserServices,
-    public _cacheService: RedisService,
+    private _userService: UserServices = new UserServices(),
+    public _cacheService: RedisService = new RedisService(),
   ) {}
   async checkVersion(
     req: IResponse,

@@ -1,14 +1,15 @@
 import { IRequest, IResponse } from '../types/http';
-import { LoggerService } from '../services/LoggerService';
+import { logger } from '../services/LoggerService';
 import { RevenuecatEvent, SubscriptionEventType } from '../types/user';
 import { SubscriptionService } from '../services/SubscriptionService';
 import { GlacierMigrationService } from '../services/GlacierMigrationService';
 
 export class SubscriptionController {
+  private readonly _logger = logger;
+
   constructor(
-    private _subscriptionService: SubscriptionService,
-    private _logger: LoggerService,
-    private _glacierService: GlacierMigrationService,
+    private _subscriptionService: SubscriptionService = new SubscriptionService(),
+    private _glacierService: GlacierMigrationService = new GlacierMigrationService(),
   ) {}
 
   public async RevenuecatWebhook(

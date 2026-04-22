@@ -1,14 +1,13 @@
 import { IRequest, IResponse } from '../types/http';
 import { LibraryService } from '../services/LibraryService';
-import { LoggerService } from '../services/LoggerService';
+import { logger } from '../services/LoggerService';
 import { Bookmark, LibraryItem } from '../types/user';
 import { isValidUUID } from '../utils';
 
 export class LibraryController {
-  constructor(
-    private _libraryService: LibraryService,
-    private _logger: LoggerService,
-  ) {}
+  private readonly _logger = logger;
+
+  constructor(private _libraryService: LibraryService = new LibraryService()) {}
 
   public async getUserLibraryKeys(
     req: IRequest,

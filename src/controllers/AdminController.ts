@@ -1,13 +1,14 @@
 import { IRequest, IResponse } from '../types/http';
 import { AdminService } from '../services/AdminService';
 import { StorageService } from '../services/StorageService';
-import { LoggerService } from '../services/LoggerService';
+import { logger } from '../services/LoggerService';
 
 export class AdminController {
+  private readonly _loggerService = logger;
+
   constructor(
-    private _adminService: AdminService,
-    private _storageService: StorageService,
-    private _loggerService: LoggerService,
+    private _adminService: AdminService = new AdminService(),
+    private _storageService: StorageService = new StorageService(),
   ) {}
 
   public async SetUserUsage(req: IRequest, res: IResponse): Promise<IResponse> {

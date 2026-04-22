@@ -10,16 +10,17 @@ import { createServer } from 'http';
 import { RouterHttp } from './api/RouterHttp';
 import { handleError } from './api/middlewares/error';
 import { RestClientService } from './services/RestClientService';
-import { LoggerService } from './services/LoggerService';
+import { logger } from './services/LoggerService';
 import { VersionMiddleware } from './api/middlewares/version';
 import { IResponse, IRequest, INext } from './types/http';
 
 export class Server {
+  private readonly _logger = logger;
+
   constructor(
-    private _authRouter: RouterHttp,
-    private _restClient: RestClientService,
-    private _logger: LoggerService,
-    private version: VersionMiddleware,
+    private _authRouter: RouterHttp = new RouterHttp(),
+    private _restClient: RestClientService = new RestClientService(),
+    private version: VersionMiddleware = new VersionMiddleware(),
   ) {}
   async run(): Promise<void> {
     // Initialize Redis for rate limiting before starting the server

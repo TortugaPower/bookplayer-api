@@ -3,7 +3,7 @@ import { PasskeyController } from '../controllers/PasskeyController';
 import { authRateLimiter, emailVerificationRateLimiter } from './middlewares/rateLimit';
 
 export class PasskeyRouter {
-  constructor(private _controller: PasskeyController) {}
+  constructor(private _controller: PasskeyController = new PasskeyController()) {}
 
   get(): express.Router {
     const router = express.Router();

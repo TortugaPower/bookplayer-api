@@ -2,17 +2,17 @@ import { SubscriptionUser, RevenuecatEvent } from '../types/user';
 import database from '../database';
 import { RestClientService } from './RestClientService';
 import { UserServices } from './UserServices';
-import { LoggerService } from './LoggerService';
+import { logger } from './LoggerService';
 import { EmailService } from './EmailService';
 
 export class SubscriptionService {
+  private readonly _logger = logger;
   private db = database;
 
   constructor(
-    private _restClient: RestClientService,
-    private _user: UserServices,
-    private _logger: LoggerService,
-    private _email: EmailService,
+    private _restClient: RestClientService = new RestClientService(),
+    private _user: UserServices = new UserServices(),
+    private _email: EmailService = new EmailService(),
   ) {}
 
   async ParseNewEvent(event: RevenuecatEvent): Promise<SubscriptionUser> {

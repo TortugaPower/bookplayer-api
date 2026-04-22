@@ -1,11 +1,10 @@
 import { LibraryItemType, UserBooks, UserStats } from '../types/user';
 import database from '../database';
-import { LoggerService } from './LoggerService';
+import { logger } from './LoggerService';
 
 export class AdminService {
+  private readonly _logger = logger;
   private db = database;
-
-  constructor(private _logger: LoggerService) {}
 
   async GetUsersStats(): Promise<UserStats[]> {
     try {

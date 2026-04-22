@@ -3,13 +3,14 @@ import { StorageService } from '../services/StorageService';
 import { LibraryService } from '../services/LibraryService';
 import { Writable } from 'stream';
 import { S3ClientHeaders, S3ValidHeader } from '../types/user';
-import { LoggerService } from '../services/LoggerService';
+import { logger } from '../services/LoggerService';
 
 export class StorageController {
+  private readonly _loggerService = logger;
+
   constructor(
-    private _storageService: StorageService,
-    private _libraryService: LibraryService,
-    private _loggerService: LoggerService,
+    private _storageService: StorageService = new StorageService(),
+    private _libraryService: LibraryService = new LibraryService(),
   ) {}
 
   public async getProxyLibrary(

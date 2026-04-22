@@ -15,14 +15,13 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { S3ClientHeaders, StorageAction, StorageItem } from '../types/user';
 import moment from 'moment';
-import { LoggerService } from './LoggerService';
+import { logger } from './LoggerService';
 import { Readable } from 'stream';
 
 export class S3Service {
+  private readonly _logger = logger;
   private client = new S3({ region: process.env.S3_REGION });
   private clientObject = new S3Client({ region: process.env.S3_REGION });
-
-  constructor(private _logger: LoggerService) {}
 
   async fileExists(key: string): Promise<boolean> {
     try {

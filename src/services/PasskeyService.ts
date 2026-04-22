@@ -10,7 +10,7 @@ import type { AuthenticatorTransportFuture } from '@simplewebauthn/types';
 import JWT from 'jsonwebtoken';
 import moment from 'moment';
 import database from '../database';
-import { LoggerService } from './LoggerService';
+import { logger } from './LoggerService';
 import type {
   PasskeyCredential,
   AuthMethod,
@@ -21,9 +21,8 @@ import type {
 } from '../types/passkey';
 
 export class PasskeyService {
+  private readonly _logger = logger;
   private db = database;
-
-  constructor(private _logger: LoggerService) {}
 
   // WebAuthn configuration
   private readonly rpID = process.env.WEBAUTHN_RP_ID;

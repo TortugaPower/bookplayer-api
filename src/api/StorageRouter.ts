@@ -5,8 +5,8 @@ import { SubscriptionMiddleware } from './middlewares/subscription';
 
 export class StorageRouter {
   constructor(
-    private _controller: StorageController,
-    private _subscription: SubscriptionMiddleware,
+    private _controller: StorageController = new StorageController(),
+    private _subscription: SubscriptionMiddleware = new SubscriptionMiddleware(),
   ) {}
 
   get(): express.Router {

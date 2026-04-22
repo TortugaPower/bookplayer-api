@@ -1,16 +1,16 @@
 import { S3Service } from './S3Service';
-import { LoggerService } from './LoggerService';
+import { logger } from './LoggerService';
 import { RestClientService } from './RestClientService';
 import database from '../database';
 
 
 export class GlacierMigrationService {
+  private readonly _logger = logger;
   private db = database;
 
   constructor(
-    private _s3: S3Service,
-    private _logger: LoggerService,
-    private _restClient: RestClientService,
+    private _s3: S3Service = new S3Service(),
+    private _restClient: RestClientService = new RestClientService(),
   ) {}
 
   async HandleExpirationEvent(

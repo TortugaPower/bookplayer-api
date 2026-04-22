@@ -13,7 +13,7 @@ import {
 import { Knex } from 'knex';
 import database from '../database';
 import { StorageService } from './StorageService';
-import { LoggerService } from './LoggerService';
+import { logger } from './LoggerService';
 import moment from 'moment-timezone';
 import {
   splitArrayGroups,
@@ -23,12 +23,10 @@ import {
 } from '../utils';
 
 export class LibraryService {
+  private readonly _logger = logger;
   private db = database;
 
-  constructor(
-    private _storage: StorageService,
-    private _logger: LoggerService,
-  ) {}
+  constructor(private _storage: StorageService = new StorageService()) {}
 
   async dbGetAllKeys(user_id: number): Promise<string[]> {
     try {

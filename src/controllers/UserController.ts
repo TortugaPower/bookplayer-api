@@ -8,8 +8,8 @@ import { gte } from 'semver';
 
 export class UserController {
   constructor(
-    private _userService: UserServices,
-    private _subscriptionService: SubscriptionService,
+    private _userService: UserServices = new UserServices(),
+    private _subscriptionService: SubscriptionService = new SubscriptionService(),
   ) {}
 
   private readonly minVersion = '5.6.0';

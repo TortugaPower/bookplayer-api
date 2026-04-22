@@ -1,12 +1,13 @@
 import { IRequest, IResponse } from '../types/http';
 import { RetentionMessagingService } from '../services/RetentionMessagingService';
-import { LoggerService } from '../services/LoggerService';
+import { logger } from '../services/LoggerService';
 import { RealtimeResponseBody } from '../types/retentionMessaging';
 
 export class RetentionMessagingController {
+  private readonly _logger = logger;
+
   constructor(
-    private _retentionService: RetentionMessagingService,
-    private _logger: LoggerService,
+    private _retentionService: RetentionMessagingService = new RetentionMessagingService(),
   ) {}
 
   public async HandleRetentionRequest(

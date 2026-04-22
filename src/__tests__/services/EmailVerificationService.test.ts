@@ -14,11 +14,10 @@ describe('EmailVerificationService', () => {
 
   beforeEach(() => {
     // Create service with mocked dependencies
-    service = new EmailVerificationService(
-      mockLoggerService as any,
-      mockEmailService as any,
-      mockUserService as any,
-    );
+    service = new EmailVerificationService();
+    (service as any)._logger = mockLoggerService;
+    (service as any)._emailService = mockEmailService;
+    (service as any)._userService = mockUserService;
     (service as any).db = getTestTransaction();
 
     // Clear mock calls

@@ -8,12 +8,12 @@ import { PasskeyRouter } from './PasskeyRouter';
 
 export class RouterHttp {
   constructor(
-    private _authRouter: UserRouter,
-    private _libraryRouter: LibraryRouter,
-    private _adminRouter: AdminRouter,
-    private _storageRouter: StorageRouter,
-    private _passkeyRouter: PasskeyRouter,
-    private _retentionRouter: RetentionMessagingRouter,
+    private _authRouter: UserRouter = new UserRouter(),
+    private _libraryRouter: LibraryRouter = new LibraryRouter(),
+    private _adminRouter: AdminRouter = new AdminRouter(),
+    private _storageRouter: StorageRouter = new StorageRouter(),
+    private _passkeyRouter: PasskeyRouter = new PasskeyRouter(),
+    private _retentionRouter: RetentionMessagingRouter = new RetentionMessagingRouter(),
   ) {}
 
   get(): express.Router {

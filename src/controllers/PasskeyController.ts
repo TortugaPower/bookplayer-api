@@ -1,13 +1,14 @@
 import { PasskeyService } from '../services/PasskeyService';
 import { EmailVerificationService } from '../services/EmailVerificationService';
-import { LoggerService } from '../services/LoggerService';
+import { logger } from '../services/LoggerService';
 import { IRequest, IResponse, INext } from '../types/http';
 
 export class PasskeyController {
+  private readonly _logger = logger;
+
   constructor(
-    private _passkeyService: PasskeyService,
-    private _emailVerificationService: EmailVerificationService,
-    private _logger: LoggerService,
+    private _passkeyService: PasskeyService = new PasskeyService(),
+    private _emailVerificationService: EmailVerificationService = new EmailVerificationService(),
   ) {}
 
   // Email verification endpoints

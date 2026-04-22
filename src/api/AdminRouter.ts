@@ -5,8 +5,8 @@ import { INext, IRequest, IResponse } from '../types/http';
 
 export class AdminRouter {
   constructor(
-    private _controller: AdminController,
-    private _adminMiddleware: UserAdminMiddleware,
+    private _controller: AdminController = new AdminController(),
+    private _adminMiddleware: UserAdminMiddleware = new UserAdminMiddleware(),
   ) {}
 
   get(): express.Router {

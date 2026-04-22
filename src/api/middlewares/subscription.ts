@@ -3,7 +3,7 @@ import { UserServices } from '../../services/UserServices';
 import { SubscriptionEventType } from '../../types/user';
 
 export class SubscriptionMiddleware {
-  constructor(private _userService: UserServices) {}
+  constructor(private _userService: UserServices = new UserServices()) {}
   async checkSubscription(
     req: IRequest,
     res: IResponse,

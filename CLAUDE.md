@@ -55,9 +55,8 @@ yarn dev
 
 ```
 src/
-├── main.ts                 # Entry point
+├── main.ts                 # Entry point (loads env, then `new Server().run()`)
 ├── server.ts               # Express app setup
-├── composition.ts          # Composition root (manual DI wire-up)
 ├── config/
 │   └── envs.ts            # Environment validation
 ├── api/
@@ -82,24 +81,46 @@ src/
 └── utils/                # Shared utilities
 ```
 
-## Dependency Injection (Composition Root)
+## Dependency Injection
 
-Components use **manual constructor injection**. A single composition root (`src/composition.ts`) instantiates the full object graph in topological order and hands the root `Server` back to `main.ts`. No DI framework, no decorators, no Symbols.
+No framework, no decorators, no composition root. Two conventions:
+
+1. **`logger` is a shared singleton** exported from `src/services/LoggerService.ts`. Every class that logs imports it and assigns it as a `readonly` field:
+   ```typescript
+   import { logger } from './LoggerService';
+
+   export class MyService {
+     private readonly _logger = logger;
+   }
+   ```
+   (Field initializer, not a constructor param. One Winston instance for the whole process.)
+
+2. **Other deps are constructor params with default factory values.** Production callers pass nothing; tests can pass mocks:
+   ```typescript
+   constructor(
+     private _userService: UserServices = new UserServices(),
+     private _emailService: EmailService = new EmailService(),
+   ) {}
+   ```
+
+This matches the pattern used in core-api (`Karta/core-api/src/controllers/dispute-controller.ts:32-46`, `Karta/core-api/src/services/stripe-service.ts:24`).
 
 ### Adding a New Service
 
 1. **Create the service** (`src/services/MyService.ts`):
 ```typescript
-import { LoggerService } from './LoggerService';
+import { logger } from './LoggerService';
 
 export class MyService {
+  private readonly _logger = logger;
   private db = database;
 
-  constructor(private _logger: LoggerService) {}
+  // No constructor needed if logger is the only dep.
+  // With other deps:
+  // constructor(private _userService: UserServices = new UserServices()) {}
 
   async DoSomething(param: string): Promise<Result> {
     try {
-      // Business logic here
       return result;
     } catch (err) {
       this._logger.log({
@@ -113,29 +134,28 @@ export class MyService {
 }
 ```
 
-2. **Wire it up in `src/composition.ts`** at the correct tier (after all its deps are instantiated):
-```typescript
-const myService = new MyService(logger);
-```
-
-3. **Inject in a controller** — add a constructor param:
+2. **Inject in a controller** — add a constructor param with a default:
 ```typescript
 import { MyService } from '../services/MyService';
 
 export class MyController {
-  constructor(private _myService: MyService) {}
+  private readonly _logger = logger;
+
+  constructor(private _myService: MyService = new MyService()) {}
 }
 ```
 
-Then update the controller's line in `composition.ts`:
-```typescript
-const myController = new MyController(myService);
-```
+No composition file to update — each class self-instantiates its deps. `main.ts` just does `new Server().run()`.
 
 **Notes:**
-- `constructor(private _foo: Foo)` is TypeScript **parameter-property** sugar — it declares and assigns `this._foo` in one step. Method bodies keep using `this._foo.x()` exactly as before.
-- Controller handler signatures are `async method(req: IRequest, res: IResponse): Promise<IResponse>`. The router wraps calls with `.catch(next)` for error handling, so controllers don't need to accept `next` unless they actually use it (see `PasskeyController` for that exception).
-- Tests instantiate services directly with mock constructor args: `new MyService(mockLogger as any)`. No container needed.
+- `constructor(private _foo: Foo = new Foo())` is TypeScript **parameter-property** sugar plus a default value. Method bodies keep `this._foo.x()` unchanged.
+- Controller handler signatures are `async method(req: IRequest, res: IResponse): Promise<IResponse>`. The router wraps calls with `.catch(next)` for error handling; controllers don't accept `next` unless they actually use it (see `PasskeyController` for the exception).
+- Tests instantiate services with no args, then assign mocks to private fields:
+  ```typescript
+  const service = new MyService();
+  (service as any)._logger = mockLogger;
+  (service as any)._userService = mockUserService;
+  ```
 
 ## Request Flow
 
@@ -163,9 +183,10 @@ The auth middleware (`src/api/middlewares/auth.ts`):
 
 ```typescript
 export class UserController {
+  private readonly _logger = logger;
+
   constructor(
-    private _userService: UserServices,
-    private _logger: LoggerService,
+    private _userService: UserServices = new UserServices(),
   ) {}
 
   public async InitLogin(req: IRequest, res: IResponse): Promise<IResponse> {

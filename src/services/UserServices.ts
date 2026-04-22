@@ -16,12 +16,11 @@ import { Knex } from 'knex';
 import database from '../database';
 import JWT from 'jsonwebtoken';
 import moment from 'moment';
-import { LoggerService } from './LoggerService';
+import { logger } from './LoggerService';
 
 export class UserServices {
+  private readonly _logger = logger;
   private db = database;
-
-  constructor(private _logger: LoggerService) {}
   async TokenUser(UserLogged: User): Promise<string> {
     const token = JWT.sign(
       JSON.stringify({ ...UserLogged, time: moment().unix() }),

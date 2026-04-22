@@ -1,13 +1,12 @@
 import { SignedDataVerifier, Environment } from '@apple/app-store-server-library';
 import * as fs from 'fs';
 import * as path from 'path';
-import { LoggerService } from './LoggerService';
+import { logger } from './LoggerService';
 import { DecodedRealtimeRequestBody } from '../types/retentionMessaging';
 
 export class RetentionMessagingService {
+  private readonly _logger = logger;
   private _verifier: SignedDataVerifier | null = null;
-
-  constructor(private _logger: LoggerService) {}
 
   private getVerifier(): SignedDataVerifier {
     if (this._verifier) {

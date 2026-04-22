@@ -2,7 +2,7 @@ import { IRequest, IResponse, INext } from '../../types/http';
 import { UserServices } from '../../services/UserServices';
 
 export class UserAdminMiddleware {
-  constructor(private _userService: UserServices) {}
+  constructor(private _userService: UserServices = new UserServices()) {}
   async checkUserAdmin(
     req: IResponse,
     res: IRequest,

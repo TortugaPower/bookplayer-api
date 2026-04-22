@@ -2,17 +2,17 @@ import crypto from 'crypto';
 import JWT from 'jsonwebtoken';
 import moment from 'moment';
 import database from '../database';
-import { LoggerService } from './LoggerService';
+import { logger } from './LoggerService';
 import { EmailService } from './EmailService';
 import { UserServices } from './UserServices';
 
 export class EmailVerificationService {
+  private readonly _logger = logger;
   private db = database;
 
   constructor(
-    private _logger: LoggerService,
-    private _emailService: EmailService,
-    private _userService: UserServices,
+    private _emailService: EmailService = new EmailService(),
+    private _userService: UserServices = new UserServices(),
   ) {}
 
   // Configuration

@@ -5,8 +5,8 @@ import { authRateLimiter } from './middlewares/rateLimit';
 
 export class UserRouter {
   constructor(
-    private _controller: UserController,
-    private _subscription: SubscriptionController,
+    private _controller: UserController = new UserController(),
+    private _subscription: SubscriptionController = new SubscriptionController(),
   ) {}
 
   get(): express.Router {

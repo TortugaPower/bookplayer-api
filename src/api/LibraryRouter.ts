@@ -5,8 +5,8 @@ import { INext, IRequest, IResponse } from '../types/http';
 
 export class LibraryRouter {
   constructor(
-    private _controller: LibraryController,
-    private _subscription: SubscriptionMiddleware,
+    private _controller: LibraryController = new LibraryController(),
+    private _subscription: SubscriptionMiddleware = new SubscriptionMiddleware(),
   ) {}
 
   get(): express.Router {

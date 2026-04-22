@@ -1,11 +1,10 @@
 import { createClient } from 'redis';
 import { RedisClientType } from '@redis/client';
-import { LoggerService } from './LoggerService';
+import { logger } from './LoggerService';
 
 export class RedisService {
+  private readonly _logger = logger;
   private static client: RedisClientType;
-
-  constructor(private _logger: LoggerService) {}
 
   async connectCacheService() {
     try {
