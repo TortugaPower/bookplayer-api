@@ -29,7 +29,7 @@ yarn dev
                              ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                  Router Layer (/src/api/)                   │
-│   UserRouter │ PasskeyRouter │ LibraryRouter │ AdminRouter  │
+│   UserRouter │ PasskeyRouter │ LibraryRouter │ StorageRouter│
 └────────────────────────────┬────────────────────────────────┘
                              │
                              ▼
@@ -64,14 +64,12 @@ src/
 │   ├── UserRouter.ts      # /v1/user routes
 │   ├── PasskeyRouter.ts   # /v1/passkey routes
 │   ├── LibraryRouter.ts   # /v1/library routes
-│   ├── AdminRouter.ts     # /v1/admin routes
 │   ├── StorageRouter.ts   # /v1/storage routes
 │   ├── RetentionMessagingRouter.ts  # /v1/retention routes
 │   └── middlewares/
 │       ├── auth.ts        # JWT validation
 │       ├── version.ts     # App version check
-│       ├── subscription.ts # Subscription check
-│       └── admin.ts       # Admin permission check
+│       └── subscription.ts # Subscription check
 ├── controllers/           # HTTP handlers
 ├── services/              # Business logic
 ├── types/                 # Type definitions (including http.ts for IRequest/IResponse/INext)
@@ -319,13 +317,6 @@ npx knex migrate:rollback
 | GET | `/url` | Get presigned URL | Yes |
 | POST | `/upload` | Upload file | Yes |
 
-### Admin Routes (`/v1/admin`)
-
-| Method | Path | Description | Auth |
-|--------|------|-------------|------|
-| GET | `/users/stats` | User statistics | Admin |
-| GET | `/books` | All books | Admin |
-| PUT | `/sync/:id` | Update sync status | Admin |
 
 ### Retention Routes (`/v1/retention`)
 
@@ -578,7 +569,7 @@ Routers are `express.Router()` modules (not classes): the file instantiates the 
 2. Add the controller method (`src/controllers/*Controller.ts`) — signature is `async myMethod(req: IRequest, res: IResponse): Promise<IResponse>`.
 3. Add a service method if needed (`src/services/*Service.ts`).
 
-Middlewares are plain exported functions (not classes) — import them by name and pass them straight to `router.use(...)` or the route call, e.g. `checkSubscription`, `checkUserAdmin`, `checkVersion`.
+Middlewares are plain exported functions (not classes) — import them by name and pass them straight to `router.use(...)` or the route call, e.g. `checkSubscription`, `checkVersion`.
 
 ### Adding a New Database Table
 

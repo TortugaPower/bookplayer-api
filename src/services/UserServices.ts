@@ -314,25 +314,6 @@ export class UserServices {
     }
   }
 
-  async checkIfAdmin(user_id: number): Promise<boolean> {
-    try {
-      const isAdmin = await this.db('admin_users')
-        .where({
-          user_id,
-          active: true,
-        })
-        .first();
-      return !!isAdmin;
-    } catch (err) {
-      this._logger.log({
-        origin: 'checkIfAdmin',
-        message: err.message,
-        data: { user_id },
-      });
-      return null;
-    }
-  }
-
   async insertNewEvent(params: {
     event_name: UserEventEnum;
     user_id?: number;
