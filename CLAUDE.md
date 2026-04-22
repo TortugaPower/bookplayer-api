@@ -567,9 +567,18 @@ describe('MyService', () => {
 
 ### Adding a New Endpoint
 
-1. Add route in appropriate router (`src/api/*Router.ts`)
-2. Add controller method (`src/controllers/*Controller.ts`)
-3. Add service method if needed (`src/services/*Service.ts`)
+Routers are `express.Router()` modules (not classes): the file instantiates the controller at module scope and registers route handlers against it.
+
+1. Add a route handler in the appropriate router file — `src/api/*Router.ts`:
+   ```typescript
+   MyRouter.post('/my-endpoint', checkSubscription, (req, res, next) =>
+     controller.myMethod(req, res).catch(next),
+   );
+   ```
+2. Add the controller method (`src/controllers/*Controller.ts`) — signature is `async myMethod(req: IRequest, res: IResponse): Promise<IResponse>`.
+3. Add a service method if needed (`src/services/*Service.ts`).
+
+Middlewares are plain exported functions (not classes) — import them by name and pass them straight to `router.use(...)` or the route call, e.g. `checkSubscription`, `checkUserAdmin`, `checkVersion`.
 
 ### Adding a New Database Table
 

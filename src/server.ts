@@ -7,21 +7,17 @@ import authMiddleware from './api/middlewares/auth';
 import { globalRateLimiter, initRateLimitRedis } from './api/middlewares/rateLimit';
 import { maintenanceMode } from './api/middlewares/maintenance';
 import { createServer } from 'http';
-import { RouterHttp } from './api/RouterHttp';
+import router from './api/RouterHttp';
 import { handleError } from './api/middlewares/error';
 import { RestClientService } from './services/RestClientService';
 import { logger } from './services/LoggerService';
-import { VersionMiddleware } from './api/middlewares/version';
-import { IResponse, IRequest, INext } from './types/http';
+import { checkVersion } from './api/middlewares/version';
 
 export class Server {
   private readonly _logger = logger;
 
-  constructor(
-    private _authRouter: RouterHttp = new RouterHttp(),
-    private _restClient: RestClientService = new RestClientService(),
-    private version: VersionMiddleware = new VersionMiddleware(),
-  ) {}
+  constructor(private _restClient: RestClientService = new RestClientService()) {}
+
   async run(): Promise<void> {
     // Initialize Redis for rate limiting before starting the server
     await initRateLimitRedis();
@@ -34,9 +30,7 @@ export class Server {
     app.use(maintenanceMode);
     app.use(globalRateLimiter);
     app.use(authMiddleware);
-    app.use((req: IResponse, res: IRequest, next: INext) => {
-      return this.version.checkVersion(req, res, next);
-    });
+    app.use(checkVersion);
     app.use(
       cors({
         origin: true,
@@ -45,7 +39,7 @@ export class Server {
       }),
     );
 
-    app.use('/v1', this._authRouter.get());
+    app.use('/v1', router);
     app.use(handleError);
     this._restClient.setupClient();
 
