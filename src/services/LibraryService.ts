@@ -159,16 +159,16 @@ export class LibraryService {
                 : null;
             break;
           default: // deprecated old part
-            if (options.withPresign && user.subscriptions.includes(SubscriptionTierEnum.PRO)) {
+            if (options.withPresign && user.subscriptions && user.subscriptions.includes(SubscriptionTierEnum.PRO)) {
               const originalFile = itemDb.source_path || itemDb.key;
-              const { url } = await this._storage.GetPresignedUrl({
+              const { url } = await this._storage.getPresignedUrl({
                 key: `${storagePrefix}/${originalFile}`,
                 type: StorageAction.GET,
               });
               fileUrl = url;
 
               if (itemDb.thumbnail) {
-                const { url } = await this._storage.GetPresignedUrl({
+                const { url } = await this._storage.getPresignedUrl({
                   key: `${storagePrefix}_thumbnail/${itemDb.thumbnail}`,
                   type: StorageAction.GET,
                 });
@@ -309,7 +309,7 @@ export class LibraryService {
           key: `${storagePrefix}/${itemDb.source_path || itemDb.key}`,
         });
         if (fileExists === true) {
-          const earlyApiResponse = (await this.ParseLibraryItemDbB(
+          const earlyApiResponse = (await this.parseLibraryItemDb(
             itemDb,
             LibraryItemOutput.API,
           )) as LibraryItem;
@@ -326,6 +326,7 @@ export class LibraryService {
           throw new Error(`Failed to create library item at key=${cleanPath}`);
         }
       }
+
       const apiResponse = (await this.parseLibraryItemDb(
         itemDb,
         LibraryItemOutput.API,
@@ -815,7 +816,7 @@ export class LibraryService {
     }
   }
 
-  async dbGetLastItemPlayed(
+  async getLastItemPlayed(
     user: User,
     options: { withPresign?: boolean; appVersion: string },
     trx?: Knex.Transaction,
@@ -931,7 +932,7 @@ export class LibraryService {
   ): Promise<string | boolean> {
     try {
       const { uuid, uploaded } = params;
-      const objectDB = await this.dbGetLibraryByUuid(user.id_user, uuid, {
+      const objectDB = await this._libraryDB.getLibraryByUuid(user.id_user, uuid, {
         exactly: true,
       });
       const itemDb = objectDB?.[0];
@@ -958,7 +959,7 @@ export class LibraryService {
         return !!idExternal[0].library_item_id && !!idUpdated[0].id_library_item;
       }
       const originalFile = itemDb.source_path || itemDb.key;
-      const { url } = await this._storage.GetPresignedUrl({
+      const { url } = await this._storage.getPresignedUrl({
         key: `${user.email}/${originalFile}`,
         type: StorageAction.GET,
       });
