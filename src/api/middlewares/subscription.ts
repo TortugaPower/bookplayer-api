@@ -36,8 +36,7 @@ export const requireSubscription = (allowedTypes: SubscriptionTier[]) => {
       res.status(400).json({ error: "User data missing." });
       return;
     }
-
-    if (allowedTypes.includes(req.user.subscription_type)) {
+    if (allowedTypes.includes(req.user.subscriptions[0])) {
       next();
     } else {
       res.status(403).json({ 
