@@ -615,7 +615,7 @@ export class LibraryDB {
     trx: Knex.Transaction,
   ): Promise<void> {
     await trx('library_items')
-      .where({ user_id: params.user_id, key: params.key })
+      .where({ user_id: params.user_id, key: params.key, active: true })
       .update({ uuid: params.uuid });
   }
 }
