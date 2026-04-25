@@ -158,7 +158,7 @@ export class LibraryDB {
       const db = trx || this.db;
       const targetItem = await db('library_items')
         .select('key')
-        .where({ user_id, uuid })
+        .where({ user_id, uuid, active: true })
         .first();
 
       if (!targetItem) return [];
@@ -393,8 +393,8 @@ export class LibraryDB {
         {},
       );
       const whereClause = isValidUUID(uuid)
-        ? { user_id, uuid: uuid as string }
-        : { user_id, key };
+        ? { user_id, uuid: uuid as string, active: true }
+        : { user_id, key, active: true };
       const updatedCount = await db('library_items')
         .update(updateObject)
         .where(whereClause);
@@ -531,7 +531,7 @@ export class LibraryDB {
   ): Promise<void> {
     await trx('library_items')
       .update({ source_path: params.source_path })
-      .where({ user_id: params.user_id, key: params.key });
+      .where({ user_id: params.user_id, key: params.key, active: true });
   }
 
   async updateFolderMergeFields(
@@ -605,7 +605,7 @@ export class LibraryDB {
   ): Promise<Array<{ key: string; uuid: string | null }>> {
     return trx('library_items')
       .select('key', 'uuid')
-      .where({ user_id: params.user_id })
+      .where({ user_id: params.user_id, active: true })
       .whereIn('key', params.keys)
       .forUpdate();
   }
