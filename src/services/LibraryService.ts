@@ -331,9 +331,8 @@ export class LibraryService {
         itemDb,
         LibraryItemOutput.API,
       )) as LibraryItem;
-      
 
-      if (!user.subscriptions?.includes(SubscriptionTierEnum.PRO)) {
+      if (!user.subscriptions || !user.subscriptions.includes(SubscriptionTierEnum.PRO)) {
         apiResponse.url = null;
         return apiResponse
       }
@@ -692,6 +691,7 @@ export class LibraryService {
       );
       if (!folderDB[0]) {
         // Folder no longer exists
+        trx.commit();
         return true;
       }
       const folderDeleted = await this._libraryDB.deleteLibrary(

@@ -4,10 +4,12 @@ import { logger } from './LoggerService';
 export type RCActiveStatus = {
   active: boolean;
   expiresMs: number | null;
+  entitlementIds: string[]
 };
 
 type RCEntitlement = {
   lookup_key?: string;
+  entitlement_id?: string;
   expires_at?: number | null;
 };
 
@@ -43,22 +45,25 @@ export class RevenueCatV2Client {
       const now = Date.now();
       let active = false;
       let maxExpiresMs: number | null = null;
+      let entitlementIds: string[] = [];
       for (const ent of items) {
         const expiresMs: number | null = ent.expires_at ?? null;
         if (expiresMs === null) {
           active = true;
+          if (ent.entitlement_id) entitlementIds.push(ent.entitlement_id)
           maxExpiresMs = null;
           break;
         }
         if (expiresMs > now) {
           active = true;
+          if (ent.entitlement_id) entitlementIds.push(ent.entitlement_id)
           if (maxExpiresMs === null || expiresMs > maxExpiresMs) {
             maxExpiresMs = expiresMs;
           }
         }
       }
 
-      return { active, expiresMs: maxExpiresMs };
+      return { active, expiresMs: maxExpiresMs, entitlementIds };
     } catch (err) {
       this._logger.log({
         origin: 'RevenueCatV2Client.fetchActiveStatus',

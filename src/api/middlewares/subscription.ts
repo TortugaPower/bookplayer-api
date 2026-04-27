@@ -19,10 +19,11 @@ export const checkSubscription = async (
     // Older Apple-login JWTs don't carry external_id; fall back to a DB lookup
     // for those. New Apple + passkey logins include it directly on the token.
     const externalId = user.external_id || (await userDB.getExternalIdByUserId(user.id_user));
-    const active = await subscriptionService.isActive(externalId);
-    if (!active) {
+    const subState = await subscriptionService.isActive(externalId);
+    if (!subState?.active) {
       return res.status(400).json({ message: 'You are not subscribed' });
     }
+    req.user.subscriptions = subState.subscriptions
     next();
   } catch (error) {
     next(error);
