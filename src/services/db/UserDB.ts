@@ -21,7 +21,7 @@ export class UserDB {
     try {
       const db = trx || this.db;
       const user = await db('users as usr')
-        .select('usr.id_user', 'usr.email', 'ud.session')
+        .select('usr.id_user', 'usr.email', 'usr.external_id', 'ud.session')
         .leftJoin('user_devices as ud', function () {
           this.on('usr.id_user', '=', 'ud.user_id').andOn(
             'ud.session',
@@ -87,6 +87,27 @@ export class UserDB {
         origin: 'UserDB.insertDevice',
         message: err.message,
         data: { userSession },
+      });
+      return null;
+    }
+  }
+
+  async getExternalIdByUserId(
+    user_id: number,
+    trx?: Knex.Transaction,
+  ): Promise<string | null> {
+    try {
+      const db = trx || this.db;
+      const row = await db('users')
+        .select('external_id')
+        .where({ id_user: user_id, active: true })
+        .first();
+      return row?.external_id || null;
+    } catch (err) {
+      this._logger.log({
+        origin: 'UserDB.getExternalIdByUserId',
+        message: err.message,
+        data: { user_id },
       });
       return null;
     }

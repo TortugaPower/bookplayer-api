@@ -209,6 +209,23 @@ describe('SubscriptionService.isActive', () => {
     expect(cache.setObject).toHaveBeenCalledTimes(1);
   });
 
+  it('returns true when latest local event has null expiration (lifetime grant)', async () => {
+    const trx = getTestTransaction();
+    const externalId = randomUUID();
+    await createTestSubscriptionEvent(trx, {
+      original_app_user_id: externalId,
+      type: 'NON_RENEWING_PURCHASE',
+      expiration_at_ms: null,
+    });
+    (service as any)._rcV2 = makeRcMock({ active: true, expiresMs: null });
+
+    const result = await service.isActive(externalId);
+
+    expect(result).toBe(true);
+    const cached = JSON.parse(cache.store.get(`sub:${externalId}`)!.value);
+    expect(cached).toEqual({ active: true, verified: 'local' });
+  });
+
   it('matches user via aliases JSON path', async () => {
     const trx = getTestTransaction();
     const aliasId = randomUUID();

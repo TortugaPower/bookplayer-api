@@ -171,8 +171,9 @@ export class SubscriptionService {
     const event = await this._subscriptionDB.getLatestActiveEvent(externalId);
     if (!event) return false;
     if (event.type === SubscriptionEventType.EXPIRATION) return false;
+    // null expiration_at_ms = lifetime grant (e.g. NON_RENEWING_PURCHASE promo).
     const expiresMs = event.expiration_at_ms ? Number(event.expiration_at_ms) : null;
-    if (expiresMs === null) return false;
+    if (expiresMs === null) return true;
     return expiresMs > Date.now();
   }
 

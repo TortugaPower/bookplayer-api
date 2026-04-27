@@ -111,6 +111,7 @@ export class UserController {
     const token = await this._userService.tokenUser({
       id_user: user.id_user,
       email: appleAuth.email,
+      external_id: user.external_id,
       session: appleAuth.sub,
     });
 

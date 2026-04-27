@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
 const mockIsActive =
   jest.fn<(externalId: string) => Promise<boolean>>();
+const mockGetExternalIdByUserId =
+  jest.fn<(userId: number) => Promise<string | null>>();
 
 // Replace the SubscriptionService class with one whose isActive we control.
 // Hoisted by jest before the module-under-test is imported, so the singleton
@@ -9,6 +11,12 @@ const mockIsActive =
 jest.mock('../../services/SubscriptionService', () => ({
   SubscriptionService: jest.fn().mockImplementation(() => ({
     isActive: mockIsActive,
+  })),
+}));
+
+jest.mock('../../services/db/UserDB', () => ({
+  UserDB: jest.fn().mockImplementation(() => ({
+    getExternalIdByUserId: mockGetExternalIdByUserId,
   })),
 }));
 
@@ -22,6 +30,7 @@ describe('checkSubscription middleware', () => {
 
   beforeEach(() => {
     mockIsActive.mockReset();
+    mockGetExternalIdByUserId.mockReset();
     req = { user: { id_user: 1, external_id: 'ext-1' } };
     res = {
       status: jest.fn().mockReturnThis(),
@@ -63,5 +72,17 @@ describe('checkSubscription middleware', () => {
     await checkSubscription(req, res, next);
     expect(next).toHaveBeenCalledWith(error);
     expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('falls back to DB lookup when JWT lacks external_id (legacy Apple login)', async () => {
+    req.user = { id_user: 42 };  // no external_id — pre-fix Apple JWT shape
+    mockGetExternalIdByUserId.mockResolvedValue('ext-from-db');
+    mockIsActive.mockResolvedValue(true);
+
+    await checkSubscription(req, res, next);
+
+    expect(mockGetExternalIdByUserId).toHaveBeenCalledWith(42);
+    expect(mockIsActive).toHaveBeenCalledWith('ext-from-db');
+    expect(next).toHaveBeenCalledTimes(1);
   });
 });

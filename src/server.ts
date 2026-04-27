@@ -10,17 +10,22 @@ import { createServer } from 'http';
 import router from './api/RouterHttp';
 import { handleError } from './api/middlewares/error';
 import { RestClientService } from './services/RestClientService';
+import { RedisService } from './services/RedisService';
 import { logger } from './services/LoggerService';
 import { checkVersion } from './api/middlewares/version';
 
 export class Server {
   private readonly _logger = logger;
 
-  constructor(private _restClient: RestClientService = new RestClientService()) {}
+  constructor(
+    private _restClient: RestClientService = new RestClientService(),
+    private _cache: RedisService = new RedisService(),
+  ) {}
 
   async run(): Promise<void> {
-    // Initialize Redis for rate limiting before starting the server
+    // Initialize Redis for rate limiting and the shared cache before starting the server
     await initRateLimitRedis();
+    await this._cache.connectCacheService();
 
     const app = express();
     app.use(bodyParser.json());

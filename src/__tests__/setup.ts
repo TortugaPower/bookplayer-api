@@ -203,7 +203,7 @@ export async function createTestSubscriptionEvent(
   params: {
     original_app_user_id: string;
     type: string;
-    expiration_at_ms: number;
+    expiration_at_ms: number | null;
     event_timestamp_ms?: number;
     period_type?: string;
     aliases?: string[];
@@ -226,7 +226,8 @@ export async function createTestSubscriptionEvent(
       original_app_user_id: params.original_app_user_id,
       type: params.type,
       period_type: params.period_type ?? 'NORMAL',
-      expiration_at_ms: String(params.expiration_at_ms),
+      expiration_at_ms:
+        params.expiration_at_ms === null ? null : String(params.expiration_at_ms),
       json: JSON.stringify(json),
     })
     .returning('id_subscription_event');
