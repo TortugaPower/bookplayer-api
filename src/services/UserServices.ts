@@ -14,12 +14,16 @@ import JWT from 'jsonwebtoken';
 import moment from 'moment';
 import { logger } from './LoggerService';
 import { UserDB } from './db/UserDB';
+import { SubscriptionService } from './SubscriptionService';
 
 export class UserServices {
   private readonly _logger = logger;
   private db = database;
 
-  constructor(private _userDB: UserDB = new UserDB()) {}
+  constructor(
+    private _userDB: UserDB = new UserDB(),
+    private _subscriptionService: SubscriptionService = new SubscriptionService(),
+  ) {}
 
   async tokenUser(UserLogged: User): Promise<string> {
     const token = JWT.sign(
@@ -83,39 +87,20 @@ export class UserServices {
     return this._userDB.getUserByExternalId(external_ids, trx);
   }
 
-  async updateSubscription(
-    user_id: number,
-    subscription: string,
-    trx?: Knex.Transaction,
-  ): Promise<boolean> {
-    const tx = trx || (await this.db.transaction());
-    try {
-      await this._userDB.deactivateSubscriptionParam(user_id, tx);
-      await this._userDB.insertSubscriptionParam(user_id, subscription, tx);
-      if (!trx) await tx.commit();
-      return true;
-    } catch (err) {
-      if (!trx) await tx.rollback();
-      this._logger.log({
-        origin: 'UserServices.updateSubscription',
-        message: err.message,
-        data: { user_id, subscription },
-      });
-      return false;
-    }
-  }
-
   async deleteAccount(
     user_id: number,
+    external_id?: string,
     trx?: Knex.Transaction,
   ): Promise<boolean> {
     const tx = trx || (await this.db.transaction());
     try {
-      await this._userDB.softDeleteUserParams(user_id, tx);
       await this._userDB.softDeleteUserDevices(user_id, tx);
       await this._userDB.softDeleteUser(user_id, tx);
       await this._userDB.softDeleteAuthMethods(user_id, tx);
       if (!trx) await tx.commit();
+      if (external_id) {
+        await this._subscriptionService.invalidateCache(external_id);
+      }
       return true;
     } catch (err) {
       if (!trx) await tx.rollback();
@@ -126,10 +111,6 @@ export class UserServices {
       });
       return false;
     }
-  }
-
-  async getUserSubscriptionState(user_id: number): Promise<string> {
-    return this._userDB.getUserSubscriptionState(user_id);
   }
 
   async getClientID(params: { origin: string }): Promise<{

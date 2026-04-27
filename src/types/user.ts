@@ -11,7 +11,6 @@ export type User = {
   created_at?: string;
   updated_at?: string;
   session?: string;
-  params?: UserParamsObject;
   external_id?: string;
 };
 
@@ -37,16 +36,6 @@ export type UserDevice = {
   updated_at?: string;
 };
 
-export type UserParam = {
-  id_param?: number;
-  user_id: number;
-  param: string;
-  value: string;
-  active: boolean;
-  created_at?: string;
-  updated_at?: string;
-};
-
 export type AppleJWT = {
   iss: string;
   aud: string;
@@ -60,11 +49,6 @@ export type AppleJWT = {
   real_user_status?: number;
 };
 
-export enum TypeUserParams {
-  subscription = 'subscription',
-}
-export type UserParamsObject = { [key in TypeUserParams]?: unknown };
-
 export type RevenuecatEvent = {
   aliasis: string[];
   app_id: string;
@@ -72,6 +56,7 @@ export type RevenuecatEvent = {
   currency: string;
   entitlement_id: string;
   environment: string;
+  event_timestamp_ms: number;
   expiration_at_ms: number;
   id: string;
   original_app_user_id: string;
@@ -116,6 +101,7 @@ export interface RestClientProps {
   body?: object | null;
   service: string;
   method: HTTPMethod;
+  timeout?: number;
 }
 
 export enum LibraryItemOutput {

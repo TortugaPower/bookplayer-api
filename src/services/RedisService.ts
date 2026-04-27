@@ -33,12 +33,17 @@ export class RedisService {
       });
     }
   }
-  async setObject(key: string, obj: object): Promise<string> {
+  async setObject(
+    key: string,
+    obj: object,
+    ttlSeconds?: number,
+  ): Promise<string> {
     try {
-      const idObj = await RedisService.client.set(
-        process.env.REDIS_ENV + key,
-        JSON.stringify(obj),
-      );
+      const fullKey = process.env.REDIS_ENV + key;
+      const value = JSON.stringify(obj);
+      const idObj = ttlSeconds && ttlSeconds > 0
+        ? await RedisService.client.set(fullKey, value, { EX: ttlSeconds })
+        : await RedisService.client.set(fullKey, value);
       return idObj;
     } catch (err) {
       this._logger.log({ origin: 'RedisService.setObject', message: err.message, data: { key } }, 'error');

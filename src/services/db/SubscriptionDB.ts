@@ -3,9 +3,52 @@ import database from '../../database';
 import { logger } from '../LoggerService';
 import { RevenuecatEvent } from '../../types/user';
 
+export type LatestSubscriptionEvent = {
+  type: string | null;
+  period_type: string | null;
+  expiration_at_ms: string | null;
+};
+
 export class SubscriptionDB {
   private readonly _logger = logger;
   private db = database;
+
+  async getLatestActiveEvent(
+    externalId: string,
+    trx?: Knex.Transaction,
+  ): Promise<LatestSubscriptionEvent | null> {
+    try {
+      const db = trx || this.db;
+      const result = await db.raw(
+        `SELECT type, period_type, expiration_at_ms
+         FROM (
+           SELECT id_subscription_event, type, period_type, expiration_at_ms, json
+             FROM subscription_events WHERE original_app_user_id = ?
+           UNION ALL
+           SELECT id_subscription_event, type, period_type, expiration_at_ms, json
+             FROM subscription_events WHERE (json->>'app_user_id') = ?
+           UNION ALL
+           SELECT id_subscription_event, type, period_type, expiration_at_ms, json
+             FROM subscription_events WHERE EXISTS (
+               SELECT 1 FROM jsonb_array_elements_text(json->'aliases') AS elem
+               WHERE elem = ?
+             )
+         ) e
+         ORDER BY (json->>'event_timestamp_ms')::bigint DESC NULLS LAST,
+                  id_subscription_event DESC
+         LIMIT 1`,
+        [externalId, externalId, externalId],
+      );
+      return result.rows[0] || null;
+    } catch (err) {
+      this._logger.log({
+        origin: 'SubscriptionDB.getLatestActiveEvent',
+        message: err.message,
+        data: { externalId },
+      });
+      return null;
+    }
+  }
 
   async insertSubscriptionEvent(
     event: RevenuecatEvent,

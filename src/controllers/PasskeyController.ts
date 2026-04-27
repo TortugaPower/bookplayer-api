@@ -187,7 +187,7 @@ export class PasskeyController {
         result.user.external_id,
       );
       const hasSubscription = await this._passkeyService.hasSubscription(
-        result.user.id_user,
+        result.user.external_id,
       );
 
       return res.json({
@@ -261,7 +261,7 @@ export class PasskeyController {
         result.user.external_id,
       );
       const hasSubscription = await this._passkeyService.hasSubscription(
-        result.user.id_user,
+        result.user.external_id,
       );
 
       return res.json({

@@ -31,6 +31,7 @@ export class RestClientService {
     baseURL,
     service,
     method,
+    timeout,
   }: RestClientProps): Promise<any> {
     let reqHeader = {};
     if (headers) {
@@ -42,6 +43,7 @@ export class RestClientService {
       url: service,
       baseURL,
       withCredentials: true,
+      timeout: timeout ?? 5000,
     };
     if (method === 'post') {
       request.data = body;

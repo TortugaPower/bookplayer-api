@@ -101,6 +101,18 @@
           "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:REVENUECAT_KEY::"
         },
         {
+          "name": "REVENUECAT_API_V2",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:REVENUECAT_API_V2::"
+        },
+        {
+          "name": "REVENUECAT_API_V2_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:REVENUECAT_API_V2_KEY::"
+        },
+        {
+          "name": "REVENUECAT_PROJECT_ID",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:REVENUECAT_PROJECT_ID::"
+        },
+        {
           "name": "PROXY_FILE_URL",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:PROXY_FILE_URL::"
         },

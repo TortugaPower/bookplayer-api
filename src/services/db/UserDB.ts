@@ -4,7 +4,6 @@ import database from '../../database';
 import { logger } from '../LoggerService';
 import {
   SubscriptionUser,
-  TypeUserParams,
   User,
   UserEvent,
   UserEventEnum,
@@ -22,14 +21,7 @@ export class UserDB {
     try {
       const db = trx || this.db;
       const user = await db('users as usr')
-        .select('usr.id_user', 'usr.email', 'params.* as params', 'ud.session')
-        .joinRaw(
-          `left join lateral (
-          select json_object_agg(p.param, p.value) as params from (
-          select up.param, up.value from user_params up where up.user_id=usr.id_user and up.active= true
-          ) as p
-        ) as params on true`,
-        )
+        .select('usr.id_user', 'usr.email', 'ud.session')
         .leftJoin('user_devices as ud', function () {
           this.on('usr.id_user', '=', 'ud.user_id').andOn(
             'ud.session',
@@ -122,61 +114,6 @@ export class UserDB {
     }
   }
 
-  async deactivateSubscriptionParam(
-    user_id: number,
-    trx?: Knex.Transaction,
-  ): Promise<boolean> {
-    try {
-      const db = trx || this.db;
-      await db('user_params')
-        .update({ updated_at: db.fn.now(), active: false })
-        .where({ active: true, param: TypeUserParams.subscription, user_id });
-      return true;
-    } catch (err) {
-      this._logger.log({
-        origin: 'UserDB.deactivateSubscriptionParam',
-        message: err.message,
-        data: { user_id },
-      });
-      return false;
-    }
-  }
-
-  async insertSubscriptionParam(
-    user_id: number,
-    subscription: string,
-    trx?: Knex.Transaction,
-  ): Promise<boolean> {
-    try {
-      const db = trx || this.db;
-      await db('user_params')
-        .insert({
-          param: TypeUserParams.subscription,
-          value: subscription,
-          user_id,
-        })
-        .returning('id_param');
-      return true;
-    } catch (err) {
-      this._logger.log({
-        origin: 'UserDB.insertSubscriptionParam',
-        message: err.message,
-        data: { user_id, subscription },
-      });
-      return false;
-    }
-  }
-
-  async softDeleteUserParams(
-    user_id: number,
-    trx?: Knex.Transaction,
-  ): Promise<void> {
-    const db = trx || this.db;
-    await db('user_params')
-      .update({ updated_at: db.fn.now(), active: false })
-      .where({ active: true, user_id });
-  }
-
   async softDeleteUserDevices(
     user_id: number,
     trx?: Knex.Transaction,
@@ -202,51 +139,6 @@ export class UserDB {
     await db('auth_methods')
       .update({ updated_at: db.fn.now(), active: false })
       .where({ active: true, user_id });
-  }
-
-  async getUserSubscriptionState(
-    user_id: number,
-    trx?: Knex.Transaction,
-  ): Promise<string> {
-    try {
-      const db = trx || this.db;
-      const userState = await db
-        .raw(
-          `
-        select usr.id_user, usr.email, usr.external_id,
-          coalesce(subscription_one.period_type, subscription_two.period_type, subscription_aliases.period_type) as period_type,
-          coalesce(subscription_one.type, subscription_two.type, subscription_aliases.type) as type
-        from users usr
-        left join lateral (
-          select * from subscription_events sevent where sevent.original_app_user_id=usr.external_id
-          order by sevent.id_subscription_event desc limit 1
-        ) as subscription_one on true
-        left join lateral (
-          select * from subscription_events sevent where replace((sevent.json -> 'app_user_id')::varchar, '"', '') = usr.external_id
-          order by sevent.id_subscription_event desc limit 1
-        ) as subscription_two on true
-        left join lateral (
-            select * from subscription_events sevent
-            WHERE EXISTS (
-                SELECT 1
-                FROM jsonb_array_elements_text(json->'aliases') AS elem
-                WHERE elem = usr.external_id
-            ) order by sevent.id_subscription_event desc limit 1
-        ) as subscription_aliases on true
-        where usr.id_user=? and coalesce(subscription_one.type, subscription_two.type, subscription_aliases.type) is not null
-      `,
-          [user_id],
-        )
-        .then((res) => res.rows[0]);
-      return userState?.type || null;
-    } catch (err) {
-      this._logger.log({
-        origin: 'UserDB.getUserSubscriptionState',
-        message: err.message,
-        data: { user_id },
-      });
-      return null;
-    }
   }
 
   async getClientID(

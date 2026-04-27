@@ -372,23 +372,4 @@ export class PasskeyDB {
     }
   }
 
-  async hasSubscriptionParam(
-    user_id: number,
-    trx?: Knex.Transaction,
-  ): Promise<boolean> {
-    try {
-      const db = trx || this.db;
-      const subscription = await db('user_params')
-        .where({ user_id, param: 'subscription', active: true })
-        .first();
-      return !!subscription;
-    } catch (err) {
-      this._logger.log({
-        origin: 'PasskeyDB.hasSubscriptionParam',
-        message: err.message,
-        data: { user_id },
-      });
-      return false;
-    }
-  }
 }

@@ -1,8 +1,7 @@
 import { IRequest, IResponse, INext } from '../../types/http';
-import { UserServices } from '../../services/UserServices';
-import { SubscriptionEventType } from '../../types/user';
+import { SubscriptionService } from '../../services/SubscriptionService';
 
-const userService = new UserServices();
+const subscriptionService = new SubscriptionService();
 
 export const checkSubscription = async (
   req: IRequest,
@@ -11,15 +10,14 @@ export const checkSubscription = async (
 ): Promise<void> => {
   try {
     const user = req.user;
-    if (user) {
-      const state = await userService.getUserSubscriptionState(user.id_user);
-      if (!state || state === SubscriptionEventType.EXPIRATION) {
-        return res.status(400).json({ message: 'You are not subscribed' });
-      }
-      next();
-    } else {
+    if (!user) {
       return res.status(400).json({ message: 'the user is invalid' });
     }
+    const active = await subscriptionService.isActive(user.external_id);
+    if (!active) {
+      return res.status(400).json({ message: 'You are not subscribed' });
+    }
+    next();
   } catch (error) {
     next(error);
   }

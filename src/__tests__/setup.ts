@@ -197,24 +197,39 @@ export async function createTestPasskeyCredential(
   return record;
 }
 
-// Helper to create test user params
-export async function createTestUserParam(
+// Helper to create test subscription_events rows
+export async function createTestSubscriptionEvent(
   trx: Knex.Transaction,
   params: {
-    user_id: number;
-    param: string;
-    value: string;
-    active?: boolean;
+    original_app_user_id: string;
+    type: string;
+    expiration_at_ms: number;
+    event_timestamp_ms?: number;
+    period_type?: string;
+    aliases?: string[];
+    app_user_id?: string;
   },
-): Promise<{ id_param: number }> {
-  const [record] = await trx('user_params')
+): Promise<{ id_subscription_event: number }> {
+  const eventTs = params.event_timestamp_ms ?? Date.now();
+  const json = {
+    aliases: params.aliases,
+    app_user_id: params.app_user_id ?? params.original_app_user_id,
+    event_timestamp_ms: eventTs,
+    expiration_at_ms: params.expiration_at_ms,
+    original_app_user_id: params.original_app_user_id,
+    period_type: params.period_type ?? 'NORMAL',
+    type: params.type,
+  };
+  const [record] = await trx('subscription_events')
     .insert({
-      user_id: params.user_id,
-      param: params.param,
-      value: params.value,
-      active: params.active ?? true,
+      id: randomUUID(),
+      original_app_user_id: params.original_app_user_id,
+      type: params.type,
+      period_type: params.period_type ?? 'NORMAL',
+      expiration_at_ms: String(params.expiration_at_ms),
+      json: JSON.stringify(json),
     })
-    .returning('id_param');
+    .returning('id_subscription_event');
 
   return record;
 }

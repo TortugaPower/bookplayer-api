@@ -12,6 +12,7 @@ import database from '../database';
 import { logger } from './LoggerService';
 import { PasskeyDB } from './db/PasskeyDB';
 import { UserDB } from './db/UserDB';
+import { SubscriptionService } from './SubscriptionService';
 import type {
   AuthMethod,
   PasskeyAuthOptionsResponse,
@@ -27,6 +28,7 @@ export class PasskeyService {
   constructor(
     private _passkeyDB: PasskeyDB = new PasskeyDB(),
     private _userDB: UserDB = new UserDB(),
+    private _subscriptionService: SubscriptionService = new SubscriptionService(),
   ) {}
 
   // WebAuthn configuration
@@ -563,8 +565,8 @@ export class PasskeyService {
     }
   }
 
-  // Check if user has active subscription
-  async hasSubscription(user_id: number): Promise<boolean> {
-    return this._passkeyDB.hasSubscriptionParam(user_id);
+  // Check if user has an active subscription. Backed by SubscriptionService cache.
+  async hasSubscription(externalId: string): Promise<boolean> {
+    return this._subscriptionService.isActive(externalId);
   }
 }

@@ -25,9 +25,10 @@ export class SubscriptionController {
       const { event } = req.body;
       const revenueEvent = event as RevenuecatEvent;
       const user = await this._subscriptionService.parseNewEvent(revenueEvent);
-      const updated = await this._subscriptionService.getAndUpdateSubscription(
-        user,
-      );
+
+      if (user?.external_id) {
+        await this._subscriptionService.invalidateCache(user.external_id);
+      }
 
       if (
         user?.id_user &&
@@ -48,7 +49,7 @@ export class SubscriptionController {
           });
       }
 
-      return res.json({ success: updated });
+      return res.json({ success: !!user });
     } catch (err) {
       this._logger.log({ origin: 'SubscriptionController.revenuecatWebhook', message: err.message, data: { body: req.body } }, 'error');
       res.status(400).json({ message: err.message });

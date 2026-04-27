@@ -156,7 +156,10 @@ export class UserController {
       res.status(403).json({ message: 'The user is invalid' });
       return;
     }
-    const deleted = await this._userService.deleteAccount(user.id_user);
+    const deleted = await this._userService.deleteAccount(
+      user.id_user,
+      user.external_id,
+    );
     if (!deleted) {
       res
         .status(400)

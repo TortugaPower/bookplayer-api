@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import moment from 'moment';
 import { randomUUID, randomBytes } from 'crypto';
 import { PasskeyService } from '../../services/PasskeyService';
@@ -9,7 +9,6 @@ import {
   createTestAuthMethod,
   createTestChallenge,
   createTestPasskeyCredential,
-  createTestUserParam,
 } from '../setup';
 
 describe('PasskeyService', () => {
@@ -615,41 +614,25 @@ describe('PasskeyService', () => {
 
   describe('Subscription Check', () => {
     describe('hasSubscription', () => {
-      it('should return true when user has active subscription', async () => {
-        const trx = getTestTransaction();
-        const user = await createTestUser(trx, { email: 'test@example.com' });
+      it('delegates to SubscriptionService.isActive with the externalId', async () => {
+        const isActive = jest.fn<(externalId: string) => Promise<boolean>>()
+          .mockResolvedValue(true);
+        (service as any)._subscriptionService = { isActive };
 
-        await createTestUserParam(trx, {
-          user_id: user.id_user,
-          param: 'subscription',
-          value: 'pro_yearly',
-        });
+        const result = await service.hasSubscription('rc-user-1');
 
-        const hasSub = await service.hasSubscription(user.id_user);
-        expect(hasSub).toBe(true);
+        expect(isActive).toHaveBeenCalledWith('rc-user-1');
+        expect(result).toBe(true);
       });
 
-      it('should return false when user has no subscription', async () => {
-        const trx = getTestTransaction();
-        const user = await createTestUser(trx, { email: 'test@example.com' });
+      it('returns false when SubscriptionService.isActive returns false', async () => {
+        const isActive = jest.fn<(externalId: string) => Promise<boolean>>()
+          .mockResolvedValue(false);
+        (service as any)._subscriptionService = { isActive };
 
-        const hasSub = await service.hasSubscription(user.id_user);
-        expect(hasSub).toBe(false);
-      });
+        const result = await service.hasSubscription('rc-user-2');
 
-      it('should return false when subscription is inactive', async () => {
-        const trx = getTestTransaction();
-        const user = await createTestUser(trx, { email: 'test@example.com' });
-
-        await createTestUserParam(trx, {
-          user_id: user.id_user,
-          param: 'subscription',
-          value: 'pro_yearly',
-          active: false,
-        });
-
-        const hasSub = await service.hasSubscription(user.id_user);
-        expect(hasSub).toBe(false);
+        expect(result).toBe(false);
       });
     });
   });
