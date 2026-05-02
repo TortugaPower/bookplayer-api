@@ -7,7 +7,7 @@
  * are logged via the standard logger and surfaced as `null` returns.
  *
  * Rate limit: routes inherit the global limiter (200 req/min per IP)
- * plus the 64-entry per-request batch cap enforced here.
+ * plus the 500-entry per-request batch cap enforced here.
  */
 import database from '../database';
 import { logger } from './LoggerService';
@@ -18,7 +18,7 @@ import {
 } from './db/UserPreferencesDB';
 
 const KEY_REGEX = /^[a-z0-9_:.-]{1,128}$/i;
-const MAX_BATCH_SIZE = 64;
+const MAX_BATCH_SIZE = 500;
 
 export class UserPreferencesService {
   private readonly _logger = logger;

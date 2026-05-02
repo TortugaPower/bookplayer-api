@@ -57,11 +57,11 @@ describe('UserPreferencesService', () => {
       expect(result).toBeNull();
     });
 
-    it('rejects a batch larger than the 64-entry cap', async () => {
+    it('rejects a batch larger than the 500-entry cap', async () => {
       const trx = getTestTransaction();
       const user = await createTestUser(trx);
 
-      const oversized = Array.from({ length: 65 }, (_, i) => ({
+      const oversized = Array.from({ length: 501 }, (_, i) => ({
         key: `library_sort:folder-${i}`,
         value: { sort: 'metadataTitle' },
       }));
