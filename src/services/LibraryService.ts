@@ -959,9 +959,10 @@ export class LibraryService {
         return !!idExternal[0].library_item_id && !!idUpdated[0].id_library_item;
       }
       const originalFile = itemDb.source_path || itemDb.key;
+
       const { url } = await this._storage.getPresignedUrl({
         key: `${user.email}/${originalFile}`,
-        type: StorageAction.GET,
+        type: StorageAction.PUT,
       });
       return url;
     } catch (err) {
