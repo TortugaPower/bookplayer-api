@@ -146,7 +146,7 @@ describe('LibraryDB — source-wins merge on bulk key updates', () => {
   });
 });
 
-describe('LibraryService.moveLibraryObject — regression for length !== 1 bug', () => {
+describe('LibraryService.moveLibraryObject — destination-folder insert guard', () => {
   let service: LibraryService;
 
   beforeEach(() => {
@@ -160,12 +160,17 @@ describe('LibraryService.moveLibraryObject — regression for length !== 1 bug',
     mockLoggerService.log.mockClear();
   });
 
-  it('does not create an additional destination folder row when duplicates already exist', async () => {
-    // Pre-deploy data shape: the user has 2 active folder rows at the same
-    // key (the bug we just fixed produced exactly this state in prod). With
-    // the old `length !== 1` guard, every subsequent move into that folder
-    // would insert ANOTHER row — positive feedback loop. With the new
-    // `length === 0` guard, the service should skip the insert entirely.
+  it('does not create an additional destination folder row when one already exists', async () => {
+    // The original bug: when an existing duplicate set of destination folders
+    // existed at the same key, the `length !== 1` guard treated >1 as "no
+    // folder, create one" — adding a third row, then a fourth, etc. The fix
+    // is `length === 0` so we only insert when truly absent.
+    //
+    // The pre-fix data shape (multiple active rows at the same key) is now
+    // structurally impossible thanks to the partial unique index added in
+    // 20260517055535_library_items_key_unique. So this test exercises the
+    // remaining reachable scenario: exactly one folder already exists, and
+    // the service must NOT add a second one.
     const trx = getTestTransaction();
     const user = await createTestUser(trx);
 
@@ -173,13 +178,6 @@ describe('LibraryService.moveLibraryObject — regression for length !== 1 bug',
       user_id: user.id_user,
       key: 'Foo',
       type: 0,
-      uuid: null, // legacy duplicates often had null uuids
-    });
-    await createTestLibraryItem(trx, {
-      user_id: user.id_user,
-      key: 'Foo',
-      type: 0,
-      uuid: null,
     });
     await createTestLibraryItem(trx, {
       user_id: user.id_user,
@@ -196,7 +194,7 @@ describe('LibraryService.moveLibraryObject — regression for length !== 1 bug',
       .where({ user_id: user.id_user, key: 'Foo', active: true })
       .count<{ count: string }[]>('* as count');
 
-    expect(parseInt(destinationFolderCount[0].count)).toBe(2);
+    expect(parseInt(destinationFolderCount[0].count)).toBe(1);
 
     const movedItem = await trx('library_items')
       .where({ user_id: user.id_user, key: 'Foo/book.m4b', active: true })
