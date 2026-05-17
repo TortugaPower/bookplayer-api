@@ -207,6 +207,46 @@ export class LibraryDB {
     }
   }
 
+  /// Source-wins merge helper: deactivate any active row whose key matches a key
+  /// the movers (rows whose current key matches `originLikePattern`) are about to
+  /// rewrite to, excluding the movers themselves. Without this, the partial unique
+  /// index on (user_id, key) WHERE active=true would make any subsequent bulk-key
+  /// UPDATE fail when the destination subtree overlaps existing rows.
+  ///
+  /// `newKeySql` is the SQL expression that computes the destination key from the
+  /// `removing` array and `removeIndex` scalar (both defined in the inner SELECT).
+  /// `newKeyParams` carries any `?` placeholders the expression uses, in order.
+  private async deactivateConflictingDestinations(
+    user_id: number,
+    removeIndexBasis: string,
+    originLikePattern: string,
+    newKeySql: string,
+    newKeyParams: unknown[],
+    db: Knex | Knex.Transaction,
+  ): Promise<void> {
+    await db.raw(
+      `
+      with movers as (
+        select id_library_item, ${newKeySql} as new_key
+        from (
+          select id_library_item,
+                 string_to_array(key, '/') as removing,
+                 array_length(string_to_array(?, '/'), 1) as removeIndex
+          from library_items
+          where user_id=? and active=true and key like ?
+        ) as sub
+      )
+      update library_items
+      set active=false, uuid=null, updated_at=now()
+      where user_id=?
+        and active=true
+        and key in (select new_key from movers)
+        and id_library_item not in (select id_library_item from movers);
+      `,
+      [...newKeyParams, removeIndexBasis, user_id, originLikePattern, user_id],
+    );
+  }
+
   async moveFiles(
     user_id: number,
     origin: string,
@@ -216,6 +256,16 @@ export class LibraryDB {
     try {
       const destinationPath = destination !== '' ? `${destination}/` : '';
       const db = trx || this.db;
+
+      await this.deactivateConflictingDestinations(
+        user_id,
+        origin,
+        `${origin}%`,
+        `concat(cast(? as text), array_to_string(removing[removeIndex:array_length(removing, 1)], '/'))`,
+        [destinationPath],
+        db,
+      );
+
       const objectsMoved = await db
         .raw(
           `
@@ -257,6 +307,20 @@ export class LibraryDB {
   ): Promise<LibraryItemMovedDB[]> {
     try {
       const db = trx || this.db;
+
+      await this.deactivateConflictingDestinations(
+        user_id,
+        origin,
+        `${origin}%`,
+        `concat(
+          cast(? as text),
+          case when array_to_string(removing[removeIndex::int + 1:array_length(removing, 1)], '') != '' then '/' else '' end,
+          array_to_string(removing[removeIndex::int + 1:array_length(removing, 1)], '/')
+        )`,
+        [destination],
+        db,
+      );
+
       const objectsMoved = await db
         .raw(
           `
@@ -302,6 +366,16 @@ export class LibraryDB {
   ): Promise<LibraryItemDB[]> {
     try {
       const db = trx || this.db;
+
+      await this.deactivateConflictingDestinations(
+        user_id,
+        folderPath,
+        `${folderPath}/%`,
+        `array_to_string(removing[1:removeIndex-1] || removing[removeIndex+1:], '/')`,
+        [],
+        db,
+      );
+
       const objectsMoved = await db
         .raw(
           `
@@ -337,9 +411,13 @@ export class LibraryDB {
     user_id: number,
     item: LibraryItemDB,
     trx?: Knex.Transaction,
-  ): Promise<LibraryItemDB> {
+  ): Promise<LibraryItemDB | null> {
     try {
       const db = trx || this.db;
+      // Partial unique index on (user_id, key) WHERE active = true means a race
+      // between two concurrent inserts for the same key will silently no-op the
+      // loser; refetch picks up the winning row so the caller always gets the
+      // canonical record.
       const objects = await db('library_items as li')
         .insert({
           user_id,
@@ -361,8 +439,29 @@ export class LibraryDB {
           source_path: item.source_path,
           uuid: item.uuid,
         })
+        .onConflict()
+        .ignore()
         .returning('*');
-      return objects[0];
+      if (objects[0]) return objects[0];
+
+      const existing = await db('library_items as li')
+        .where({ user_id, key: item.key, active: true })
+        .first();
+      if (!existing) {
+        // Shouldn't be reachable: the conflict path implies an active row at
+        // (user_id, key), and the partial unique index guarantees at most one.
+        // Logging so we have a breadcrumb if something exotic (e.g. a third
+        // concurrent tx deactivated the winner) ever produces this state.
+        this._logger.log(
+          {
+            origin: 'LibraryDB.insertLibraryItem',
+            message: 'Insert conflict resolved but refetch found no winner',
+            data: { user_id, key: item.key },
+          },
+          'warn',
+        );
+      }
+      return existing || null;
     } catch (err) {
       this._logger.log({
         origin: 'LibraryDB.insertLibraryItem',
