@@ -95,6 +95,52 @@ export async function createTestUser(
   return user;
 }
 
+// Helper to create test library items. `synced` defaults to true so collision
+// tests don't accidentally rely on incidental "ghost row" state. `source_path`
+// is set so processMovedFiles (which only fires when source_path is missing on
+// BOOK rows) stays a no-op and we don't need to mock storage.
+export async function createTestLibraryItem(
+  trx: Knex.Transaction,
+  params: {
+    user_id: number;
+    key: string;
+    type?: number; // 0 = folder, 2 = book
+    active?: boolean;
+    synced?: boolean;
+    uuid?: string | null;
+    source_path?: string | null;
+    title?: string;
+    original_filename?: string;
+  },
+): Promise<{ id_library_item: number; key: string; uuid: string | null }> {
+  const baseName = params.key.split('/').pop() || params.key;
+  const [row] = await trx('library_items')
+    .insert({
+      user_id: params.user_id,
+      key: params.key,
+      title: params.title ?? baseName,
+      original_filename: params.original_filename ?? baseName,
+      speed: 1,
+      actual_time: '0',
+      details: baseName,
+      duration: '0',
+      percent_completed: 0,
+      order_rank: 0,
+      type: `${params.type ?? 2}`,
+      is_finish: false,
+      thumbnail: null,
+      source_path:
+        params.source_path === undefined
+          ? `root/test_${baseName}`
+          : params.source_path,
+      synced: params.synced ?? true,
+      active: params.active ?? true,
+      uuid: params.uuid === undefined ? randomUUID() : params.uuid,
+    })
+    .returning(['id_library_item', 'key', 'uuid']);
+  return row;
+}
+
 // Helper to create test auth method
 export async function createTestAuthMethod(
   trx: Knex.Transaction,

@@ -1,0 +1,70 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Run Jest test suite
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Match prod (PostgreSQL 17.7). The minor pinning is intentional —
+        # bump deliberately when prod upgrades.
+        image: postgres:17
+        env:
+          POSTGRES_USER: bookplayer
+          POSTGRES_PASSWORD: bookplayer
+          POSTGRES_DB: bookplayer_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: development
+      API_PORT: '5003'
+      DB_HOST: localhost
+      DB_USER: bookplayer
+      DB_PASSWORD: bookplayer
+      DB_DATABASE: bookplayer_test
+      # Dummy values for env-schema validation. Tests don't hit these services;
+      # validation just requires the variables to exist.
+      S3_BUCKET: ci-dummy
+      S3_REGION: us-east-1
+      APPLE_CLIENT_ID: com.ci.dummy
+      APP_SECRET: ci-dummy-secret
+      REVENUECAT_HEADER: ci-dummy
+      REVENUECAT_API: https://ci.dummy
+      REVENUECAT_KEY: ci-dummy
+      REVENUECAT_API_V2: https://ci.dummy/v2
+      REVENUECAT_API_V2_KEY: ci-dummy
+      REVENUECAT_PROJECT_ID: ci-dummy
+      PROXY_FILE_URL: https://ci.dummy
+      APP_VERSION: latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run migrations
+        run: npx knex migrate:latest
+
+      - name: Run tests
+        run: yarn test

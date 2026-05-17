@@ -291,6 +291,9 @@ export class LibraryService {
         }
       } else {
         itemDb = await this._libraryDB.insertLibraryItem(user.id_user, libObj);
+        if (!itemDb) {
+          throw new Error(`Failed to create library item at key=${cleanPath}`);
+        }
       }
       const resourcePath = `${user.email}/${libObj.source_path}`;
 
@@ -476,9 +479,9 @@ export class LibraryService {
           trx,
         );
 
-        if (destinationDB.length !== 1) {
+        if (destinationDB.length === 0) {
           const name = destinationPathFolder.split('/').pop();
-          await this._libraryDB.insertLibraryItem(
+          const created = await this._libraryDB.insertLibraryItem(
             user.id_user,
             {
               key: destinationPathFolder,
@@ -498,13 +501,12 @@ export class LibraryService {
             },
             trx,
           );
-
-          destinationDB = await this._libraryDB.getLibrary(
-            user.id_user,
-            destinationPathFolder,
-            { exactly: true },
-            trx,
-          );
+          if (!created) {
+            throw new Error(
+              `Failed to create destination folder at key=${destinationPathFolder}`,
+            );
+          }
+          destinationDB = [created];
         }
         const destType = `${destinationDB[0].type}`;
         if (
