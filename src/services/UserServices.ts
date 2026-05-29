@@ -6,8 +6,10 @@ import {
   UserEvent,
   UserEventEnum,
   UserSession,
+  VerificationResult,
 } from '../types/user';
 import verifyAppleToken from 'verify-apple-id-token';
+import { OAuth2Client, TokenPayload } from 'google-auth-library';
 import { Knex } from 'knex';
 import database from '../database';
 import JWT from 'jsonwebtoken';
@@ -19,7 +21,8 @@ import { SubscriptionService } from './SubscriptionService';
 export class UserServices {
   private readonly _logger = logger;
   private db = database;
-
+  private googleClient = new OAuth2Client();
+  
   constructor(
     private _userDB: UserDB = new UserDB(),
     private _subscriptionService: SubscriptionService = new SubscriptionService(),
@@ -49,6 +52,41 @@ export class UserServices {
         data: { token_id },
       });
       return null;
+    }
+  }
+
+  async verifyGoogleToken(idToken: string): Promise<VerificationResult | undefined> {
+    try {
+      const defaultClientID = process.env.GOOGLE_CLIENT_ID;
+      const ticket = await this.googleClient.verifyIdToken({
+        idToken: idToken,
+        audience: defaultClientID, 
+      });
+
+      // ticket.getPayload() returns TokenPayload | undefined
+      const payload: TokenPayload | undefined = ticket.getPayload();
+      
+      if (!payload) {
+        return { success: false, error: 'Token payload is empty' };
+      }
+      
+      const userId = payload.sub; 
+      const email = payload.email;
+      const name = payload.name;
+      const picture = payload.picture;
+
+      return {
+        success: true,
+        user: { userId, email, name, picture }
+      };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';    
+      this._logger.log({
+        origin: 'UserServices.verifyGoogleToken',
+        message: errorMessage,
+        data: { token_id: idToken },
+      });
+      return;
     }
   }
 

@@ -172,7 +172,10 @@ export class PasskeyService {
           clientExtensionResults: {},
         },
         expectedChallenge: storedChallenge.challenge.toString('base64url'),
-        expectedOrigin: this.origin,
+        expectedOrigin: [
+          this.origin,
+          "android:apk-key-hash:VgPs3RkMO6X2pwcf__umeFdQHdrs_fmMNbl3bg5D410" // change the hash for your production release key 
+        ],
         expectedRPID: this.rpID,
         requireUserVerification: true,
       });
@@ -366,7 +369,10 @@ export class PasskeyService {
           clientExtensionResults: {},
         },
         expectedChallenge: storedChallenge.challenge.toString('base64url'),
-        expectedOrigin: this.origin,
+        expectedOrigin: [
+          this.origin,
+          "android:apk-key-hash:VgPs3RkMO6X2pwcf__umeFdQHdrs_fmMNbl3bg5D410" // change the hash for your production release key 
+        ],
         expectedRPID: this.rpID,
         requireUserVerification: true,
         credential: {

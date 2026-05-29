@@ -39,6 +39,7 @@ export class SubscriptionDB {
          LIMIT 1`,
         [externalId, externalId, externalId],
       );
+      console.log('hey ho lets gooo 3', externalId, result)
       return result.rows[0] || null;
     } catch (err) {
       this._logger.log({

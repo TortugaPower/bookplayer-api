@@ -3,6 +3,23 @@ export interface SignApple {
   client_id?: string;
 }
 
+export interface VerificationSuccess {
+  success: true;
+  user: {
+    userId: string;
+    email?: string;
+    name?: string;
+    picture?: string;
+  };
+}
+
+export interface VerificationFailure {
+  success: false;
+  error: string;
+}
+
+export type VerificationResult = VerificationSuccess | VerificationFailure;
+
 export type User = {
   id_user?: number;
   email: string;
