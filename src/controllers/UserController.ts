@@ -5,11 +5,13 @@ import { UserEventEnum } from '../types/user';
 import moment from 'moment-timezone';
 import { SubscriptionService } from '../services/SubscriptionService';
 import { gte } from 'semver';
+import { PasskeyService } from '../services/PasskeyService';
 
 export class UserController {
   constructor(
     private _userService: UserServices = new UserServices(),
     private _subscriptionService: SubscriptionService = new SubscriptionService(),
+    private _passkeyService: PasskeyService = new PasskeyService(),
   ) {}
 
   private readonly minVersion = '5.6.0';
@@ -49,10 +51,9 @@ export class UserController {
       external_id: string;
       email: string;
     };
-    console.log('hey ho', platform, req.headers)
+
     if (platform === 'android') {
       const googleAuth = await this._userService.verifyGoogleToken(token_id);
-      console.log('hey ho 2');
       if (!googleAuth?.success || !googleAuth.user.email) {
         res.status(422).json({ message: 'Invalid google id' });
         return;
@@ -96,21 +97,12 @@ export class UserController {
         session: authData.external_id,
       });
     } else {
-      // Check if email already exists (e.g., passkey user trying to sign in with Apple)
-      const existingUserByEmail = await this._userService.getUser({
-        email: authData.email,
+      let existingUser = await this._userService.getUser({
+        email: authData.email
       });
-
-      if (existingUserByEmail) {
-        // User exists but signed in with different method (passkey)
-        return res.status(409).json({
-          message:
-            'An account with this email already exists. Please sign in with your passkey.',
-        });
-      }
-
+      
       // New user - create account with Apple ID as external_id
-      user = await this._userService.addNewUser({
+      user = existingUser || await this._userService.addNewUser({
         email: authData.email,
         active: true,
         external_id: authData.external_id,
@@ -138,12 +130,18 @@ export class UserController {
         session: authData.external_id,
       });
     }
+
     const token = await this._userService.tokenUser({
       id_user: user.id_user,
       email: authData.email,
       external_id: user.external_id,
       session: authData.external_id,
     });
+
+    const revenuecatId = await this._passkeyService.getRevenueCatId(
+      user.id_user || -1,
+      user.external_id || '',
+    );
 
     if (
       !!client_id &&
@@ -161,9 +159,9 @@ export class UserController {
           path: '/',
         }),
       );
-      return res.json({ email: user.email, token });
+      return res.json({ email: user.email, token, revenuecat_id: revenuecatId });
     }
-    return res.json({ email: user.email, token });
+    return res.json({ email: user.email, token, revenuecat_id: revenuecatId });
   }
 
   public async logout(req: IRequest, res: IResponse): Promise<IResponse> {

@@ -34,6 +34,7 @@ export class PasskeyService {
   // WebAuthn configuration
   private readonly rpID = process.env.WEBAUTHN_RP_ID;
   private readonly rpName = process.env.WEBAUTHN_RP_NAME;
+  private readonly androidReleaseHash = process.env.ANDROID_RELEASE_HASH;
   private readonly origin = `https://${this.rpID}`;
   private readonly challengeTTL = 300;
 
@@ -174,7 +175,7 @@ export class PasskeyService {
         expectedChallenge: storedChallenge.challenge.toString('base64url'),
         expectedOrigin: [
           this.origin,
-          "android:apk-key-hash:VgPs3RkMO6X2pwcf__umeFdQHdrs_fmMNbl3bg5D410" // change the hash for your production release key 
+          this.androidReleaseHash // change the hash for your production release key 
         ],
         expectedRPID: this.rpID,
         requireUserVerification: true,
@@ -371,7 +372,7 @@ export class PasskeyService {
         expectedChallenge: storedChallenge.challenge.toString('base64url'),
         expectedOrigin: [
           this.origin,
-          "android:apk-key-hash:VgPs3RkMO6X2pwcf__umeFdQHdrs_fmMNbl3bg5D410" // change the hash for your production release key 
+          this.androidReleaseHash // change the hash for your production release key 
         ],
         expectedRPID: this.rpID,
         requireUserVerification: true,

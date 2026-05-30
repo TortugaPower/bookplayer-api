@@ -21,7 +21,7 @@ export class EmailVerificationService {
   private readonly CODE_LENGTH = 6;
   private readonly CODE_EXPIRY_MINUTES = 5;
   private readonly MAX_ATTEMPTS = 5;
-  private readonly RATE_LIMIT_PER_HOUR = 300;
+  private readonly RATE_LIMIT_PER_HOUR = 3;
   private readonly VERIFICATION_TOKEN_EXPIRY_MINUTES = 15;
 
   /**

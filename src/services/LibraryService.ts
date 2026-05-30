@@ -781,7 +781,6 @@ export class LibraryService {
       }
       return item;
     } catch (err) {
-      console.log(err)
       this._logger.log({
         origin: 'LibraryService.getLastItemPlayed',
         message: err.message,

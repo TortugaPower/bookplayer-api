@@ -156,12 +156,10 @@ export class PasskeyController {
       const user = req.user;
 
       if (!email && !user) {
-        console.log('hey ho 5', JSON.stringify(req.body))
         return res.status(422).json({ message: 'Email is required' });
       }
 
       if (!credential_id || !attestationResponse) {
-        console.log('hey ho 4', JSON.stringify(req.body))
         return res
           .status(422)
           .json({ message: 'Credential ID and response are required' });
@@ -178,7 +176,6 @@ export class PasskeyController {
       });
 
       if (!result.verified) {
-        console.log('hey ho 3', JSON.stringify(result))
         return res
           .status(400)
           .json({ message: 'Registration verification failed' });

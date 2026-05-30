@@ -126,7 +126,6 @@ export class SubscriptionService {
     cacheKey: string,
   ): Promise<boolean> {
     const localActive = await this._isActiveFromLocalDB(externalId);
-    console.log('hey ho lets go 1', localActive);
     if (localActive) {
       const event = await this._subscriptionDB.getLatestActiveEvent(externalId);
       const expiresMs = event?.expiration_at_ms ? Number(event.expiration_at_ms) : null;

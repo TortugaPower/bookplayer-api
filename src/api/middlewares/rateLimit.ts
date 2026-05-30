@@ -55,11 +55,10 @@ function createAuthRateLimiter(): RateLimitRequestHandler {
   return rateLimit({
     ...baseOptions,
     windowMs: 60 * 1000,
-    max: 1000,
+    max: 10,
     store: createRedisStore('auth'),
     keyGenerator: (req: IRequest) => getClientIp(req),
     handler: (_req: IRequest, res: IResponse) => {
-      console.log("ggwp");
       res.status(429).json({
         message: 'Too many authentication attempts, please try again later.',
       });
@@ -71,7 +70,7 @@ function createEmailVerificationRateLimiter(): RateLimitRequestHandler {
   return rateLimit({
     ...baseOptions,
     windowMs: 60 * 60 * 1000,
-    max: 1000,
+    max: 5,
     store: createRedisStore('email_verify'),
     keyGenerator: (req: IRequest) => {
       const email = req.body?.email?.toLowerCase?.() || '';
