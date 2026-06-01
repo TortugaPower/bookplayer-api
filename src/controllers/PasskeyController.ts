@@ -128,8 +128,11 @@ export class PasskeyController {
         }
       }
 
+      // For authenticated users, bind the challenge to their own account email
+      // (never a client-supplied address) so the passkey can only be attached to
+      // the caller's own account when the registration is later verified.
       const options = await this._passkeyService.generateRegistrationOptions({
-        email: email || user?.email,
+        email: user?.email || email,
         user_id: user?.id_user,
         device_name,
       });
@@ -181,11 +184,6 @@ export class PasskeyController {
           .json({ message: 'Registration verification failed' });
       }
 
-      // Get RevenueCat ID (Apple ID if user has one, otherwise external_id)
-      const revenuecatId = await this._passkeyService.getRevenueCatId(
-        result.user.id_user,
-        result.user.external_id,
-      );
       const hasSubscription = await this._passkeyService.hasSubscription(
         result.user.external_id,
       );
@@ -195,7 +193,7 @@ export class PasskeyController {
         token: result.token,
         external_id: result.user.external_id,
         public_id: result.user.external_id, // Deprecated: for backward compatibility with older iOS versions
-        revenuecat_id: revenuecatId,
+        revenuecat_id: result.user.external_id,
         has_subscription: hasSubscription,
       });
     } catch (err) {
@@ -255,11 +253,6 @@ export class PasskeyController {
         return res.status(401).json({ message: 'Authentication failed' });
       }
 
-      // Get RevenueCat ID (Apple ID if user has one, otherwise external_id)
-      const revenuecatId = await this._passkeyService.getRevenueCatId(
-        result.user.id_user,
-        result.user.external_id,
-      );
       const hasSubscription = await this._passkeyService.hasSubscription(
         result.user.external_id,
       );
@@ -269,7 +262,7 @@ export class PasskeyController {
         token: result.token,
         external_id: result.user.external_id,
         public_id: result.user.external_id, // Deprecated: for backward compatibility with older iOS versions
-        revenuecat_id: revenuecatId,
+        revenuecat_id: result.user.external_id,
         has_subscription: hasSubscription,
       });
     } catch (err) {

@@ -46,10 +46,11 @@ export class UserServices {
 
       return decriptJWT;
     } catch (err) {
+      // Do not log the raw ID token — it's a bearer credential not covered by
+      // the logger's (exact-key) redaction.
       this._logger.log({
         origin: 'UserServices.verifyToken',
         message: err.message,
-        data: { token_id },
       });
       return null;
     }
@@ -57,10 +58,12 @@ export class UserServices {
 
   async verifyGoogleToken(idToken: string): Promise<VerificationResult | undefined> {
     try {
-      const defaultClientID = process.env.GOOGLE_CLIENT_ID;
+      // GOOGLE_CLIENT_ID is validated as required at boot (config/envs.ts), so
+      // it's guaranteed present here. Passing it as the audience ensures we only
+      // accept ID tokens minted for our own Google client (never another app's).
       const ticket = await this.googleClient.verifyIdToken({
-        idToken: idToken,
-        audience: defaultClientID, 
+        idToken,
+        audience: process.env.GOOGLE_CLIENT_ID!,
       });
 
       // ticket.getPayload() returns TokenPayload | undefined
@@ -70,21 +73,30 @@ export class UserServices {
         return { success: false, error: 'Token payload is empty' };
       }
       
-      const userId = payload.sub; 
+      const userId = payload.sub;
       const email = payload.email;
       const name = payload.name;
       const picture = payload.picture;
+
+      // Only trust the email if Google says it's verified. The login flow links
+      // credentials to existing accounts by email, so an unverified address must
+      // never be treated as proof of ownership.
+      if (!email || !payload.email_verified) {
+        return { success: false, error: 'Email is missing or not verified' };
+      }
 
       return {
         success: true,
         user: { userId, email, name, picture }
       };
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';    
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      // Do not log the raw ID token — it's a bearer credential and `token_id`
+      // is not covered by the logger's redaction (it matches keys exactly). The
+      // error message alone is enough to diagnose verification failures.
       this._logger.log({
         origin: 'UserServices.verifyGoogleToken',
         message: errorMessage,
-        data: { token_id: idToken },
       });
       return;
     }

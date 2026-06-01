@@ -5,13 +5,11 @@ import { UserEventEnum } from '../types/user';
 import moment from 'moment-timezone';
 import { SubscriptionService } from '../services/SubscriptionService';
 import { gte } from 'semver';
-import { PasskeyService } from '../services/PasskeyService';
 
 export class UserController {
   constructor(
     private _userService: UserServices = new UserServices(),
     private _subscriptionService: SubscriptionService = new SubscriptionService(),
-    private _passkeyService: PasskeyService = new PasskeyService(),
   ) {}
 
   private readonly minVersion = '5.6.0';
@@ -60,7 +58,7 @@ export class UserController {
       }
 
       authData = {
-        auth_type: 'android',
+        auth_type: 'google',
         external_id: googleAuth.user.userId,
         email: googleAuth.user.email
       }
@@ -82,7 +80,8 @@ export class UserController {
       }
     }
 
-    // Check auth_methods by Apple sub (stable identifier - prevents email collisions)
+    // Look up the credential by its provider + stable external id (the Apple
+    // `sub` / Google `sub`), which is collision-safe unlike matching on email.
     const existingAuthMethod = await this._userService.getAuthMethodByExternalId({
       auth_type: authData.auth_type,
       external_id: authData.external_id,
@@ -97,24 +96,28 @@ export class UserController {
         session: authData.external_id,
       });
     } else {
+      // No auth_method for this credential yet. Either the user is brand new,
+      // or they already own an account (under a different provider) and we are
+      // linking this credential to it.
       let existingUser = await this._userService.getUser({
         email: authData.email
       });
-      
-      // New user - create account with Apple ID as external_id
+
       user = existingUser || await this._userService.addNewUser({
         email: authData.email,
         active: true,
         external_id: authData.external_id,
       });
 
-      // Add to auth_methods table
+      // Record the credential under its own provider. Mark it primary only when
+      // it's the first credential of a freshly created account; a credential
+      // linked to a pre-existing account is secondary.
       if (user && user.id_user) {
         await this._userService.addAuthMethod({
           user_id: user.id_user,
-          auth_type: 'apple',
+          auth_type: authData.auth_type,
           external_id: authData.external_id,
-          is_primary: true,
+          is_primary: !existingUser,
         });
       }
     }
@@ -138,11 +141,6 @@ export class UserController {
       session: authData.external_id,
     });
 
-    const revenuecatId = await this._passkeyService.getRevenueCatId(
-      user.id_user || -1,
-      user.external_id || '',
-    );
-
     if (
       !!client_id &&
       client_id.apple_id !== 'com.tortugapower.audiobookplayer.watchkitapp'
@@ -159,9 +157,9 @@ export class UserController {
           path: '/',
         }),
       );
-      return res.json({ email: user.email, token, revenuecat_id: revenuecatId });
+      return res.json({ email: user.email, token, revenuecat_id: user.external_id });
     }
-    return res.json({ email: user.email, token, revenuecat_id: revenuecatId });
+    return res.json({ email: user.email, token, revenuecat_id: user.external_id });
   }
 
   public async logout(req: IRequest, res: IResponse): Promise<IResponse> {

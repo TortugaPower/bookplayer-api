@@ -36,6 +36,10 @@ export class PasskeyService {
   private readonly rpName = process.env.WEBAUTHN_RP_NAME;
   private readonly androidReleaseHash = process.env.ANDROID_RELEASE_HASH;
   private readonly origin = `https://${this.rpID}`;
+  // Origins allowed to complete WebAuthn ceremonies: the web origin plus the
+  // Android app's signing-key origin (android:apk-key-hash:...). ANDROID_RELEASE_HASH
+  // is validated as required at boot (config/envs.ts), so it's always present.
+  private readonly expectedOrigins = [this.origin, this.androidReleaseHash!];
   private readonly challengeTTL = 300;
 
   // Registration
@@ -156,6 +160,19 @@ export class PasskeyService {
         throw new Error('Challenge not found or expired');
       }
 
+      // The challenge is bound at issue-time to a verified email (new
+      // registration) or the authenticated user's own email (adding a passkey).
+      // That binding is authoritative: trusting the client-supplied email here
+      // would let a caller verify their own email, obtain a challenge, and then
+      // register/link the passkey against a different (victim's) account.
+      const boundEmail = storedChallenge.email;
+      if (!boundEmail) {
+        throw new Error('Challenge is not bound to a verified email');
+      }
+      if (email && email.toLowerCase() !== boundEmail.toLowerCase()) {
+        throw new Error('Challenge does not match the provided email');
+      }
+
       // Delete the used challenge
       await this._passkeyDB.deleteChallenge(storedChallenge.id_challenge);
 
@@ -173,10 +190,7 @@ export class PasskeyService {
           clientExtensionResults: {},
         },
         expectedChallenge: storedChallenge.challenge.toString('base64url'),
-        expectedOrigin: [
-          this.origin,
-          this.androidReleaseHash // change the hash for your production release key 
-        ],
+        expectedOrigin: this.expectedOrigins,
         expectedRPID: this.rpID,
         requireUserVerification: true,
       });
@@ -188,13 +202,13 @@ export class PasskeyService {
       const { credential, credentialDeviceType, credentialBackedUp } =
         verification.registrationInfo;
 
-      // Get or create user
-      let user = await this._passkeyDB.getUserByEmail(email, tx);
+      // Get or create user (keyed off the challenge-bound email, not the body)
+      let user = await this._passkeyDB.getUserByEmail(boundEmail, tx);
 
       if (!user) {
         // Create new user via UserDB
         const newUser = await this._userDB.insertUser(
-          { email, active: true, external_id: crypto.randomUUID() },
+          { email: boundEmail, active: true, external_id: crypto.randomUUID() },
           tx,
         );
         if (!newUser) {
@@ -370,10 +384,7 @@ export class PasskeyService {
           clientExtensionResults: {},
         },
         expectedChallenge: storedChallenge.challenge.toString('base64url'),
-        expectedOrigin: [
-          this.origin,
-          this.androidReleaseHash // change the hash for your production release key 
-        ],
+        expectedOrigin: this.expectedOrigins,
         expectedRPID: this.rpID,
         requireUserVerification: true,
         credential: {
@@ -554,23 +565,6 @@ export class PasskeyService {
     return token;
   }
 
-  // Get RevenueCat ID for user (Apple ID if exists, else external_id)
-  async getRevenueCatId(user_id: number, external_id: string): Promise<string> {
-    try {
-      const appleAuthMethod = await this._passkeyDB.getAppleAuthMethod(user_id);
-      if (appleAuthMethod) {
-        return appleAuthMethod.external_id;
-      }
-      return external_id;
-    } catch (err) {
-      this._logger.log({
-        origin: 'PasskeyService.getRevenueCatId',
-        message: err.message,
-        data: { user_id },
-      });
-      return external_id;
-    }
-  }
 
   // Check if user has an active subscription. Backed by SubscriptionService cache.
   async hasSubscription(externalId: string): Promise<boolean> {
