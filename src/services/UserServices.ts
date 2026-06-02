@@ -56,7 +56,7 @@ export class UserServices {
     }
   }
 
-  async verifyGoogleToken(idToken: string): Promise<VerificationResult | undefined> {
+  async verifyGoogleToken(idToken: string): Promise<VerificationResult> {
     try {
       // GOOGLE_CLIENT_ID is validated as required at boot (config/envs.ts), so
       // it's guaranteed present here. Passing it as the audience ensures we only
@@ -78,16 +78,17 @@ export class UserServices {
       const name = payload.name;
       const picture = payload.picture;
 
-      // Only trust the email if Google says it's verified. The login flow links
-      // credentials to existing accounts by email, so an unverified address must
-      // never be treated as proof of ownership.
-      if (!email || !payload.email_verified) {
-        return { success: false, error: 'Email is missing or not verified' };
+      // Require a stable subject (used as external_id) and only trust the email
+      // if Google says it's verified. The login flow keys accounts on external_id
+      // and links by email, so a missing sub or unverified address must never be
+      // treated as a valid identity.
+      if (!userId || !email || !payload.email_verified) {
+        return { success: false, error: 'Token is missing a subject, email, or a verified email' };
       }
 
       return {
         success: true,
-        user: { userId, email, name, picture }
+        user: { userId, email, name, picture },
       };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -98,7 +99,7 @@ export class UserServices {
         origin: 'UserServices.verifyGoogleToken',
         message: errorMessage,
       });
-      return;
+      return { success: false, error: errorMessage };
     }
   }
 

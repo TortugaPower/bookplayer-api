@@ -52,7 +52,7 @@ export class UserController {
 
     if (platform === 'android') {
       const googleAuth = await this._userService.verifyGoogleToken(token_id);
-      if (!googleAuth?.success || !googleAuth.user.email) {
+      if (!googleAuth.success || !googleAuth.user.email) {
         res.status(422).json({ message: 'Invalid google id' });
         return;
       }
@@ -60,8 +60,8 @@ export class UserController {
       authData = {
         auth_type: 'google',
         external_id: googleAuth.user.userId,
-        email: googleAuth.user.email
-      }
+        email: googleAuth.user.email,
+      };
     } else {
       const appleAuth = await this._userService.verifyToken({
         token_id,
@@ -76,8 +76,8 @@ export class UserController {
       authData = {
         auth_type: 'apple',
         external_id: appleAuth.sub,
-        email: appleAuth.email
-      }
+        email: appleAuth.email,
+      };
     }
 
     // Look up the credential by its provider + stable external id (the Apple
@@ -100,7 +100,7 @@ export class UserController {
       // or they already own an account (under a different provider) and we are
       // linking this credential to it.
       let existingUser = await this._userService.getUser({
-        email: authData.email
+        email: authData.email,
       });
 
       user = existingUser || await this._userService.addNewUser({
