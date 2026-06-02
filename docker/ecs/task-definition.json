@@ -89,6 +89,10 @@
           "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:APPLE_CLIENT_ID::"
         },
         {
+          "name": "GOOGLE_CLIENT_ID",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:GOOGLE_CLIENT_ID::"
+        },
+        {
           "name": "REVENUECAT_HEADER",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:REVENUECAT_HEADER::"
         },
@@ -127,6 +131,10 @@
         {
           "name": "WEBAUTHN_RP_NAME",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:WEBAUTHN_RP_NAME::"
+        },
+        {
+          "name": "ANDROID_RELEASE_HASH",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:ANDROID_RELEASE_HASH::"
         },
         {
           "name": "AWS_SES_REGION",
