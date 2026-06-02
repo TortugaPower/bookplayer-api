@@ -297,26 +297,6 @@ export class PasskeyDB {
     }
   }
 
-  async getAppleAuthMethod(
-    user_id: number,
-    trx?: Knex.Transaction,
-  ): Promise<{ external_id: string } | null> {
-    try {
-      const db = trx || this.db;
-      const authMethod = await db('auth_methods')
-        .where({ user_id, auth_type: 'apple', active: true })
-        .first();
-      return authMethod || null;
-    } catch (err) {
-      this._logger.log({
-        origin: 'PasskeyDB.getAppleAuthMethod',
-        message: err.message,
-        data: { user_id },
-      });
-      return null;
-    }
-  }
-
   // User lookup (joins across users + auth_methods + passkey_credentials)
 
   async getUserByEmail(

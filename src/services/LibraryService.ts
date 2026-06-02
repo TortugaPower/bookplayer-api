@@ -744,10 +744,10 @@ export class LibraryService {
     user: User,
     options: { withPresign?: boolean; appVersion: string },
     trx?: Knex.Transaction,
-  ): Promise<LibraryItem> {
+  ): Promise<LibraryItem | null> {
     try {
       const itemDb = await this._libraryDB.getLastItemPlayed(user.id_user, trx);
-
+      if (!itemDb) return null;
       const item = (await this.parseLibraryItemDb(
         itemDb,
         LibraryItemOutput.API,

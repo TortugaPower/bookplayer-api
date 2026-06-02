@@ -33,6 +33,7 @@ export const Envs = () => {
       .prop('S3_BUCKET', S.string().required())
       .prop('S3_REGION', S.string().required())
       .prop('APPLE_CLIENT_ID', S.string().required())
+      .prop('GOOGLE_CLIENT_ID', S.string().required())
       .prop('APP_SECRET', S.string().required())
       .prop('REVENUECAT_HEADER', S.string().required())
       .prop('REVENUECAT_API', S.string().required())
@@ -43,7 +44,8 @@ export const Envs = () => {
       .prop('PROXY_FILE_URL', S.string().required())
       .prop('APP_VERSION', S.string().required())
       .prop('WEBAUTHN_RP_ID', S.string())
-      .prop('WEBAUTHN_RP_NAME', S.string()),
+      .prop('WEBAUTHN_RP_NAME', S.string())
+      .prop('ANDROID_RELEASE_HASH', S.string().required()),
   };
   envSchema(scheme);
 };

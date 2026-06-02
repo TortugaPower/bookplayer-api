@@ -6,8 +6,10 @@ import {
   UserEvent,
   UserEventEnum,
   UserSession,
+  VerificationResult,
 } from '../types/user';
 import verifyAppleToken from 'verify-apple-id-token';
+import { OAuth2Client, TokenPayload } from 'google-auth-library';
 import { Knex } from 'knex';
 import database from '../database';
 import JWT from 'jsonwebtoken';
@@ -19,7 +21,8 @@ import { SubscriptionService } from './SubscriptionService';
 export class UserServices {
   private readonly _logger = logger;
   private db = database;
-
+  private googleClient = new OAuth2Client();
+  
   constructor(
     private _userDB: UserDB = new UserDB(),
     private _subscriptionService: SubscriptionService = new SubscriptionService(),
@@ -43,12 +46,60 @@ export class UserServices {
 
       return decriptJWT;
     } catch (err) {
+      // Do not log the raw ID token — it's a bearer credential not covered by
+      // the logger's (exact-key) redaction.
       this._logger.log({
         origin: 'UserServices.verifyToken',
         message: err.message,
-        data: { token_id },
       });
       return null;
+    }
+  }
+
+  async verifyGoogleToken(idToken: string): Promise<VerificationResult> {
+    try {
+      // GOOGLE_CLIENT_ID is validated as required at boot (config/envs.ts), so
+      // it's guaranteed present here. Passing it as the audience ensures we only
+      // accept ID tokens minted for our own Google client (never another app's).
+      const ticket = await this.googleClient.verifyIdToken({
+        idToken,
+        audience: process.env.GOOGLE_CLIENT_ID!,
+      });
+
+      // ticket.getPayload() returns TokenPayload | undefined
+      const payload: TokenPayload | undefined = ticket.getPayload();
+      
+      if (!payload) {
+        return { success: false, error: 'Token payload is empty' };
+      }
+      
+      const userId = payload.sub;
+      const email = payload.email;
+      const name = payload.name;
+      const picture = payload.picture;
+
+      // Require a stable subject (used as external_id) and only trust the email
+      // if Google says it's verified. The login flow keys accounts on external_id
+      // and links by email, so a missing sub or unverified address must never be
+      // treated as a valid identity.
+      if (!userId || !email || !payload.email_verified) {
+        return { success: false, error: 'Token is missing a subject, email, or a verified email' };
+      }
+
+      return {
+        success: true,
+        user: { userId, email, name, picture },
+      };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      // Do not log the raw ID token — it's a bearer credential and `token_id`
+      // is not covered by the logger's redaction (it matches keys exactly). The
+      // error message alone is enough to diagnose verification failures.
+      this._logger.log({
+        origin: 'UserServices.verifyGoogleToken',
+        message: errorMessage,
+      });
+      return { success: false, error: errorMessage };
     }
   }
 

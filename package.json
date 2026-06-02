@@ -38,6 +38,7 @@
     "express-rate-limit": "^8.2.1",
     "express-validation": "^3.0.8",
     "fluent-json-schema": "^3.0.1",
+    "google-auth-library": "^10.6.2",
     "helmet": "^8",
     "http-status": "^1.5.0",
     "jsonwebtoken": "^9",

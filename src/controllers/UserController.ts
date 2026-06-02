@@ -20,16 +20,18 @@ export class UserController {
     return;
   }
 
-  public async initLogin(req: IRequest, res: IResponse): Promise<IResponse> {
+  public async initLogin(req: IRequest, res: IResponse): Promise<IResponse | undefined> {
     const { token_id } = req.body;
-    const { origin } = req.headers;
+    const { origin, 'x-platform': platform } = req.headers;
     if (!token_id) {
       res.status(422).json({ message: 'The authentication is missing' });
       return;
     }
+
     let client_id: {
       apple_id: string;
     } = null;
+
     if (origin) {
       client_id = await this._userService.getClientID({
         origin: origin.replace('https://', '').replace('http://', ''),
@@ -41,20 +43,48 @@ export class UserController {
         return;
       }
     }
-    const appleAuth = await this._userService.verifyToken({
-      token_id,
-      client_id: client_id?.apple_id,
-    });
 
-    if (!appleAuth?.email || !appleAuth?.sub) {
-      res.status(422).json({ message: 'Invalid apple id' });
-      return;
+    let authData: {
+      auth_type: string;
+      external_id: string;
+      email: string;
+    };
+
+    if (platform === 'android') {
+      const googleAuth = await this._userService.verifyGoogleToken(token_id);
+      if (!googleAuth.success || !googleAuth.user.email) {
+        res.status(422).json({ message: 'Invalid google id' });
+        return;
+      }
+
+      authData = {
+        auth_type: 'google',
+        external_id: googleAuth.user.userId,
+        email: googleAuth.user.email,
+      };
+    } else {
+      const appleAuth = await this._userService.verifyToken({
+        token_id,
+        client_id: client_id?.apple_id,
+      });
+
+      if (!appleAuth?.email || !appleAuth?.sub) {
+        res.status(422).json({ message: 'Invalid apple id' });
+        return;
+      }
+
+      authData = {
+        auth_type: 'apple',
+        external_id: appleAuth.sub,
+        email: appleAuth.email,
+      };
     }
 
-    // Check auth_methods by Apple sub (stable identifier - prevents email collisions)
+    // Look up the credential by its provider + stable external id (the Apple
+    // `sub` / Google `sub`), which is collision-safe unlike matching on email.
     const existingAuthMethod = await this._userService.getAuthMethodByExternalId({
-      auth_type: 'apple',
-      external_id: appleAuth.sub,
+      auth_type: authData.auth_type,
+      external_id: authData.external_id,
     });
 
     let user;
@@ -63,36 +93,31 @@ export class UserController {
       // Existing user - fetch by stored email (safe from collision)
       user = await this._userService.getUser({
         email: existingAuthMethod.email,
-        session: appleAuth.sub,
+        session: authData.external_id,
       });
     } else {
-      // Check if email already exists (e.g., passkey user trying to sign in with Apple)
-      const existingUserByEmail = await this._userService.getUser({
-        email: appleAuth.email,
+      // No auth_method for this credential yet. Either the user is brand new,
+      // or they already own an account (under a different provider) and we are
+      // linking this credential to it.
+      let existingUser = await this._userService.getUser({
+        email: authData.email,
       });
 
-      if (existingUserByEmail) {
-        // User exists but signed in with different method (passkey)
-        return res.status(409).json({
-          message:
-            'An account with this email already exists. Please sign in with your passkey.',
-        });
-      }
-
-      // New user - create account with Apple ID as external_id
-      user = await this._userService.addNewUser({
-        email: appleAuth.email,
+      user = existingUser || await this._userService.addNewUser({
+        email: authData.email,
         active: true,
-        external_id: appleAuth.sub,
+        external_id: authData.external_id,
       });
 
-      // Add to auth_methods table
-      if (user) {
+      // Record the credential under its own provider. Mark it primary only when
+      // it's the first credential of a freshly created account; a credential
+      // linked to a pre-existing account is secondary.
+      if (user && user.id_user) {
         await this._userService.addAuthMethod({
           user_id: user.id_user,
-          auth_type: 'apple',
-          external_id: appleAuth.sub,
-          is_primary: true,
+          auth_type: authData.auth_type,
+          external_id: authData.external_id,
+          is_primary: !existingUser,
         });
       }
     }
@@ -105,14 +130,15 @@ export class UserController {
     if (!user.session) {
       await this._userService.addNewDevice({
         user_id: user.id_user,
-        session: appleAuth.sub,
+        session: authData.external_id,
       });
     }
+
     const token = await this._userService.tokenUser({
       id_user: user.id_user,
-      email: appleAuth.email,
+      email: authData.email,
       external_id: user.external_id,
-      session: appleAuth.sub,
+      session: authData.external_id,
     });
 
     if (
@@ -131,9 +157,9 @@ export class UserController {
           path: '/',
         }),
       );
-      return res.json({ email: user.email, token });
+      return res.json({ email: user.email, token, revenuecat_id: user.external_id });
     }
-    return res.json({ email: user.email, token });
+    return res.json({ email: user.email, token, revenuecat_id: user.external_id });
   }
 
   public async logout(req: IRequest, res: IResponse): Promise<IResponse> {

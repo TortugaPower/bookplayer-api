@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { UserServices } from '../../services/UserServices';
 import {
   getTestTransaction,
@@ -332,5 +332,92 @@ describe('UserServices - Duplicate Prevention', () => {
       expect(byApple!.user_id).toBe(user.id_user);
       expect(byPasskey!.user_id).toBe(user.id_user);
     });
+  });
+});
+
+describe('UserServices - verifyGoogleToken', () => {
+  let service: UserServices;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let verifyIdToken: any; // jest mock; loosely typed to avoid @jest/globals 'never' arg inference
+  const ORIGINAL_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+
+  const basePayload = {
+    sub: 'google-sub-123',
+    email: 'user@example.com',
+    email_verified: true,
+    name: 'Test User',
+    picture: 'https://example.com/p.png',
+  };
+
+  beforeEach(() => {
+    process.env.GOOGLE_CLIENT_ID = 'test-client-id.apps.googleusercontent.com';
+    service = new UserServices();
+    (service as any)._logger = mockLoggerService;
+    mockLoggerService.log.mockClear();
+    verifyIdToken = jest.fn();
+    // Override the real OAuth2Client with a mock (no network / no DB needed).
+    (service as any).googleClient = { verifyIdToken };
+  });
+
+  afterEach(() => {
+    process.env.GOOGLE_CLIENT_ID = ORIGINAL_CLIENT_ID;
+  });
+
+  const mockPayload = (payload: unknown) =>
+    verifyIdToken.mockResolvedValue({ getPayload: () => payload });
+
+  it('returns success with the user for a valid, verified token', async () => {
+    mockPayload(basePayload);
+
+    const result = await service.verifyGoogleToken('valid-token');
+
+    expect(verifyIdToken).toHaveBeenCalledWith({
+      idToken: 'valid-token',
+      audience: 'test-client-id.apps.googleusercontent.com',
+    });
+    expect(result).toEqual({
+      success: true,
+      user: {
+        userId: 'google-sub-123',
+        email: 'user@example.com',
+        name: 'Test User',
+        picture: 'https://example.com/p.png',
+      },
+    });
+  });
+
+  it('fails when the token has no payload', async () => {
+    mockPayload(undefined);
+
+    const result = await service.verifyGoogleToken('payloadless-token');
+
+    expect(result).toEqual({ success: false, error: 'Token payload is empty' });
+  });
+
+  it('fails when the email is not verified', async () => {
+    mockPayload({ ...basePayload, email_verified: false });
+
+    const result = await service.verifyGoogleToken('unverified-email-token');
+
+    expect(result.success).toBe(false);
+  });
+
+  it('fails when the subject (sub) is missing', async () => {
+    mockPayload({ ...basePayload, sub: undefined });
+
+    const result = await service.verifyGoogleToken('no-sub-token');
+
+    expect(result.success).toBe(false);
+  });
+
+  it('fails (and logs) without leaking the token when verification throws', async () => {
+    verifyIdToken.mockRejectedValue(new Error('Invalid token signature'));
+
+    const result = await service.verifyGoogleToken('bad-token');
+
+    expect(result).toEqual({ success: false, error: 'Invalid token signature' });
+    expect(mockLoggerService.log).toHaveBeenCalled();
+    const logged = JSON.stringify(mockLoggerService.log.mock.calls);
+    expect(logged).not.toContain('bad-token');
   });
 });
