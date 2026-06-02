@@ -41,6 +41,8 @@ jobs:
       S3_REGION: us-east-1
       APPLE_CLIENT_ID: com.ci.dummy
       APP_SECRET: ci-dummy-secret
+      GOOGLE_CLIENT_ID: com.ci.dummy
+      ANDROID_RELEASE_HASH: hash.dummy
       REVENUECAT_HEADER: ci-dummy
       REVENUECAT_API: https://ci.dummy
       REVENUECAT_KEY: ci-dummy
