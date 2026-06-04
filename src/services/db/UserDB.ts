@@ -54,6 +54,9 @@ export class UserDB {
           email,
           password: '',
           external_id: external_id || crypto.randomUUID(),
+          // New accounts store their files under the canonical external_id
+          // prefix from day one (no legacy email-prefixed objects to migrate).
+          storage_uses_external_id: true,
         })
         .returning('*');
       return created;
@@ -106,6 +109,30 @@ export class UserDB {
     } catch (err) {
       this._logger.log({
         origin: 'UserDB.getExternalIdByUserId',
+        message: err.message,
+        data: { user_id },
+      });
+      return null;
+    }
+  }
+
+  async getStorageConfig(
+    user_id: number,
+    trx?: Knex.Transaction,
+  ): Promise<{
+    external_id: string | null;
+    storage_uses_external_id: boolean;
+  } | null> {
+    try {
+      const db = trx || this.db;
+      const row = await db('users')
+        .select('external_id', 'storage_uses_external_id')
+        .where({ id_user: user_id, active: true })
+        .first();
+      return row || null;
+    } catch (err) {
+      this._logger.log({
+        origin: 'UserDB.getStorageConfig',
         message: err.message,
         data: { user_id },
       });

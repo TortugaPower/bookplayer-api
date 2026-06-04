@@ -22,6 +22,7 @@ import {
   isValidUUID,
 } from '../utils';
 import { LibraryDB } from './db/LibraryDB';
+import { StoragePrefixService } from './StoragePrefixService';
 
 export class LibraryService {
   private readonly _logger = logger;
@@ -30,6 +31,7 @@ export class LibraryService {
   constructor(
     private _storage: StorageService = new StorageService(),
     private _libraryDB: LibraryDB = new LibraryDB(),
+    private _prefix: StoragePrefixService = new StoragePrefixService(),
   ) {}
 
   async parseLibraryItemDb(
@@ -116,6 +118,12 @@ export class LibraryService {
         ? await this._libraryDB.getLibraryByUuid(user.id_user, uuid)
         : await this._libraryDB.getLibrary(user.id_user, cleanPath);
       const library: LibraryItem[] = [];
+      // Only the deprecated presign branch needs the storage prefix; resolve it
+      // once up front (not per item) when signing, and skip the lookup entirely
+      // for clients on the proxy path.
+      const storagePrefix = options.withPresign
+        ? await this._prefix.getPrefix(user)
+        : null;
       if (objectDB?.length) {
         for (let index = 0; index < objectDB.length; index++) {
           const itemDb = objectDB[index];
@@ -140,14 +148,14 @@ export class LibraryService {
               if (options.withPresign) {
                 const originalFile = itemDb.source_path || itemDb.key;
                 const { url } = await this._storage.getPresignedUrl({
-                  key: `${user.email}/${originalFile}`,
+                  key: `${storagePrefix}/${originalFile}`,
                   type: StorageAction.GET,
                 });
                 fileUrl = url;
 
                 if (itemDb.thumbnail) {
                   const { url } = await this._storage.getPresignedUrl({
-                    key: `${user.email}_thumbnail/${itemDb.thumbnail}`,
+                    key: `${storagePrefix}_thumbnail/${itemDb.thumbnail}`,
                     type: StorageAction.GET,
                   });
                   thumbnail = url;
@@ -219,8 +227,9 @@ export class LibraryService {
           break;
         default: // deprecated old part
           const originalFile = itemDb.source_path || itemDb.key;
+          const storagePrefix = await this._prefix.getPrefix(user);
           const { url, expires_in } = await this._storage.getPresignedUrl({
-            key: `${user.email}/${originalFile}`,
+            key: `${storagePrefix}/${originalFile}`,
             type: StorageAction.GET,
           });
           fileUrl = url;
@@ -275,12 +284,13 @@ export class LibraryService {
         exactly: true,
       });
       let itemDb = objectDB[0];
+      const storagePrefix = await this._prefix.getPrefix(user);
       libObj.source_path = `${process.env.ROOT_FOLDER}/${moment().format(
         'YYYYMMDDHHmmss',
       )}_${libObj.original_filename}`;
       if (itemDb) {
         const fileExists = await this._storage.fileExists({
-          key: `${user.email}/${itemDb.source_path || itemDb.key}`,
+          key: `${storagePrefix}/${itemDb.source_path || itemDb.key}`,
         });
         if (fileExists === true) {
           return null;
@@ -295,7 +305,7 @@ export class LibraryService {
           throw new Error(`Failed to create library item at key=${cleanPath}`);
         }
       }
-      const resourcePath = `${user.email}/${libObj.source_path}`;
+      const resourcePath = `${storagePrefix}/${libObj.source_path}`;
 
       const { url, expires_in } = await this._storage.getPresignedUrl({
         key: resourcePath,
@@ -347,13 +357,14 @@ export class LibraryService {
         return alreadyDeleted?.map((i) => i.key) || [];
       }
 
+      const storagePrefix = await this._prefix.getPrefix(user);
       for (let index = 0; index < deletedObjects.length; index++) {
         const item = deletedObjects[index];
         const keyPath =
           parseInt(item.type) === parseInt(LibraryItemType.BOOK)
             ? `${item.key}`
             : `${item.key}/`;
-        const sourceKey = `${user.email}/${item.source_path || keyPath}`;
+        const sourceKey = `${storagePrefix}/${item.source_path || keyPath}`;
         await this._storage.deleteFile({ sourceKey });
       }
       return deletedObjects.map((i) => i.key);
@@ -643,6 +654,7 @@ export class LibraryService {
     // Sanitize path to handle whitespace issues in folder names
     const sanitizedFolderPath = sanitizeLibraryPath(folderPath);
     try {
+      const storagePrefix = await this._prefix.getPrefix(user);
       const folderDB = await this._libraryDB.getLibrary(
         user.id_user,
         sanitizedFolderPath,
@@ -694,13 +706,13 @@ export class LibraryService {
                 parseInt(prevFile.type) === parseInt(LibraryItemType.BOOK)
                   ? ''
                   : '/';
-              const sourceKey = `${user.email}/${prevFile.key}${suffix}`;
+              const sourceKey = `${storagePrefix}/${prevFile.key}${suffix}`;
               const original_filename = `${
                 process.env.ROOT_FOLDER
               }/${moment().format('YYYYMMDDHHmmss')}_${
                 fileMoved.original_filename
               }`;
-              const targetKey = `${user.email}/${original_filename}`;
+              const targetKey = `${storagePrefix}/${original_filename}`;
               const isMoved = await this._storage.moveFile({
                 sourceKey,
                 targetKey,
@@ -721,7 +733,7 @@ export class LibraryService {
       );
 
       const keyPath = `${folderDB[0].key}/`;
-      const folderKey = `${user.email}/${folderDB[0].source_path || keyPath}`;
+      const folderKey = `${storagePrefix}/${folderDB[0].source_path || keyPath}`;
       const folderExist = await this._storage.fileExists({ key: folderKey });
       if (folderExist) {
         await this._storage.deleteFile({ sourceKey: folderKey });
@@ -770,8 +782,9 @@ export class LibraryService {
         default: // deprecated old part
           if (options.withPresign) {
             const originalFile = item.source_path || itemDb.key;
+            const storagePrefix = await this._prefix.getPrefix(user);
             const { url, expires_in } = await this._storage.getPresignedUrl({
-              key: `${user.email}/${originalFile}`,
+              key: `${storagePrefix}/${originalFile}`,
               type: StorageAction.GET,
             });
             item.url = url;
@@ -779,7 +792,7 @@ export class LibraryService {
 
             if (itemDb.thumbnail) {
               const { url } = await this._storage.getPresignedUrl({
-                key: `${user.email}_thumbnail/${itemDb.thumbnail}`,
+                key: `${storagePrefix}_thumbnail/${itemDb.thumbnail}`,
                 type: StorageAction.GET,
               });
               item.thumbnail = url;
@@ -828,8 +841,9 @@ export class LibraryService {
         });
         return !!idUpdated;
       }
+      const storagePrefix = await this._prefix.getPrefix(user);
       const { url } = await this._storage.getPresignedUrl({
-        key: `${user.email}_thumbnail/${thumbnail_name}`,
+        key: `${storagePrefix}_thumbnail/${thumbnail_name}`,
         type: StorageAction.PUT,
       });
       return url;
@@ -1036,6 +1050,7 @@ export class LibraryService {
     movedFiles: LibraryItemMovedDB[],
     trx: Knex.Transaction,
   ): Promise<void> {
+    const storagePrefix = await this._prefix.getPrefix(user);
     const groupCounts = parseInt(`${movedFiles.length / 10}`);
     const groups =
       groupCounts > 1
@@ -1054,13 +1069,13 @@ export class LibraryService {
               parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
                 ? ''
                 : '/';
-            const sourceKey = `${user.email}/${fileMoved.old_key}${suffix}`;
+            const sourceKey = `${storagePrefix}/${fileMoved.old_key}${suffix}`;
             const original_filename = `${
               process.env.ROOT_FOLDER
             }/${moment().format('YYYYMMDDHHmmss')}_${
               fileMoved.original_filename
             }`;
-            const targetKey = `${user.email}/${original_filename}`;
+            const targetKey = `${storagePrefix}/${original_filename}`;
             const isMoved = await this._storage.moveFile({
               sourceKey,
               targetKey,

@@ -1,5 +1,6 @@
 import { IRequest, IResponse } from '../types/http';
 import { StorageService } from '../services/StorageService';
+import { StoragePrefixService } from '../services/StoragePrefixService';
 import { LibraryDB } from '../services/db/LibraryDB';
 import { Writable } from 'stream';
 import { S3ClientHeaders, S3ValidHeader } from '../types/user';
@@ -11,6 +12,7 @@ export class StorageController {
   constructor(
     private _storageService: StorageService = new StorageService(),
     private _libraryDB: LibraryDB = new LibraryDB(),
+    private _prefix: StoragePrefixService = new StoragePrefixService(),
   ) {}
 
   public async getProxyLibrary(
@@ -63,7 +65,8 @@ export class StorageController {
           clientHeaders[value] = validValue;
         }
       }
-      const userKey = `${user.email}${filepath}`;
+      const storagePrefix = await this._prefix.getPrefix(user);
+      const userKey = `${storagePrefix}${filepath}`;
       const s3Stream = await this._storageService.getObjectStream({
         key: userKey,
         clientHeaders,
