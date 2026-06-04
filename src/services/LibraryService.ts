@@ -792,7 +792,7 @@ export class LibraryService {
 
             if (itemDb.thumbnail) {
               const { url } = await this._storage.getPresignedUrl({
-                key: `${user.email}_thumbnail/${itemDb.thumbnail}`,
+                key: `${storagePrefix}_thumbnail/${itemDb.thumbnail}`,
                 type: StorageAction.GET,
               });
               item.thumbnail = url;
