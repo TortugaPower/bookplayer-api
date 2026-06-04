@@ -50,50 +50,54 @@ SUFFIXES=("/" "_thumbnail/")
 
 copy_prefix() {
   local src_prefix="$1" dst_prefix="$2"
-  local token=""
   local copied=0 skipped=0
 
-  while :; do
-    local args=(s3api list-objects-v2 --bucket "$BUCKET" --prefix "$src_prefix" --max-keys 1000)
-    [[ -n "$token" ]] && args+=(--starting-token "$token")
-    local page
-    page="$(aws_s3 "${args[@]}" --output json)"
+  # The AWS CLI auto-paginates list-objects-v2 across ALL objects when --max-keys
+  # is omitted, so we get the complete listing (not just the first 1000). Pull the
+  # size straight from the listing to avoid a head-object on every source key.
+  # `--output text` is TAB-separated, so spaces in keys are preserved.
+  local listing
+  listing="$(aws_s3 s3api list-objects-v2 --bucket "$BUCKET" --prefix "$src_prefix" \
+    --query 'Contents[].[Key,Size]' --output text 2>/dev/null || true)"
 
-    local keys
-    keys="$(printf '%s' "$page" | python3 -c 'import sys,json;[print(o["Key"]) for o in (json.load(sys.stdin).get("Contents") or [])]')"
+  if [[ -z "$listing" || "$listing" == "None" ]]; then
+    echo "  prefix '$src_prefix': nothing to copy"
+    return
+  fi
 
-    while IFS= read -r key; do
-      [[ -z "$key" ]] && continue
-      local rel="${key#"$src_prefix"}"
-      local dst_key="${dst_prefix}${rel}"
-      # Skip if destination already has an object of the same size.
-      local src_size dst_size
-      src_size="$(aws_s3 s3api head-object --bucket "$BUCKET" --key "$key" --query 'ContentLength' --output text 2>/dev/null || echo "")"
-      dst_size="$(aws_s3 s3api head-object --bucket "$BUCKET" --key "$dst_key" --query 'ContentLength' --output text 2>/dev/null || echo "")"
-      if [[ -n "$dst_size" && "$dst_size" == "$src_size" ]]; then
-        skipped=$((skipped+1)); continue
-      fi
-      if [[ "$APPLY" == "--apply" ]]; then
-        aws_s3 s3api copy-object --bucket "$BUCKET" \
-          --copy-source "$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "${BUCKET}/${key}")" \
-          --key "$dst_key" >/dev/null
-        copied=$((copied+1))
-      else
-        echo "WOULD COPY: $key -> $dst_key (${src_size} bytes)"
-        copied=$((copied+1))
-      fi
-    done <<< "$keys"
+  while IFS=$'\t' read -r key src_size; do
+    [[ -z "$key" ]] && continue
+    local rel="${key#"$src_prefix"}"
+    local dst_key="${dst_prefix}${rel}"
+    # Idempotent: skip if destination already has an object of the same size.
+    local dst_size
+    dst_size="$(aws_s3 s3api head-object --bucket "$BUCKET" --key "$dst_key" --query 'ContentLength' --output text 2>/dev/null || echo "")"
+    if [[ -n "$dst_size" && "$dst_size" == "$src_size" ]]; then
+      skipped=$((skipped+1)); continue
+    fi
+    if [[ "$APPLY" == "--apply" ]]; then
+      aws_s3 s3api copy-object --bucket "$BUCKET" \
+        --copy-source "$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "${BUCKET}/${key}")" \
+        --key "$dst_key" >/dev/null
+      copied=$((copied+1))
+    else
+      echo "WOULD COPY: $key -> $dst_key (${src_size} bytes)"
+      copied=$((copied+1))
+    fi
+  done <<< "$listing"
 
-    token="$(printf '%s' "$page" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("NextToken") or "")')"
-    [[ -z "$token" ]] && break
-  done
   echo "  prefix '$src_prefix': $copied $([[ "$APPLY" == "--apply" ]] && echo copied || echo to-copy), $skipped already present"
 }
 
 parity() {
   local prefix="$1"
+  # Aggregate over the FLATTENED projection, not via JMESPath length()/sum():
+  # the CLI auto-paginates and applies aggregate functions per page, so
+  # length()/sum() would emit one partial total per 1000 objects. A [Key,Size]
+  # projection streams every object, which awk then counts/sums to a true total.
   aws_s3 s3api list-objects-v2 --bucket "$BUCKET" --prefix "$prefix" \
-    --query '[length(Contents), sum(Contents[].Size)]' --output text 2>/dev/null || echo "0	0"
+    --query 'Contents[].[Key,Size]' --output text 2>/dev/null \
+    | awk -F'\t' 'NF>=2 { c++; s += $2 } END { printf "%d\t%d\n", c + 0, s + 0 }'
 }
 
 echo "Bucket: $BUCKET   Source: '$SRC'   Dest: '$DST'   Mode: $([[ "$APPLY" == "--apply" ]] && echo APPLY || echo DRY-RUN)"

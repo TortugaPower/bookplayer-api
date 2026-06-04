@@ -19,8 +19,15 @@ type StoragePrefixConfig = {
  *
  * The flag is read-through cached (ValKey/Redis): read-heavy, written only at
  * account creation or during a deliberate per-user migration, so invalidate on
- * flip. On any cache/DB failure we fall back to the legacy email prefix so an
- * outage never makes a user's existing library unreachable.
+ * flip.
+ *
+ * Failure mode: if the flag can't be read (cold cache + DB error) we fall back
+ * to the legacy email prefix. There is no universally safe default without the
+ * flag — this favors existing email-prefixed accounts (the bulk of the data).
+ * A brand-new/migrated account whose objects only exist under external_id may
+ * therefore be temporarily unreachable during a total cache+DB outage; we avoid
+ * caching such fallback reads (see getConfig) so recovery is immediate once the
+ * DB is back, rather than stuck for the cache TTL.
  */
 export class StoragePrefixService {
   private readonly _logger = logger;
@@ -87,9 +94,18 @@ export class StoragePrefixService {
     if (cached) return cached;
 
     const row = await this._userDB.getStorageConfig(user_id);
+
+    // Only cache a definitive DB read. A null row means a transient DB error (or
+    // a missing user); caching the email-fallback then would poison the cache for
+    // the full TTL and could keep a migrated user's external_id library
+    // unreachable even after the DB recovers. Re-read on the next request instead.
+    if (!row) {
+      return { usesExternalId: false, externalId: fallbackExternalId || null };
+    }
+
     const config: StoragePrefixConfig = {
-      usesExternalId: !!row?.storage_uses_external_id,
-      externalId: row?.external_id || fallbackExternalId || null,
+      usesExternalId: !!row.storage_uses_external_id,
+      externalId: row.external_id || fallbackExternalId || null,
     };
     await this._cache.setObject(
       this.cacheKey(user_id),

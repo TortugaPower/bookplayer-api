@@ -107,6 +107,16 @@ describe('StoragePrefixService', () => {
     expect(await service.getPrefix(makeUser())).toBe(RELAY);
   });
 
+  it('does NOT cache a null DB read (avoids poisoning the cache on a transient error)', async () => {
+    cache.getObject.mockResolvedValue(null);
+    userDB.getStorageConfig.mockResolvedValue(null);
+
+    await service.getPrefix(makeUser());
+
+    // No fallback config persisted, so the next request re-reads the DB once it recovers.
+    expect(cache.setObject).not.toHaveBeenCalled();
+  });
+
   it('falls back to email on cache/DB error', async () => {
     cache.getObject.mockRejectedValue(new Error('valkey down'));
 

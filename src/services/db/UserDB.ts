@@ -119,7 +119,10 @@ export class UserDB {
   async getStorageConfig(
     user_id: number,
     trx?: Knex.Transaction,
-  ): Promise<{ external_id: string; storage_uses_external_id: boolean } | null> {
+  ): Promise<{
+    external_id: string | null;
+    storage_uses_external_id: boolean;
+  } | null> {
     try {
       const db = trx || this.db;
       const row = await db('users')
