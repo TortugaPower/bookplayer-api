@@ -128,6 +128,12 @@ describe('StoragePrefixService', () => {
     expect(cache.getObject).not.toHaveBeenCalled();
   });
 
+  it('throws (never returns undefined) when the user has no email', async () => {
+    await expect(service.getPrefix({ id_user: 1 } as any)).rejects.toThrow();
+    await expect(service.getPrefix(undefined as any)).rejects.toThrow();
+    expect(cache.getObject).not.toHaveBeenCalled();
+  });
+
   it('invalidate() deletes the cached config', async () => {
     await service.invalidate(67662);
     expect(cache.deleteObject).toHaveBeenCalledWith('storage_prefix_cfg_67662');

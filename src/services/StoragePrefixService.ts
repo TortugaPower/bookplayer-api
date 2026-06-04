@@ -40,8 +40,17 @@ export class StoragePrefixService {
 
   /** Base prefix for a user's audio objects: `${prefix}/${source_path}`. */
   async getPrefix(user: User): Promise<string> {
+    // Fail fast rather than ever returning undefined: a `${undefined}/${key}`
+    // S3 prefix would silently collide across every identity-less request.
+    // `User.email` is required by type and present on every real auth/webhook
+    // path; a missing one means a malformed token that must not build keys.
+    if (!user?.email) {
+      throw new Error(
+        'StoragePrefixService.getPrefix called without an authenticated user email',
+      );
+    }
     try {
-      if (user?.id_user == null) return user?.email;
+      if (user.id_user == null) return user.email;
       const config = await this.getConfig(user.id_user, user.external_id);
       if (config.usesExternalId) {
         // external_id is provider-issued (Apple/Google sub, UUID, base64url) and
@@ -71,7 +80,8 @@ export class StoragePrefixService {
         'error',
       );
       // Fail safe: legacy behaviour keeps existing libraries reachable.
-      return user?.email;
+      // email is guaranteed non-empty by the guard at the top of the method.
+      return user.email;
     }
   }
 
