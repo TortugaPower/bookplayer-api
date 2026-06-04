@@ -765,7 +765,7 @@ export class LibraryService {
             ? `${process.env.PROXY_FILE_URL}/_thumbnail/${encodeURIComponent(
                 itemDb.thumbnail,
               )}`
-            : null;
+            : undefined;
           break;
         default: // deprecated old part
           if (options.withPresign) {
@@ -776,6 +776,14 @@ export class LibraryService {
             });
             item.url = url;
             item.expires_in = expires_in;
+
+            if (itemDb.thumbnail) {
+              const { url } = await this._storage.getPresignedUrl({
+                key: `${user.email}_thumbnail/${itemDb.thumbnail}`,
+                type: StorageAction.GET,
+              });
+              item.thumbnail = url;
+            }
           }
           break;
       }
