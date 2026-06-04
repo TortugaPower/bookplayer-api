@@ -2,6 +2,7 @@ import { S3Service } from './S3Service';
 import { logger } from './LoggerService';
 import { RestClientService } from './RestClientService';
 import { SubscriptionDB } from './db/SubscriptionDB';
+import { StoragePrefixService } from './StoragePrefixService';
 
 export class GlacierMigrationService {
   private readonly _logger = logger;
@@ -10,6 +11,7 @@ export class GlacierMigrationService {
     private _s3: S3Service = new S3Service(),
     private _restClient: RestClientService = new RestClientService(),
     private _subscriptionDB: SubscriptionDB = new SubscriptionDB(),
+    private _prefix: StoragePrefixService = new StoragePrefixService(),
   ) {}
 
   async handleExpirationEvent(
@@ -39,10 +41,17 @@ export class GlacierMigrationService {
       }
 
       const ruleId = `glacier-migrate-${userId}`;
-      // Using email without trailing slash matches both {email}/ and {email}_thumbnail/
+      // Resolve the user's actual storage prefix (external_id once migrated,
+      // otherwise the legacy email). Without a trailing slash it matches both
+      // {prefix}/ and {prefix}_thumbnail/.
+      const storagePrefix = await this._prefix.getPrefix({
+        id_user: userId,
+        email,
+        external_id: externalId,
+      });
       const success = await this._s3.addLifecycleRule(
         ruleId,
-        email,
+        storagePrefix,
         'DEEP_ARCHIVE',
       );
 
