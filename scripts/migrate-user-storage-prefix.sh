@@ -76,9 +76,11 @@ copy_prefix() {
       skipped=$((skipped+1)); continue
     fi
     if [[ "$APPLY" == "--apply" ]]; then
-      aws_s3 s3api copy-object --bucket "$BUCKET" \
-        --copy-source "$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "${BUCKET}/${key}")" \
-        --key "$dst_key" >/dev/null
+      # Use the high-level `s3 cp` between two s3:// URIs: it still performs a
+      # server-side copy (no download), but lets the SDK encode the object keys.
+      # Manual copy-source URL-encoding does not round-trip for keys with
+      # combining/mojibake characters and yields NoSuchKey.
+      aws_s3 s3 cp "s3://${BUCKET}/${key}" "s3://${BUCKET}/${dst_key}" --only-show-errors
       copied=$((copied+1))
     else
       echo "WOULD COPY: $key -> $dst_key (${src_size} bytes)"
