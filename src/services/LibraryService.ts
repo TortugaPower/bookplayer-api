@@ -23,6 +23,8 @@ import {
 } from '../utils';
 import { LibraryDB } from './db/LibraryDB';
 import { StoragePrefixService } from './StoragePrefixService';
+import { ConfigService, ConfigKey } from './ConfigService';
+import { CloudFrontService } from './CloudFrontService';
 
 export class LibraryService {
   private readonly _logger = logger;
@@ -32,7 +34,53 @@ export class LibraryService {
     private _storage: StorageService = new StorageService(),
     private _libraryDB: LibraryDB = new LibraryDB(),
     private _prefix: StoragePrefixService = new StoragePrefixService(),
+    private _config: ConfigService = new ConfigService(),
+    private _cloudfront: CloudFrontService = new CloudFrontService(),
   ) {}
+
+  /**
+   * Resolves a download (GET) URL for an S3 object key. Returns a CloudFront
+   * signed URL (~24h, see CloudFrontService) when the `use_cloudfront_downloads`
+   * flag is on OR the user is in the canary allowlist; otherwise falls back to
+   * an S3 presigned URL. Uploads still go straight to S3 (StorageAction.PUT).
+   */
+  private async getDownloadUrl(
+    key: string,
+    user: User,
+  ): Promise<{ url: string; expires_in: number }> {
+    const useCloudFront =
+      this.isCloudFrontAllowlisted(user) ||
+      (await this._config.getBoolean(ConfigKey.UseCloudFrontDownloads));
+    if (useCloudFront) {
+      const signed = this._cloudfront.getSignedUrl(key);
+      if (signed) return signed;
+      // CloudFront signing failed (misconfig / bad key) — fail safe to S3 so a
+      // download error doesn't take down the whole library listing.
+      this._logger.log(
+        {
+          origin: 'LibraryService.getDownloadUrl',
+          message: 'CloudFront signing failed; falling back to S3 presigned',
+          data: { key },
+        },
+        'error',
+      );
+    }
+    return this._storage.getPresignedUrl({ key, type: StorageAction.GET });
+  }
+
+  /**
+   * Canary override: force CloudFront for specific users regardless of the
+   * global flag. `CLOUDFRONT_ALLOWLIST` is a comma-separated list of id_user.
+   * Used to dogfood the CloudFront path before a global rollout.
+   */
+  private isCloudFrontAllowlisted(user: User): boolean {
+    const raw = process.env.CLOUDFRONT_ALLOWLIST;
+    if (!raw || user?.id_user == null) return false;
+    return raw
+      .split(',')
+      .map((id) => id.trim())
+      .includes(String(user.id_user));
+  }
 
   async parseLibraryItemDb(
     item: LibraryItemDB | LibraryItem,
@@ -147,17 +195,17 @@ export class LibraryService {
             default: // deprecated old part
               if (options.withPresign) {
                 const originalFile = itemDb.source_path || itemDb.key;
-                const { url } = await this._storage.getPresignedUrl({
-                  key: `${storagePrefix}/${originalFile}`,
-                  type: StorageAction.GET,
-                });
+                const { url } = await this.getDownloadUrl(
+                  `${storagePrefix}/${originalFile}`,
+                  user,
+                );
                 fileUrl = url;
 
                 if (itemDb.thumbnail) {
-                  const { url } = await this._storage.getPresignedUrl({
-                    key: `${storagePrefix}_thumbnail/${itemDb.thumbnail}`,
-                    type: StorageAction.GET,
-                  });
+                  const { url } = await this.getDownloadUrl(
+                    `${storagePrefix}_thumbnail/${itemDb.thumbnail}`,
+                    user,
+                  );
                   thumbnail = url;
                 }
               }
@@ -228,10 +276,10 @@ export class LibraryService {
         default: // deprecated old part
           const originalFile = itemDb.source_path || itemDb.key;
           const storagePrefix = await this._prefix.getPrefix(user);
-          const { url, expires_in } = await this._storage.getPresignedUrl({
-            key: `${storagePrefix}/${originalFile}`,
-            type: StorageAction.GET,
-          });
+          const { url, expires_in } = await this.getDownloadUrl(
+            `${storagePrefix}/${originalFile}`,
+            user,
+          );
           fileUrl = url;
           libObj.expires_in = expires_in;
           break;
@@ -783,18 +831,18 @@ export class LibraryService {
           if (options.withPresign) {
             const originalFile = item.source_path || itemDb.key;
             const storagePrefix = await this._prefix.getPrefix(user);
-            const { url, expires_in } = await this._storage.getPresignedUrl({
-              key: `${storagePrefix}/${originalFile}`,
-              type: StorageAction.GET,
-            });
+            const { url, expires_in } = await this.getDownloadUrl(
+              `${storagePrefix}/${originalFile}`,
+              user,
+            );
             item.url = url;
             item.expires_in = expires_in;
 
             if (itemDb.thumbnail) {
-              const { url } = await this._storage.getPresignedUrl({
-                key: `${storagePrefix}_thumbnail/${itemDb.thumbnail}`,
-                type: StorageAction.GET,
-              });
+              const { url } = await this.getDownloadUrl(
+                `${storagePrefix}_thumbnail/${itemDb.thumbnail}`,
+                user,
+              );
               item.thumbnail = url;
             }
           }
