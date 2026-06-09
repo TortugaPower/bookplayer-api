@@ -25,3 +25,6 @@ dump.rdb
 
 # Apple root certificates (should be downloaded fresh from Apple)
 certs/*.cer
+
+# CloudFront signing keys (never commit — the private key lives in Secrets Manager)
+*.pem
