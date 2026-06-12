@@ -798,6 +798,7 @@ export class LibraryService {
       const insertedRow = await this.dbInsertExternalResource(libraryItem.id_library_item, externalResource, trx)
 
       if (!insertedRow) {
+        console.log('HEY HO ', insertedRow);
         throw Error(
           `ExternalResource not inserted: "${JSON.stringify(externalResource)}"`,
         );
@@ -1122,6 +1123,7 @@ export class LibraryService {
       // Handle differences between Postgres (returns object/array) and MySQL (returns number)
       return newRow as ExternalResourceDb;
     } catch (err) {
+      console.log('HEY HO 2', err);
       this._logger.log({
         origin: 'dbInsertExternalResource',
         message: err.message,

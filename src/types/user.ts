@@ -190,6 +190,7 @@ export interface ExternalResource {
   syncStatus: string;
   lastSyncedAt: Date | null;
   processedFile: boolean;
+  hostId?: string | null;
 }
 
 export interface ExternalResourceDb extends ExternalResource {
