@@ -1,0 +1,51 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+
+# Cancel an in-flight review when the PR is updated again (saves API cost on rapid pushes).
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Skip draft PRs; they review on "ready_for_review".
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Claude review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this pull request. Follow the rules in `.github/claude/review-guide.md`
+            exactly, and use `CLAUDE.md` for the project's architecture and conventions.
+
+            Steps:
+            1. Read `.github/claude/review-guide.md` and `CLAUDE.md`.
+            2. Run `gh pr diff ${{ github.event.pull_request.number }}` to see the changes.
+            3. For each non-trivial change, open the surrounding code and its callers before
+               judging — do not review the diff in isolation. For new/changed routes, open the
+               router to confirm which auth/subscription/rate-limit middlewares are applied.
+            4. Post findings as inline comments on the changed lines, and one short summary
+               comment with the verdict and finding counts, as described in the guide.
+          claude_args: |
+            --model claude-opus-4-8
+            --max-turns 30
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
