@@ -41,7 +41,10 @@
         { "name": "NODE_ENV", "value": "production" },
         { "name": "API_PORT", "value": "5003" },
         { "name": "API_HOST", "value": "0.0.0.0" },
-        { "name": "LOG_LEVEL", "value": "warn" }
+        { "name": "LOG_LEVEL", "value": "warn" },
+        { "name": "CLOUDFRONT_URL", "value": "https://library.bookplayer.app" },
+        { "name": "CLOUDFRONT_ALLOWLIST", "value": "29" },
+        { "name": "CLOUDFRONT_EXPIRY_SECONDS", "value": "120" }
       ],
       "secrets": [
         {
@@ -171,6 +174,14 @@
         {
           "name": "APPLE_DEFAULT_RETENTION_MESSAGE_ID",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:APPLE_DEFAULT_RETENTION_MESSAGE_ID::"
+        },
+        {
+          "name": "CLOUDFRONT_KEY_PAIR_ID",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:CLOUDFRONT_KEY_PAIR_ID::"
+        },
+        {
+          "name": "CLOUDFRONT_PRIVATE_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:CLOUDFRONT_PRIVATE_KEY::"
         }
       ]
     }

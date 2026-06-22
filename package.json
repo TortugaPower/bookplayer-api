@@ -21,6 +21,7 @@
   "dependencies": {
     "@apple/app-store-server-library": "^2.0.0",
     "@aws-sdk/client-s3": "^3.992.0",
+    "@aws-sdk/cloudfront-signer": "^3.992.0",
     "@aws-sdk/s3-request-presigner": "^3.992.0",
     "@simplewebauthn/server": "^11.0.0",
     "@types/jsonwebtoken": "^9",
