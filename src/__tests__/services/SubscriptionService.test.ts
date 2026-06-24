@@ -73,7 +73,7 @@ describe('SubscriptionService.isActive', () => {
 
     const result = await service.isActive(externalId);
 
-    expect(result).toBe(true);
+    expect(result?.active).toBe(true);
     expect(rcMock.fetchActiveStatus).not.toHaveBeenCalled();
   });
 
@@ -85,7 +85,7 @@ describe('SubscriptionService.isActive', () => {
 
     const result = await service.isActive(externalId);
 
-    expect(result).toBe(false);
+    expect(result?.active).toBe(false);
     expect(rcMock.fetchActiveStatus).not.toHaveBeenCalled();
   });
 
@@ -102,9 +102,9 @@ describe('SubscriptionService.isActive', () => {
 
     const result = await service.isActive(externalId);
 
-    expect(result).toBe(true);
+    expect(result?.active).toBe(true);
     const cached = JSON.parse(cache.store.get(`sub:${externalId}`)!.value);
-    expect(cached).toEqual({ active: true, verified: 'local' });
+    expect(cached).toEqual({ active: true, verified: 'local', subscriptions: [] });
   });
 
   it('returns false when last event is EXPIRATION and falls through to RC', async () => {
@@ -120,10 +120,10 @@ describe('SubscriptionService.isActive', () => {
 
     const result = await service.isActive(externalId);
 
-    expect(result).toBe(false);
+    expect(result?.active).toBe(false);
     expect(rcMock.fetchActiveStatus).toHaveBeenCalledWith(externalId);
     const cached = JSON.parse(cache.store.get(`sub:${externalId}`)!.value);
-    expect(cached).toEqual({ active: false, verified: 'rc' });
+    expect(cached).toEqual({ active: false, verified: 'rc', subscriptions: [] });
   });
 
   it('stale-revalidate: local says inactive (expired RENEWAL), RC says active → return true', async () => {
@@ -143,10 +143,10 @@ describe('SubscriptionService.isActive', () => {
 
     const result = await service.isActive(externalId);
 
-    expect(result).toBe(true);
+    expect(result?.active).toBe(true);
     expect(rcMock.fetchActiveStatus).toHaveBeenCalledWith(externalId);
     const cached = JSON.parse(cache.store.get(`sub:${externalId}`)!.value);
-    expect(cached).toEqual({ active: true, verified: 'rc' });
+    expect(cached).toEqual({ active: true, verified: 'rc', subscriptions: [] });
   });
 
   it('returns false and does NOT cache when RC times out', async () => {
@@ -156,7 +156,7 @@ describe('SubscriptionService.isActive', () => {
 
     const result = await service.isActive(externalId);
 
-    expect(result).toBe(false);
+    expect(result?.active).toBe(false);
     expect(cache.store.has(`sub:${externalId}`)).toBe(false);
   });
 
@@ -183,7 +183,7 @@ describe('SubscriptionService.isActive', () => {
     const result = await service.isActive(externalId);
 
     // Latest event by timestamp is EXPIRATION → local says inactive → RC says inactive
-    expect(result).toBe(false);
+    expect(result?.active).toBe(false);
     expect(rcMock.fetchActiveStatus).toHaveBeenCalled();
   });
 
@@ -203,9 +203,9 @@ describe('SubscriptionService.isActive', () => {
       service.isActive(externalId),
     ]);
 
-    expect(a).toBe(true);
-    expect(b).toBe(true);
-    expect(c).toBe(true);
+    expect(a?.active).toBe(true);
+    expect(b?.active).toBe(true);
+    expect(c?.active).toBe(true);
     expect(cache.setObject).toHaveBeenCalledTimes(1);
   });
 
@@ -221,9 +221,9 @@ describe('SubscriptionService.isActive', () => {
 
     const result = await service.isActive(externalId);
 
-    expect(result).toBe(true);
+    expect(result?.active).toBe(true);
     const cached = JSON.parse(cache.store.get(`sub:${externalId}`)!.value);
-    expect(cached).toEqual({ active: true, verified: 'local' });
+    expect(cached).toEqual({ active: true, verified: 'local', subscriptions: [] });
   });
 
   it('matches user via aliases JSON path', async () => {
@@ -240,7 +240,7 @@ describe('SubscriptionService.isActive', () => {
 
     const result = await service.isActive(aliasId);
 
-    expect(result).toBe(true);
+    expect(result?.active).toBe(true);
   });
 
   it('SUBSCRIPTION_CACHE_ENABLED=false bypasses cache and RC fallback', async () => {
@@ -257,7 +257,7 @@ describe('SubscriptionService.isActive', () => {
 
     const result = await service.isActive(externalId);
 
-    expect(result).toBe(true);
+    expect(result?.active).toBe(true);
     expect(cache.setObject).not.toHaveBeenCalled();
     expect(rcMock.fetchActiveStatus).not.toHaveBeenCalled();
   });

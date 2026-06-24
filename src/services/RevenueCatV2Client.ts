@@ -50,13 +50,17 @@ export class RevenueCatV2Client {
         const expiresMs: number | null = ent.expires_at ?? null;
         if (expiresMs === null) {
           active = true;
-          if (ent.entitlement_id) entitlementIds.push(ent.entitlement_id)
+          if (ent.entitlement_id) {
+            entitlementIds.push(ent.entitlement_id)
+          }
           maxExpiresMs = null;
           break;
         }
         if (expiresMs > now) {
           active = true;
-          if (ent.entitlement_id) entitlementIds.push(ent.entitlement_id)
+          if (ent.entitlement_id) {
+            entitlementIds.push(ent.entitlement_id)
+          }
           if (maxExpiresMs === null || expiresMs > maxExpiresMs) {
             maxExpiresMs = expiresMs;
           }

@@ -85,6 +85,12 @@ export type UserState = {
   entitlement_ids: SubscriptionTier[]
 }
 
+export type SubscriptionState = {
+  active: boolean;
+  verified: 'rc' | 'local';
+  subscriptions: string[];
+};
+
 export type AppleJWT = {
   iss: string;
   aud: string;
@@ -184,6 +190,7 @@ export interface LibraryItem {
   externalResources?: ExternalResource[] | null | undefined;
 }
 
+// Wire/API contract (camelCase) — what the iOS client sends and receives.
 export interface ExternalResource {
   providerName: string;
   providerId: string;
@@ -193,9 +200,17 @@ export interface ExternalResource {
   hostId?: string | null;
 }
 
-export interface ExternalResourceDb extends ExternalResource {
+// Database row — snake_case columns per CLAUDE.md. Mapped to/from
+// ExternalResource at the LibraryDB boundary.
+export interface ExternalResourceDb {
   id: number;
   library_item_id: number;
+  provider_name: string;
+  provider_id: string;
+  sync_status: string;
+  last_synced_at: Date | null;
+  processed_file: boolean;
+  host_id: string | null;
   created_at: Date;
   updated_at: Date;
 }

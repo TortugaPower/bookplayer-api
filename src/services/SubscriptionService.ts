@@ -1,4 +1,4 @@
-import { SubscriptionUser, RevenuecatEvent, SubscriptionEventType } from '../types/user';
+import { SubscriptionUser, RevenuecatEvent, SubscriptionEventType, SubscriptionState } from '../types/user';
 import { RestClientService } from './RestClientService';
 import { logger } from './LoggerService';
 import { EmailService } from './EmailService';
@@ -6,12 +6,6 @@ import { SubscriptionDB } from './db/SubscriptionDB';
 import { UserDB } from './db/UserDB';
 import { RedisService } from './RedisService';
 import { RevenueCatV2Client } from './RevenueCatV2Client';
-
-type SubscriptionState = {
-  active: boolean;
-  verified: 'rc' | 'local';
-  subscriptions: string[];
-};
 
 const POSITIVE_TTL_CAP = 30 * 86_400;       // 30 days
 const POSITIVE_TTL_GRACE = 3600;            // 1 hour
@@ -64,7 +58,7 @@ export class SubscriptionService {
       return this._isActiveFromLocalDB(externalId);
     }
 
-    const cacheKey = `3sub:${externalId}`;
+    const cacheKey = `sub:${externalId}`;
     const cached = (await this._cache.getObject(cacheKey)) as SubscriptionState | null;
     if (cached) {
       // Local data can lag RC (alias merges, missed webhooks), so a local-only
@@ -131,13 +125,13 @@ export class SubscriptionService {
     externalId: string,
     cacheKey: string,
   ): Promise<SubscriptionState> {
-    const localActive = await this._isActiveFromLocalDB(externalId);
-    if (localActive) {
+    const localState = await this._isActiveFromLocalDB(externalId);
+    if (localState.active) {
       const event = await this._subscriptionDB.getLatestActiveEvent(externalId);
       const expiresMs = event?.expiration_at_ms ? Number(event.expiration_at_ms) : null;
       const subscriptions = event?.json ? event?.json['entitlement_ids'] : [];
       const subState = {
-        active: true,
+        active: localState.active,
         verified: 'local',
         subscriptions: subscriptions ?? []
       } as SubscriptionState

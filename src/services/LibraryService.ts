@@ -24,7 +24,7 @@ import {
   sanitizeLibraryPath,
   isValidUUID,
 } from '../utils';
-import { LibraryDB } from './db/LibraryDB';
+import { LibraryDB, externalResourceRowToApi } from './db/LibraryDB';
 import { StoragePrefixService } from './StoragePrefixService';
 
 export class LibraryService {
@@ -124,7 +124,7 @@ export class LibraryService {
       if (!objectDB || objectDB.length <= 0) return []
 
       const externals = await this._libraryDB.getExternalResources(objectDB.map( ob => ob.id_library_item))
-      const externalsMp = externals.reduce((acc, source) => {
+      const externalsMp = (externals ?? []).reduce((acc, source) => {
         const libId = source.library_item_id;
         
         if (!acc[libId]) {
@@ -197,7 +197,7 @@ export class LibraryService {
           url: fileUrl,
           thumbnail,
           synced: itemDb.synced,
-          externalResources: externalsMp[itemDb.id_library_item] ?? []
+          externalResources: (externalsMp[itemDb.id_library_item] ?? []).map(externalResourceRowToApi)
         };
         library.push(libObj);
       }
@@ -691,7 +691,7 @@ export class LibraryService {
       );
       if (!folderDB[0]) {
         // Folder no longer exists
-        trx.commit();
+        await trx.commit();
         return true;
       }
       const folderDeleted = await this._libraryDB.deleteLibrary(
@@ -781,7 +781,7 @@ export class LibraryService {
     }
   }
 
-  async PutExternalResource(user: User, libraryItemUuid: string, externalResource: ExternalResource): Promise<ExternalResource> {
+  async putExternalResource(user: User, libraryItemUuid: string, externalResource: ExternalResource): Promise<ExternalResource> {
     const trx = await this.db.transaction();
     try {
       const [libraryItem] = await this._libraryDB.getLibraryByUuid(user.id_user, libraryItemUuid, null, trx);
@@ -793,23 +793,27 @@ export class LibraryService {
       }
 
       const existingExternalResource = await this._libraryDB.getExternalResource(libraryItem.id_library_item, externalResource.providerId, externalResource.providerName, trx)
-      if (existingExternalResource) return externalResource;
+      if (existingExternalResource) {
+        // Read-only path — release the connection and return the persisted row
+        // so the response shape matches the insert path below.
+        await trx.rollback();
+        return externalResourceRowToApi(existingExternalResource);
+      }
 
-      const insertedRow = await this.dbInsertExternalResource(libraryItem.id_library_item, externalResource, trx)
+      const insertedRow = await this._libraryDB.insertExternalResource(libraryItem.id_library_item, externalResource, trx)
 
       if (!insertedRow) {
-        console.log('HEY HO ', insertedRow);
         throw Error(
           `ExternalResource not inserted: "${JSON.stringify(externalResource)}"`,
         );
       }
       
       await trx.commit();
-      return insertedRow;
+      return externalResourceRowToApi(insertedRow);
     } catch (err) {
       await trx?.rollback();
       this._logger.log({
-        origin: 'PutExternalResource',
+        origin: 'LibraryService.putExternalResource',
         message: err.stack || err.message,
         data: { user, libraryItemUuid, externalResource },
       });
@@ -830,7 +834,7 @@ export class LibraryService {
         LibraryItemOutput.API,
       )) as LibraryItem;
       const externals = await this._libraryDB.getExternalResources([(itemDb as LibraryItemDB).id_library_item]);
-      item.externalResources = externals;
+      item.externalResources = (externals ?? []).map(externalResourceRowToApi);
       switch (options.appVersion) {
         case '2023-10-29':
         case 'latest':
@@ -941,28 +945,13 @@ export class LibraryService {
         throw new Error('Item not exists');
       }
       if (uploaded) {
-        const idExternal = await this.db('external_resources')
-          .update({
-            syncStatus: 'downloaded',
-          })
-          .where({
-            library_item_id: itemDb.id_library_item,
-          })
-          .returning('library_item_id');
-        const idUpdated = await this.db('library_items')
-          .update({
-            synced: true,
-          })
-          .where({
-            id_library_item: itemDb.id_library_item,
-          })
-          .returning('id_library_item');
-        return !!idExternal[0].library_item_id && !!idUpdated[0].id_library_item;
+        return this._libraryDB.markExternalSourceUploaded(itemDb.id_library_item);
       }
       const originalFile = itemDb.source_path || itemDb.key;
+      const storagePrefix = await this._prefix.getPrefix(user);
 
       const { url } = await this._storage.getPresignedUrl({
-        key: `${user.email}/${originalFile}`,
+        key: `${storagePrefix}/${originalFile}`,
         type: StorageAction.PUT,
       });
       return url;
@@ -1102,34 +1091,6 @@ export class LibraryService {
         data: { user, params },
       });
       throw Error(err);
-    }
-  }
-
-  async dbInsertExternalResource(
-    library_item_id: number,
-    externalResource: ExternalResource,
-    trx?: Knex.Transaction,
-  ): Promise<ExternalResourceDb> {
-    try {
-      const db = trx || this.db;
-      const rowToInsert: Omit<ExternalResourceDb, 'id' | 'created_at' | 'updated_at'> = {
-        ...externalResource,
-        library_item_id
-      };
-      // Perform the insert
-      const [newRow] = await db('external_resources')
-        .insert(rowToInsert)
-        .returning("*");
-      // Handle differences between Postgres (returns object/array) and MySQL (returns number)
-      return newRow as ExternalResourceDb;
-    } catch (err) {
-      console.log('HEY HO 2', err);
-      this._logger.log({
-        origin: 'dbInsertExternalResource',
-        message: err.message,
-        data: { library_item_id, externalResource },
-      });
-      return null;
     }
   }
 

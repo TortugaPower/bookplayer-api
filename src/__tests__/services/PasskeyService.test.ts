@@ -10,6 +10,7 @@ import {
   createTestChallenge,
   createTestPasskeyCredential,
 } from '../setup';
+import { SubscriptionState } from '../../types/user';
 
 describe('PasskeyService', () => {
   let service: PasskeyService;
@@ -532,8 +533,10 @@ describe('PasskeyService', () => {
   describe('Subscription Check', () => {
     describe('hasSubscription', () => {
       it('delegates to SubscriptionService.isActive with the externalId', async () => {
-        const isActive = jest.fn<(externalId: string) => Promise<boolean>>()
-          .mockResolvedValue(true);
+        const isActive = jest.fn<(externalId: string) => Promise<SubscriptionState>>()
+          .mockResolvedValue(
+            { active: true, verified: 'local', subscriptions: [] }
+          );
         (service as any)._subscriptionService = { isActive };
 
         const result = await service.hasSubscription('rc-user-1');

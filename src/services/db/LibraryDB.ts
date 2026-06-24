@@ -3,12 +3,41 @@ import database from '../../database';
 import { logger } from '../LoggerService';
 import {
   Bookmark,
+  ExternalResource,
   ExternalResourceDb,
   ItemMatchPayload,
   LibraryItemDB,
   LibraryItemMovedDB,
 } from '../../types/user';
 import { isValidUUID } from '../../utils';
+
+// Map a snake_case external_resources row to the camelCase wire contract.
+export function externalResourceRowToApi(row: ExternalResourceDb): ExternalResource {
+  return {
+    providerName: row.provider_name,
+    providerId: row.provider_id,
+    syncStatus: row.sync_status,
+    lastSyncedAt: row.last_synced_at,
+    processedFile: row.processed_file,
+    hostId: row.host_id ?? null,
+  };
+}
+
+// Map the camelCase wire contract to a snake_case row for insert.
+function externalResourceToRow(
+  resource: ExternalResource,
+  libraryItemId: number,
+): Omit<ExternalResourceDb, 'id' | 'created_at' | 'updated_at'> {
+  return {
+    library_item_id: libraryItemId,
+    provider_name: resource.providerName,
+    provider_id: resource.providerId,
+    sync_status: resource.syncStatus,
+    last_synced_at: resource.lastSyncedAt,
+    processed_file: resource.processedFile,
+    host_id: resource.hostId ?? null,
+  };
+}
 
 export class LibraryDB {
   private readonly _logger = logger;
@@ -719,6 +748,36 @@ export class LibraryDB {
       .update({ uuid: params.uuid });
   }
 
+  async markExternalSourceUploaded(
+    libraryItemId: number,
+    trx?: Knex.Transaction,
+  ): Promise<boolean> {
+    const runner = async (tx: Knex.Transaction): Promise<boolean> => {
+      const idExternal = await tx('external_resources')
+        .update({ sync_status: 'downloaded' })
+        .where({ library_item_id: libraryItemId })
+        .returning('library_item_id');
+      const idUpdated = await tx('library_items')
+        .update({ synced: true })
+        .where({ id_library_item: libraryItemId })
+        .returning('id_library_item');
+      return !!idExternal[0]?.library_item_id && !!idUpdated[0]?.id_library_item;
+    };
+    try {
+      if (trx) {
+        return await runner(trx);
+      }
+      return await this.db.transaction(runner);
+    } catch (err) {
+      this._logger.log({
+        origin: 'LibraryDB.markExternalSourceUploaded',
+        message: err.message,
+        data: { libraryItemId },
+      });
+      return false;
+    }
+  }
+
   async getExternalResource(
     libraryItemId: number,
     providerId: string,
@@ -730,8 +789,8 @@ export class LibraryDB {
       const [object] = await db('external_resources')
         .where({
           library_item_id: libraryItemId,
-          providerId,
-          providerName
+          provider_id: providerId,
+          provider_name: providerName,
         })
         .debug(false);
       return object;
@@ -760,6 +819,28 @@ export class LibraryDB {
         origin: 'LibraryDB.getExternalResources',
         message: err.message,
         data: { libraryItemIds },
+      });
+      return null;
+    }
+  }
+
+  async insertExternalResource(
+    libraryItemId: number,
+    externalResource: ExternalResource,
+    trx?: Knex.Transaction,
+  ): Promise<ExternalResourceDb | null> {
+    try {
+      const db = trx || this.db;
+      const rowToInsert = externalResourceToRow(externalResource, libraryItemId);
+      const [newRow] = await db('external_resources')
+        .insert(rowToInsert)
+        .returning('*');
+      return (newRow as ExternalResourceDb) || null;
+    } catch (err) {
+      this._logger.log({
+        origin: 'LibraryDB.insertExternalResource',
+        message: err.message,
+        data: { libraryItemId, externalResource },
       });
       return null;
     }

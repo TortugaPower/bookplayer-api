@@ -13,17 +13,17 @@ export async function up(knex: Knex): Promise<void> {
       .onDelete("CASCADE")
       .onUpdate("CASCADE");
 
-    table.string("providerName").notNullable();
-    table.string("providerId").notNullable();
-    table.string("syncStatus").notNullable();
-    table.timestamp("lastSyncedAt").nullable();
-    table.boolean("processedFile").notNullable().defaultTo(false);
+    table.string("provider_name").notNullable();
+    table.string("provider_id").notNullable();
+    table.string("sync_status").notNullable();
+    table.timestamp("last_synced_at").nullable();
+    table.boolean("processed_file").notNullable().defaultTo(false);
 
     // Constraints & Indices
-    table.unique(["library_item_id", "providerName", "providerId"]);
-    table.index(["providerName"]);
-    table.index(["providerId"]);
-    table.index(["syncStatus"]);
+    table.unique(["library_item_id", "provider_name", "provider_id"]);
+    table.index(["provider_name"]);
+    table.index(["provider_id"]);
+    table.index(["sync_status"]);
     table.index(["library_item_id"]); // Indexing the FK for faster joins
 
     table.timestamps(true, true);

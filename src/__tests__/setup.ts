@@ -141,6 +141,34 @@ export async function createTestLibraryItem(
   return row;
 }
 
+// Helper to create test external_resources rows. Columns are snake_case to
+// match the create_external_resource_table migration.
+export async function createTestExternalResource(
+  trx: Knex.Transaction,
+  params: {
+    library_item_id: number;
+    provider_name?: string;
+    provider_id?: string;
+    sync_status?: string;
+    last_synced_at?: Date | null;
+    processed_file?: boolean;
+    host_id?: string | null;
+  },
+): Promise<{ id: number; library_item_id: number }> {
+  const [row] = await trx('external_resources')
+    .insert({
+      library_item_id: params.library_item_id,
+      provider_name: params.provider_name ?? 'dropbox',
+      provider_id: params.provider_id ?? randomUUID(),
+      sync_status: params.sync_status ?? 'pending',
+      last_synced_at: params.last_synced_at ?? null,
+      processed_file: params.processed_file ?? false,
+      host_id: params.host_id ?? null,
+    })
+    .returning(['id', 'library_item_id']);
+  return row;
+}
+
 // Helper to create test auth method
 export async function createTestAuthMethod(
   trx: Knex.Transaction,
