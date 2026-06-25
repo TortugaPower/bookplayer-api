@@ -115,6 +115,10 @@ export class LibraryService {
     },
     uuid?: string,
   ): Promise<LibraryItem[]> {
+    this._logger.log({
+      origin: 'LibraryService.getLibrary',
+      data: { user, path },
+    });
     try {
       const cleanPath = path.replace(`${user.email}/`, '');
       const objectDB = isValidUUID(uuid)
@@ -177,7 +181,6 @@ export class LibraryService {
             }
             break;
         }
-
         const libObj: LibraryItem = {
           uuid: itemDb.uuid,
           relativePath: itemDb.key,
@@ -816,6 +819,43 @@ export class LibraryService {
         origin: 'LibraryService.putExternalResource',
         message: err.stack || err.message,
         data: { user, libraryItemUuid, externalResource },
+      });
+      throw Error(err);
+    }
+  }
+
+  async deleteExternalResource(
+    user: User,
+    libraryItemUuid: string,
+    providerId: string,
+    providerName: string,
+  ): Promise<ExternalResource> {
+    const trx = await this.db.transaction();
+    try {
+      const [libraryItem] = await this._libraryDB.getLibraryByUuid(user.id_user, libraryItemUuid, null, trx);
+
+      if (!libraryItem) {
+        throw Error(
+          `Item not found: "${libraryItemUuid}"`,
+        );
+      }
+
+      const deletedRow = await this._libraryDB.softDeleteExternalResource(libraryItem.id_library_item, providerId, providerName, trx);
+
+      if (!deletedRow) {
+        throw Error(
+          `ExternalResource not found: "${providerName}/${providerId}"`,
+        );
+      }
+
+      await trx.commit();
+      return externalResourceRowToApi(deletedRow);
+    } catch (err) {
+      await trx?.rollback();
+      this._logger.log({
+        origin: 'LibraryService.deleteExternalResource',
+        message: err.stack || err.message,
+        data: { user, libraryItemUuid, providerId, providerName },
       });
       throw Error(err);
     }

@@ -166,6 +166,32 @@ export class LibraryController {
     }
   }
 
+  public async deleteExternalResource(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const user = req.user;
+      const { uuid, providerName, providerId } = req.body;
+
+      if (!isValidUUID(uuid)) {
+        return res.status(422).json({ message: 'A valid item uuid is required' });
+      }
+      const required = { providerName, providerId };
+      const missing = Object.entries(required).find(([, v]) => typeof v !== 'string' || !v.trim());
+      if (missing) {
+        return res.status(422).json({ message: `${missing[0]} is required` });
+      }
+
+      const content = (await this._libraryService.deleteExternalResource(user, uuid, providerId, providerName)) ?? {};
+      return res.json({ content });
+    } catch (err) {
+      this._logger.log({ origin: 'LibraryController.deleteExternalResource', message: err.message, data: { id_user: req.user?.id_user, uuid: req.body?.uuid } }, 'error');
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
+
   public async deleteLibraryObject(
     req: IRequest,
     res: IResponse,

@@ -211,6 +211,7 @@ export interface ExternalResourceDb {
   last_synced_at: Date | null;
   processed_file: boolean;
   host_id: string | null;
+  active: boolean;
   created_at: Date;
   updated_at: Date;
 }

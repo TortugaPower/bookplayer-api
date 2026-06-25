@@ -199,6 +199,7 @@ describe('LibraryDB — external_resources', () => {
         last_synced_at: null,
         processed_file: true,
         host_id: 'h-1',
+        active: true,
         created_at: new Date(0),
         updated_at: new Date(0),
       });

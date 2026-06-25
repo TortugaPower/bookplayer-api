@@ -18,6 +18,9 @@ LibraryRouter.put('/', checkSubscription, (req, res, next) =>
 LibraryRouter.put('/external', checkSubscription, (req, res, next) =>
   controller.putExternalResource(req, res).catch(next),
 );
+LibraryRouter.delete('/external', checkSubscription, (req, res, next) =>
+  controller.deleteExternalResource(req, res).catch(next),
+);
 LibraryRouter.delete('/', checkSubscription, (req, res, next) =>
   controller.deleteLibraryObject(req, res).catch(next),
 );

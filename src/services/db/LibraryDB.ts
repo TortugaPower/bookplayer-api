@@ -27,7 +27,7 @@ export function externalResourceRowToApi(row: ExternalResourceDb): ExternalResou
 function externalResourceToRow(
   resource: ExternalResource,
   libraryItemId: number,
-): Omit<ExternalResourceDb, 'id' | 'created_at' | 'updated_at'> {
+): Omit<ExternalResourceDb, 'id' | 'active' | 'created_at' | 'updated_at'> {
   return {
     library_item_id: libraryItemId,
     provider_name: resource.providerName,
@@ -791,6 +791,7 @@ export class LibraryDB {
           library_item_id: libraryItemId,
           provider_id: providerId,
           provider_name: providerName,
+          active: true,
         })
         .debug(false);
       return object;
@@ -812,6 +813,7 @@ export class LibraryDB {
       const db = trx || this.db;
       const objects = await db('external_resources')
         .whereIn('library_item_id', libraryItemIds)
+        .where({ active: true })
         .debug(false);
       return objects as ExternalResourceDb[];
     } catch (err) {
@@ -841,6 +843,34 @@ export class LibraryDB {
         origin: 'LibraryDB.insertExternalResource',
         message: err.message,
         data: { libraryItemId, externalResource },
+      });
+      return null;
+    }
+  }
+
+  async softDeleteExternalResource(
+    libraryItemId: number,
+    providerId: string,
+    providerName: string,
+    trx?: Knex.Transaction,
+  ): Promise<ExternalResourceDb | null> {
+    try {
+      const db = trx || this.db;
+      const [updatedRow] = await db('external_resources')
+        .where({
+          library_item_id: libraryItemId,
+          provider_id: providerId,
+          provider_name: providerName,
+          active: true,
+        })
+        .update({ active: false, updated_at: new Date() })
+        .returning('*');
+      return (updatedRow as ExternalResourceDb) || null;
+    } catch (err) {
+      this._logger.log({
+        origin: 'LibraryDB.softDeleteExternalResource',
+        message: err.message,
+        data: { libraryItemId, providerId, providerName },
       });
       return null;
     }
