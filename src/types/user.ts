@@ -29,6 +29,7 @@ export type User = {
   updated_at?: string;
   session?: string;
   external_id?: string;
+  subscriptions?: SubscriptionTier[]
 };
 
 export type SubscriptionUser = {
@@ -51,6 +52,43 @@ export type UserDevice = {
   active: boolean;
   created_at?: string;
   updated_at?: string;
+};
+
+export type UserParam = {
+  id_param?: number;
+  user_id: number;
+  param: string;
+  value: string;
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export enum SubscriptionTierEnum {
+  FREE = 'free',
+  PLUS = 'plus',
+  LITE = 'lite',
+  PRO = 'pro',
+}
+
+export type SubscriptionTier = SubscriptionTierEnum.FREE 
+  | SubscriptionTierEnum.PLUS 
+  | SubscriptionTierEnum.LITE 
+  | SubscriptionTierEnum.PRO;
+
+export type UserState = {
+  id_user: number,
+  email: string,
+  external_id: string,
+  period_type: string,
+  type: string,
+  entitlement_ids: SubscriptionTier[]
+}
+
+export type SubscriptionState = {
+  active: boolean;
+  verified: 'rc' | 'local';
+  subscriptions: string[];
 };
 
 export type AppleJWT = {
@@ -149,6 +187,33 @@ export interface LibraryItem {
   synced?: boolean;
   source_path?: string;
   uuid?: string;
+  externalResources?: ExternalResource[] | null | undefined;
+}
+
+// Wire/API contract (camelCase) — what the iOS client sends and receives.
+export interface ExternalResource {
+  providerName: string;
+  providerId: string;
+  syncStatus: string;
+  lastSyncedAt: Date | null;
+  processedFile: boolean;
+  hostId?: string | null;
+}
+
+// Database row — snake_case columns per CLAUDE.md. Mapped to/from
+// ExternalResource at the LibraryDB boundary.
+export interface ExternalResourceDb {
+  id: number;
+  library_item_id: number;
+  provider_name: string;
+  provider_id: string;
+  sync_status: string;
+  last_synced_at: Date | null;
+  processed_file: boolean;
+  host_id: string | null;
+  active: boolean;
+  created_at: Date;
+  updated_at: Date;
 }
 
 export interface LibraryItemMovedDB {

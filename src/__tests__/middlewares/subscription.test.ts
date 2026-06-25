@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 
 const mockIsActive =
-  jest.fn<(externalId: string) => Promise<boolean>>();
+  jest.fn<(externalId: string) => Promise<SubscriptionState>>();
 const mockGetExternalIdByUserId =
   jest.fn<(userId: number) => Promise<string | null>>();
 
@@ -22,6 +22,7 @@ jest.mock('../../services/db/UserDB', () => ({
 
 // eslint-disable-next-line import/first
 import { checkSubscription } from '../../api/middlewares/subscription';
+import { SubscriptionState } from '../../types/user';
 
 describe('checkSubscription middleware', () => {
   let req: any;
@@ -49,7 +50,7 @@ describe('checkSubscription middleware', () => {
   });
 
   it('calls next() when isActive returns true', async () => {
-    mockIsActive.mockResolvedValue(true);
+    mockIsActive.mockResolvedValue({ active: true, verified: 'local', subscriptions: [] });
     await checkSubscription(req, res, next);
     expect(mockIsActive).toHaveBeenCalledWith('ext-1');
     expect(next).toHaveBeenCalledTimes(1);
@@ -58,7 +59,7 @@ describe('checkSubscription middleware', () => {
   });
 
   it('returns 400 "not subscribed" when isActive returns false', async () => {
-    mockIsActive.mockResolvedValue(false);
+    mockIsActive.mockResolvedValue({ active: false, verified: 'local', subscriptions: [] });
     await checkSubscription(req, res, next);
     expect(mockIsActive).toHaveBeenCalledWith('ext-1');
     expect(res.status).toHaveBeenCalledWith(400);
@@ -77,7 +78,7 @@ describe('checkSubscription middleware', () => {
   it('falls back to DB lookup when JWT lacks external_id (legacy Apple login)', async () => {
     req.user = { id_user: 42 };  // no external_id — pre-fix Apple JWT shape
     mockGetExternalIdByUserId.mockResolvedValue('ext-from-db');
-    mockIsActive.mockResolvedValue(true);
+    mockIsActive.mockResolvedValue({ active: true, verified: 'local', subscriptions: [] });
 
     await checkSubscription(req, res, next);
 

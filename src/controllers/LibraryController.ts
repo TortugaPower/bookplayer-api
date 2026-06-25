@@ -2,7 +2,7 @@ import { IRequest, IResponse } from '../types/http';
 import { LibraryService } from '../services/LibraryService';
 import { logger } from '../services/LoggerService';
 import { LibraryDB } from '../services/db/LibraryDB';
-import { Bookmark, LibraryItem } from '../types/user';
+import { Bookmark, LibraryItem, ExternalResource } from '../types/user';
 import { isValidUUID } from '../utils';
 
 export class LibraryController {
@@ -124,6 +124,69 @@ export class LibraryController {
       return res.json({ content });
     } catch (err) {
       this._logger.log({ origin: 'LibraryController.putLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
+
+  public async putExternalResource(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const user = req.user;
+      const { uuid, providerName, providerId, syncStatus, lastSyncedAt, processedFile, hostId } = req.body;
+
+      if (!isValidUUID(uuid)) {
+        return res.status(422).json({ message: 'A valid item uuid is required' });
+      }
+      const required = { providerName, providerId, syncStatus };
+      const missing = Object.entries(required).find(([, v]) => typeof v !== 'string' || !v.trim());
+      if (missing) {
+        return res.status(422).json({ message: `${missing[0]} is required` });
+      }
+
+      // Whitelist known fields; coerce the optional ones so arbitrary body
+      // values can't be persisted verbatim.
+      const externalResource: ExternalResource = {
+        providerName,
+        providerId,
+        syncStatus,
+        lastSyncedAt: lastSyncedAt ?? null,
+        processedFile: processedFile === true,
+        hostId: typeof hostId === 'string' ? hostId : null,
+      };
+
+      const content = (await this._libraryService.putExternalResource(user, uuid, externalResource)) ?? {};
+      return res.json({ content });
+    } catch (err) {
+      this._logger.log({ origin: 'LibraryController.putExternalResource', message: err.message, data: { id_user: req.user?.id_user, uuid: req.body?.uuid } }, 'error');
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
+
+  public async deleteExternalResource(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const user = req.user;
+      const { uuid, providerName, providerId } = req.body;
+
+      if (!isValidUUID(uuid)) {
+        return res.status(422).json({ message: 'A valid item uuid is required' });
+      }
+      const required = { providerName, providerId };
+      const missing = Object.entries(required).find(([, v]) => typeof v !== 'string' || !v.trim());
+      if (missing) {
+        return res.status(422).json({ message: `${missing[0]} is required` });
+      }
+
+      const content = (await this._libraryService.deleteExternalResource(user, uuid, providerId, providerName)) ?? {};
+      return res.json({ content });
+    } catch (err) {
+      this._logger.log({ origin: 'LibraryController.deleteExternalResource', message: err.message, data: { id_user: req.user?.id_user, uuid: req.body?.uuid } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -303,6 +366,33 @@ export class LibraryController {
       });
     } catch (err) {
       this._logger.log({ origin: 'LibraryController.itemThumbnailPutRequest', message: err.message, data: { user: req.user, body: req.body } }, 'error');
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
+
+  public async itemPutRequest(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const user = req.user;
+      const data = req.body as {
+        uuid: string;
+        uploaded?: boolean;
+      };
+      if (!isValidUUID(data.uuid)) {
+        return res.status(422).json({ message: 'A valid item uuid is required' });
+      }
+      const url = await this._libraryService.sourcePutRequest(user, data);
+      if (!url) {
+        throw new Error('problem creating the request url');
+      }
+      return res.json({
+        url
+      });
+    } catch (err) {
+      this._logger.log({ origin: 'LibraryController.itemPutRequest', message: err.message, data: { id_user: req.user?.id_user, uuid: req.body?.uuid } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }

@@ -9,6 +9,9 @@ import {
   User,
   ItemMatchPayload,
   MatchUuidsResult,
+  ExternalResource,
+  ExternalResourceDb,
+  SubscriptionTierEnum
 } from '../types/user';
 import { Knex } from 'knex';
 import database from '../database';
@@ -21,7 +24,7 @@ import {
   sanitizeLibraryPath,
   isValidUUID,
 } from '../utils';
-import { LibraryDB } from './db/LibraryDB';
+import { LibraryDB, externalResourceRowToApi } from './db/LibraryDB';
 import { StoragePrefixService } from './StoragePrefixService';
 
 export class LibraryService {
@@ -112,80 +115,94 @@ export class LibraryService {
     },
     uuid?: string,
   ): Promise<LibraryItem[]> {
+    this._logger.log({
+      origin: 'LibraryService.getLibrary',
+      data: { user, path },
+    });
     try {
       const cleanPath = path.replace(`${user.email}/`, '');
       const objectDB = isValidUUID(uuid)
         ? await this._libraryDB.getLibraryByUuid(user.id_user, uuid)
         : await this._libraryDB.getLibrary(user.id_user, cleanPath);
+      
+      if (!objectDB || objectDB.length <= 0) return []
+
+      const externals = await this._libraryDB.getExternalResources(objectDB.map( ob => ob.id_library_item))
+      const externalsMp = (externals ?? []).reduce((acc, source) => {
+        const libId = source.library_item_id;
+        
+        if (!acc[libId]) {
+          acc[libId] = [];
+        }
+        
+        acc[libId].push(source);
+        return acc;
+      }, {} as Record<number, ExternalResourceDb[]>);
+
       const library: LibraryItem[] = [];
-      // Only the deprecated presign branch needs the storage prefix; resolve it
-      // once up front (not per item) when signing, and skip the lookup entirely
-      // for clients on the proxy path.
       const storagePrefix = options.withPresign
         ? await this._prefix.getPrefix(user)
         : null;
-      if (objectDB?.length) {
-        for (let index = 0; index < objectDB.length; index++) {
-          const itemDb = objectDB[index];
-          let fileUrl: string = null;
-          let thumbnail: string = null;
-          switch (options.appVersion) {
-            case '2023-10-29':
-            case 'latest':
-              fileUrl =
-                parseInt(itemDb.type) === parseInt(LibraryItemType.BOOK)
-                  ? `${process.env.PROXY_FILE_URL}/${encodeURIComponent(
-                      itemDb.key,
-                    )}`
-                  : null;
-              thumbnail = itemDb.thumbnail
+      for (let index = 0; index < objectDB.length; index++) {
+        const itemDb = objectDB[index];
+        let fileUrl: string = null;
+        let thumbnail: string = null;
+        switch (options.appVersion) {
+          case '2023-10-29':
+          case 'latest':
+            fileUrl =
+              parseInt(itemDb.type) === parseInt(LibraryItemType.BOOK)
+                ? `${process.env.PROXY_FILE_URL}/${encodeURIComponent(
+                    itemDb.key,
+                  )}`
+                : null;
+            thumbnail = itemDb.thumbnail
                 ? `${
                     process.env.PROXY_FILE_URL
                   }/_thumbnail/${encodeURIComponent(itemDb.thumbnail)}`
                 : null;
-              break;
-            default: // deprecated old part
-              if (options.withPresign) {
-                const originalFile = itemDb.source_path || itemDb.key;
+            break;
+          default: // deprecated old part
+            if (options.withPresign && user.subscriptions && user.subscriptions.includes(SubscriptionTierEnum.PRO)) {
+              const originalFile = itemDb.source_path || itemDb.key;
+              const { url } = await this._storage.getPresignedUrl({
+                key: `${storagePrefix}/${originalFile}`,
+                type: StorageAction.GET,
+              });
+              fileUrl = url;
+
+              if (itemDb.thumbnail) {
                 const { url } = await this._storage.getPresignedUrl({
-                  key: `${storagePrefix}/${originalFile}`,
+                  key: `${storagePrefix}_thumbnail/${itemDb.thumbnail}`,
                   type: StorageAction.GET,
                 });
-                fileUrl = url;
-
-                if (itemDb.thumbnail) {
-                  const { url } = await this._storage.getPresignedUrl({
-                    key: `${storagePrefix}_thumbnail/${itemDb.thumbnail}`,
-                    type: StorageAction.GET,
-                  });
-                  thumbnail = url;
-                }
+                thumbnail = url;
               }
-              break;
-          }
-
-          const libObj: LibraryItem = {
-            uuid: itemDb.uuid,
-            relativePath: itemDb.key,
-            originalFileName: itemDb.original_filename,
-            title: itemDb.title,
-            details: itemDb.details,
-            speed: itemDb.speed,
-            currentTime: itemDb.actual_time
-              ? parseFloat(itemDb.actual_time)
-              : 0,
-            duration: parseFloat(itemDb.duration),
-            percentCompleted: itemDb.percent_completed,
-            isFinished: itemDb.is_finish,
-            orderRank: itemDb.order_rank || 0,
-            lastPlayDateTimestamp: itemDb.last_play_date,
-            type: itemDb.type,
-            url: fileUrl,
-            thumbnail,
-            synced: itemDb.synced,
-          };
-          library.push(libObj);
+            }
+            break;
         }
+        const libObj: LibraryItem = {
+          uuid: itemDb.uuid,
+          relativePath: itemDb.key,
+          originalFileName: itemDb.original_filename,
+          title: itemDb.title,
+          details: itemDb.details,
+          speed: itemDb.speed,
+          currentTime: itemDb.actual_time
+            ? parseFloat(itemDb.actual_time)
+            : 0,
+          duration: parseFloat(itemDb.duration),
+          percentCompleted: itemDb.percent_completed,
+          isFinished: itemDb.is_finish,
+          orderRank: itemDb.order_rank || 0,
+          lastPlayDateTimestamp: itemDb.last_play_date,
+          type: itemDb.type,
+          url: fileUrl,
+          thumbnail,
+          synced: itemDb.synced,
+          externalResources: (externalsMp[itemDb.id_library_item] ?? []).map(externalResourceRowToApi)
+        };
+        library.push(libObj);
       }
       return library;
     } catch (err) {
@@ -226,14 +243,16 @@ export class LibraryService {
               : null;
           break;
         default: // deprecated old part
-          const originalFile = itemDb.source_path || itemDb.key;
-          const storagePrefix = await this._prefix.getPrefix(user);
-          const { url, expires_in } = await this._storage.getPresignedUrl({
-            key: `${storagePrefix}/${originalFile}`,
-            type: StorageAction.GET,
-          });
-          fileUrl = url;
-          libObj.expires_in = expires_in;
+          if (user.subscriptions && user.subscriptions.includes(SubscriptionTierEnum.PRO)) {
+            const originalFile = itemDb.source_path || itemDb.key;
+            const storagePrefix = await this._prefix.getPrefix(user);
+            const { url, expires_in } = await this._storage.getPresignedUrl({
+              key: `${storagePrefix}/${originalFile}`,
+              type: StorageAction.GET,
+            });
+            fileUrl = url;
+            libObj.expires_in = expires_in;
+          }
           break;
       }
       libObj.url = fileUrl;
@@ -293,7 +312,12 @@ export class LibraryService {
           key: `${storagePrefix}/${itemDb.source_path || itemDb.key}`,
         });
         if (fileExists === true) {
-          return null;
+          const earlyApiResponse = (await this.parseLibraryItemDb(
+            itemDb,
+            LibraryItemOutput.API,
+          )) as LibraryItem;
+          
+          return earlyApiResponse;
         }
         // Override the source path with the stored path
         if (itemDb.source_path) {
@@ -305,16 +329,23 @@ export class LibraryService {
           throw new Error(`Failed to create library item at key=${cleanPath}`);
         }
       }
+
+      const apiResponse = (await this.parseLibraryItemDb(
+        itemDb,
+        LibraryItemOutput.API,
+      )) as LibraryItem;
+
+      if (!user.subscriptions || !user.subscriptions.includes(SubscriptionTierEnum.PRO)) {
+        apiResponse.url = null;
+        return apiResponse
+      }
+
       const resourcePath = `${storagePrefix}/${libObj.source_path}`;
 
       const { url, expires_in } = await this._storage.getPresignedUrl({
         key: resourcePath,
         type: StorageAction.PUT,
       });
-      const apiResponse = (await this.parseLibraryItemDb(
-        itemDb,
-        LibraryItemOutput.API,
-      )) as LibraryItem;
       apiResponse.url = url;
       apiResponse.expires_in = expires_in;
       return apiResponse;
@@ -663,6 +694,7 @@ export class LibraryService {
       );
       if (!folderDB[0]) {
         // Folder no longer exists
+        await trx.commit();
         return true;
       }
       const folderDeleted = await this._libraryDB.deleteLibrary(
@@ -752,6 +784,83 @@ export class LibraryService {
     }
   }
 
+  async putExternalResource(user: User, libraryItemUuid: string, externalResource: ExternalResource): Promise<ExternalResource> {
+    const trx = await this.db.transaction();
+    try {
+      const [libraryItem] = await this._libraryDB.getLibraryByUuid(user.id_user, libraryItemUuid, null, trx);
+
+      if (!libraryItem) {
+        throw Error(
+          `Item not found: "${libraryItemUuid}"`,
+        );
+      }
+
+      const existingExternalResource = await this._libraryDB.getExternalResource(libraryItem.id_library_item, externalResource.providerId, externalResource.providerName, trx)
+      if (existingExternalResource) {
+        // Read-only path — release the connection and return the persisted row
+        // so the response shape matches the insert path below.
+        await trx.rollback();
+        return externalResourceRowToApi(existingExternalResource);
+      }
+
+      const insertedRow = await this._libraryDB.insertExternalResource(libraryItem.id_library_item, externalResource, trx)
+
+      if (!insertedRow) {
+        throw Error(
+          `ExternalResource not inserted: "${JSON.stringify(externalResource)}"`,
+        );
+      }
+      
+      await trx.commit();
+      return externalResourceRowToApi(insertedRow);
+    } catch (err) {
+      await trx?.rollback();
+      this._logger.log({
+        origin: 'LibraryService.putExternalResource',
+        message: err.stack || err.message,
+        data: { user, libraryItemUuid, externalResource },
+      });
+      throw Error(err);
+    }
+  }
+
+  async deleteExternalResource(
+    user: User,
+    libraryItemUuid: string,
+    providerId: string,
+    providerName: string,
+  ): Promise<ExternalResource> {
+    const trx = await this.db.transaction();
+    try {
+      const [libraryItem] = await this._libraryDB.getLibraryByUuid(user.id_user, libraryItemUuid, null, trx);
+
+      if (!libraryItem) {
+        throw Error(
+          `Item not found: "${libraryItemUuid}"`,
+        );
+      }
+
+      const deletedRow = await this._libraryDB.softDeleteExternalResource(libraryItem.id_library_item, providerId, providerName, trx);
+
+      if (!deletedRow) {
+        throw Error(
+          `ExternalResource not found: "${providerName}/${providerId}"`,
+        );
+      }
+
+      await trx.commit();
+      return externalResourceRowToApi(deletedRow);
+    } catch (err) {
+      await trx?.rollback();
+      this._logger.log({
+        origin: 'LibraryService.deleteExternalResource',
+        message: err.stack || err.message,
+        data: { user, libraryItemUuid, providerId, providerName },
+      });
+      throw Error(err);
+    }
+  }
+
   async getLastItemPlayed(
     user: User,
     options: { withPresign?: boolean; appVersion: string },
@@ -764,6 +873,8 @@ export class LibraryService {
         itemDb,
         LibraryItemOutput.API,
       )) as LibraryItem;
+      const externals = await this._libraryDB.getExternalResources([(itemDb as LibraryItemDB).id_library_item]);
+      item.externalResources = (externals ?? []).map(externalResourceRowToApi);
       switch (options.appVersion) {
         case '2023-10-29':
         case 'latest':
@@ -850,6 +961,43 @@ export class LibraryService {
     } catch (err) {
       this._logger.log({
         origin: 'LibraryService.thumbnailPutRequest',
+        message: err.message,
+        data: { user, params },
+      });
+      throw Error(err);
+    }
+  }
+
+  async sourcePutRequest(
+    user: User,
+    params: {
+      uuid: string;
+      uploaded?: boolean;
+    },
+  ): Promise<string | boolean> {
+    try {
+      const { uuid, uploaded } = params;
+      const objectDB = await this._libraryDB.getLibraryByUuid(user.id_user, uuid, {
+        exactly: true,
+      });
+      const itemDb = objectDB?.[0];
+      if (!itemDb) {
+        throw new Error('Item not exists');
+      }
+      if (uploaded) {
+        return this._libraryDB.markExternalSourceUploaded(itemDb.id_library_item);
+      }
+      const originalFile = itemDb.source_path || itemDb.key;
+      const storagePrefix = await this._prefix.getPrefix(user);
+
+      const { url } = await this._storage.getPresignedUrl({
+        key: `${storagePrefix}/${originalFile}`,
+        type: StorageAction.PUT,
+      });
+      return url;
+    } catch (err) {
+      this._logger.log({
+        origin: 'sourcePutRequest',
         message: err.message,
         data: { user, params },
       });

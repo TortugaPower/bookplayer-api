@@ -7,6 +7,7 @@ import {
   UserEventEnum,
   UserSession,
   VerificationResult,
+  UserState,
 } from '../types/user';
 import verifyAppleToken from 'verify-apple-id-token';
 import { OAuth2Client, TokenPayload } from 'google-auth-library';
