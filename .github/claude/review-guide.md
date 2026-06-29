@@ -22,7 +22,8 @@ security and authorization bugs are the highest-priority findings.
 
 ## What to skip
 
-- `dist/`, `node_modules/`, `yarn.lock`, `*.log`, `combined.log`, generated files.
+- `dist/`, `node_modules/`, `yarn.lock`, `*.log`, `combined.log`, `*.tsbuildinfo`, and any other
+  generated/build artifacts. Never leave comments on these.
 - Do not quote secret material. **But DO flag (as ERROR) any committed secret/credential file**
   (`.pem`, `.env` with real values, keys) that shouldn't be in the repo.
 
@@ -80,13 +81,16 @@ security and authorization bugs are the highest-priority findings.
 - `console.log` instead of the Winston `logger`; dead code; magic numbers; missing types in `src/types/`;
   missing JSDoc on exported types.
 
-## How to post your review
+## Reporting findings
 
-- Post specific issues as **inline comments on the exact changed line** using the inline-comment tool.
-  Each: severity prefix (🔴/🟡/🔵), the problem, and the concrete fix.
-- Post **one short top-level summary comment**: the PR scope in a sentence, the verdict, and finding
-  counts (e.g. `2 error · 3 warn`), with explicit attention to **authorization scoping, auth-middleware
-  coverage, and IAP/passkey validation** when relevant. Keep detail inline, not in the summary.
-- **Confidence bar:** false positives erode trust. When unsure, downgrade severity or drop the comment
-  rather than assert a problem that may not exist.
+Your findings are consumed by an automated harness (it posts the comments, de-duplicates them across
+pushes, and resolves stale ones) — **do not post comments or create reviews yourself.** The exact JSON
+shape to emit is defined by the output contract in your system prompt.
+
+- Report each issue with its severity, file, the **changed line** it applies to, and a concrete fix.
+  Tie every finding to a line the PR actually changed.
+- In the `summary`, give explicit attention to **authorization scoping, auth-middleware coverage, and
+  IAP/passkey validation** when relevant.
+- **Confidence bar:** false positives erode trust. When unsure, downgrade the severity or drop the
+  finding rather than assert a problem that may not exist.
 - This review is advisory — a human still merges. Be direct and concrete; skip praise padding.

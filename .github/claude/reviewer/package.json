@@ -1,0 +1,10 @@
+{
+  "name": "bookplayer-api-pr-reviewer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Agentic AI reviewer for bookplayer-api pull requests (dedup + auto-resolve)",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "latest"
+  }
+}
