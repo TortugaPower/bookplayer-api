@@ -67,7 +67,7 @@ describe('SubscriptionService.isActive', () => {
 
   it('returns true on positive cache hit without DB or RC calls', async () => {
     const externalId = randomUUID();
-    await cache.setObject(`sub:${externalId}`, { active: true, verified: 'rc' }, 3600);
+    await cache.setObject(`sub:v2:${externalId}`, { active: true, verified: 'rc' }, 3600);
     const rcMock = makeRcMock({ active: false, expiresMs: null });
     (service as any)._rcV2 = rcMock;
 
@@ -79,7 +79,7 @@ describe('SubscriptionService.isActive', () => {
 
   it('returns false on RC-verified negative cache hit without RC call', async () => {
     const externalId = randomUUID();
-    await cache.setObject(`sub:${externalId}`, { active: false, verified: 'rc' }, 1800);
+    await cache.setObject(`sub:v2:${externalId}`, { active: false, verified: 'rc' }, 1800);
     const rcMock = makeRcMock({ active: false, expiresMs: null });
     (service as any)._rcV2 = rcMock;
 
@@ -103,8 +103,27 @@ describe('SubscriptionService.isActive', () => {
     const result = await service.isActive(externalId);
 
     expect(result?.active).toBe(true);
-    const cached = JSON.parse(cache.store.get(`sub:${externalId}`)!.value);
+    const cached = JSON.parse(cache.store.get(`sub:v2:${externalId}`)!.value);
     expect(cached).toEqual({ active: true, verified: 'local', subscriptions: [] });
+  });
+
+  it('surfaces entitlement_ids from the local event as subscriptions', async () => {
+    const trx = getTestTransaction();
+    const externalId = randomUUID();
+    await createTestSubscriptionEvent(trx, {
+      original_app_user_id: externalId,
+      type: 'RENEWAL',
+      expiration_at_ms: Date.now() + 5 * 86_400_000,
+      entitlement_ids: ['pro'],
+    });
+    (service as any)._rcV2 = makeRcMock({ active: true, expiresMs: null });
+
+    const result = await service.isActive(externalId);
+
+    expect(result?.active).toBe(true);
+    expect(result?.subscriptions).toEqual(['pro']);
+    const cached = JSON.parse(cache.store.get(`sub:v2:${externalId}`)!.value);
+    expect(cached).toEqual({ active: true, verified: 'local', subscriptions: ['pro'] });
   });
 
   it('returns false when last event is EXPIRATION and falls through to RC', async () => {
@@ -122,7 +141,7 @@ describe('SubscriptionService.isActive', () => {
 
     expect(result?.active).toBe(false);
     expect(rcMock.fetchActiveStatus).toHaveBeenCalledWith(externalId);
-    const cached = JSON.parse(cache.store.get(`sub:${externalId}`)!.value);
+    const cached = JSON.parse(cache.store.get(`sub:v2:${externalId}`)!.value);
     expect(cached).toEqual({ active: false, verified: 'rc', subscriptions: [] });
   });
 
@@ -145,7 +164,7 @@ describe('SubscriptionService.isActive', () => {
 
     expect(result?.active).toBe(true);
     expect(rcMock.fetchActiveStatus).toHaveBeenCalledWith(externalId);
-    const cached = JSON.parse(cache.store.get(`sub:${externalId}`)!.value);
+    const cached = JSON.parse(cache.store.get(`sub:v2:${externalId}`)!.value);
     expect(cached).toEqual({ active: true, verified: 'rc', subscriptions: [] });
   });
 
@@ -157,7 +176,7 @@ describe('SubscriptionService.isActive', () => {
     const result = await service.isActive(externalId);
 
     expect(result?.active).toBe(false);
-    expect(cache.store.has(`sub:${externalId}`)).toBe(false);
+    expect(cache.store.has(`sub:v2:${externalId}`)).toBe(false);
   });
 
   it('orders by event_timestamp_ms, not insertion id', async () => {
@@ -222,7 +241,7 @@ describe('SubscriptionService.isActive', () => {
     const result = await service.isActive(externalId);
 
     expect(result?.active).toBe(true);
-    const cached = JSON.parse(cache.store.get(`sub:${externalId}`)!.value);
+    const cached = JSON.parse(cache.store.get(`sub:v2:${externalId}`)!.value);
     expect(cached).toEqual({ active: true, verified: 'local', subscriptions: [] });
   });
 
@@ -269,12 +288,12 @@ describe('SubscriptionService.invalidateCache', () => {
     const cache = makeCacheMock();
     (service as any)._cache = cache;
     const externalId = randomUUID();
-    await cache.setObject(`sub:${externalId}`, { active: true, verified: 'rc' }, 3600);
+    await cache.setObject(`sub:v2:${externalId}`, { active: true, verified: 'rc' }, 3600);
 
     await service.invalidateCache(externalId);
 
-    expect(cache.deleteObject).toHaveBeenCalledWith(`sub:${externalId}`);
-    expect(cache.store.has(`sub:${externalId}`)).toBe(false);
+    expect(cache.deleteObject).toHaveBeenCalledWith(`sub:v2:${externalId}`);
+    expect(cache.store.has(`sub:v2:${externalId}`)).toBe(false);
   });
 
   it('is a no-op for empty externalId', async () => {

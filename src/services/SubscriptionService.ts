@@ -58,7 +58,7 @@ export class SubscriptionService {
       return this._isActiveFromLocalDB(externalId);
     }
 
-    const cacheKey = `sub:${externalId}`;
+    const cacheKey = this._cacheKey(externalId);
     const cached = (await this._cache.getObject(cacheKey)) as SubscriptionState | null;
     if (cached) {
       // Local data can lag RC (alias merges, missed webhooks), so a local-only
@@ -79,7 +79,50 @@ export class SubscriptionService {
 
   async invalidateCache(externalId: string): Promise<void> {
     if (!externalId) return;
-    await this._cache.deleteObject(`sub:${externalId}`);
+    await this._cache.deleteObject(this._cacheKey(externalId));
+  }
+
+  // `v2` namespaces the cache after SubscriptionState gained `subscriptions`.
+  // Without the bump, entries written before deploy would deserialize with
+  // `subscriptions: undefined` (for up to the positive-TTL cap) and silently
+  // fail PRO gating / drop presigned URLs.
+  private _cacheKey(externalId: string): string {
+    return `sub:v2:${externalId}`;
+  }
+
+  // Force a live RevenueCat lookup, bypassing the local-DB/cache path, and
+  // refresh the cache with the result. Used as a last-resort tier check before
+  // denying a paid action: a user who just upgraded (e.g. lite → pro) may have
+  // stale local data (pro webhook not yet processed), so we confirm against RC
+  // before gating them out. Returns null if RC is unreachable.
+  async fetchLiveEntitlements(externalId: string): Promise<SubscriptionState | null> {
+    if (!externalId) return null;
+    try {
+      const rc = await this._rcV2.fetchActiveStatus(externalId);
+      const subState: SubscriptionState = {
+        active: rc.active,
+        verified: 'rc',
+        subscriptions: rc.entitlementIds ?? [],
+      };
+      if (rc.active) {
+        await this._cache.setObject(
+          this._cacheKey(externalId),
+          subState,
+          this._positiveTTL(rc.expiresMs),
+        );
+      }
+      return subState;
+    } catch (err) {
+      this._logger.log(
+        {
+          origin: 'SubscriptionService.fetchLiveEntitlements',
+          message: err.message,
+          data: { externalId },
+        },
+        'warn',
+      );
+      return null;
+    }
   }
 
   async hasInAppPurchase(rc_id: string): Promise<boolean> {
@@ -129,7 +172,7 @@ export class SubscriptionService {
     if (localState.active) {
       const event = await this._subscriptionDB.getLatestActiveEvent(externalId);
       const expiresMs = event?.expiration_at_ms ? Number(event.expiration_at_ms) : null;
-      const subscriptions = event?.json ? event?.json['entitlement_ids'] : [];
+      const subscriptions = event?.entitlement_ids ?? [];
       const subState = {
         active: localState.active,
         verified: 'local',
@@ -191,7 +234,7 @@ export class SubscriptionService {
     return {
       active: (expiresMs === null || expiresMs > Date.now()) ? true : false,
       verified: 'local',
-      subscriptions: event.json?.entitlement_ids || []
+      subscriptions: event.entitlement_ids || []
     };
   }
 

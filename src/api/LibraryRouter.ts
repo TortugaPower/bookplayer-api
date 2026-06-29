@@ -2,6 +2,12 @@ import express from 'express';
 import { LibraryController } from '../controllers/LibraryController';
 import { checkSubscription, requireSubscription } from './middlewares/subscription';
 import { SubscriptionTierEnum } from '../types/user';
+import { validateBody } from '../validation/validate';
+import {
+  putExternalResourceSchema,
+  deleteExternalResourceSchema,
+  itemPutRequestSchema,
+} from '../validation/externalResource';
 
 const LibraryRouter = express.Router();
 const controller = new LibraryController();
@@ -15,10 +21,10 @@ LibraryRouter.post('/', checkSubscription, (req, res, next) =>
 LibraryRouter.put('/', checkSubscription, (req, res, next) =>
   controller.putLibraryObject(req, res).catch(next),
 );
-LibraryRouter.put('/external', checkSubscription, (req, res, next) =>
+LibraryRouter.put('/external', checkSubscription, validateBody(putExternalResourceSchema), (req, res, next) =>
   controller.putExternalResource(req, res).catch(next),
 );
-LibraryRouter.delete('/external', checkSubscription, (req, res, next) =>
+LibraryRouter.delete('/external', checkSubscription, validateBody(deleteExternalResourceSchema), (req, res, next) =>
   controller.deleteExternalResource(req, res).catch(next),
 );
 LibraryRouter.delete('/', checkSubscription, (req, res, next) =>
@@ -51,7 +57,7 @@ LibraryRouter.put('/bookmark', checkSubscription, (req, res, next) =>
 LibraryRouter.post('/thumbnail_set', checkSubscription, (req, res, next) =>
   controller.itemThumbnailPutRequest(req, res).catch(next),
 );
-LibraryRouter.post('/external_set', checkSubscription, requireSubscription([SubscriptionTierEnum.PRO]), (req, res, next) =>
+LibraryRouter.post('/external_set', checkSubscription, requireSubscription([SubscriptionTierEnum.PRO]), validateBody(itemPutRequestSchema), (req, res, next) =>
   controller.itemPutRequest(req, res).catch(next),
 );
 LibraryRouter.get('/keys', checkSubscription, (req, res, next) =>

@@ -188,6 +188,94 @@ describe('LibraryDB — external_resources', () => {
     });
   });
 
+  describe('softDeleteExternalResource', () => {
+    it('flips active to false and returns the row', async () => {
+      const trx = getTestTransaction();
+      const user = await createTestUser(trx);
+      const item = await createTestLibraryItem(trx, {
+        user_id: user.id_user,
+        key: 'book.m4b',
+      });
+      await createTestExternalResource(trx, {
+        library_item_id: item.id_library_item,
+        provider_name: 'dropbox',
+        provider_id: 'file-del',
+      });
+
+      const deleted = await db.softDeleteExternalResource(
+        item.id_library_item,
+        'file-del',
+        'dropbox',
+        trx,
+      );
+
+      expect(deleted).toBeTruthy();
+      expect(deleted?.active).toBe(false);
+
+      const row = await trx('external_resources')
+        .where({ library_item_id: item.id_library_item, provider_id: 'file-del' })
+        .first();
+      expect(row.active).toBe(false);
+    });
+
+    it('returns null when there is no active matching row', async () => {
+      const trx = getTestTransaction();
+      const user = await createTestUser(trx);
+      const item = await createTestLibraryItem(trx, {
+        user_id: user.id_user,
+        key: 'book.m4b',
+      });
+
+      const deleted = await db.softDeleteExternalResource(
+        item.id_library_item,
+        'missing',
+        'dropbox',
+        trx,
+      );
+
+      expect(deleted).toBeNull();
+    });
+
+    it('allows re-adding the same resource after a soft delete (partial unique index)', async () => {
+      const trx = getTestTransaction();
+      const user = await createTestUser(trx);
+      const item = await createTestLibraryItem(trx, {
+        user_id: user.id_user,
+        key: 'book.m4b',
+      });
+      await createTestExternalResource(trx, {
+        library_item_id: item.id_library_item,
+        provider_name: 'dropbox',
+        provider_id: 'file-readd',
+      });
+
+      await db.softDeleteExternalResource(
+        item.id_library_item,
+        'file-readd',
+        'dropbox',
+        trx,
+      );
+
+      const reinserted = await db.insertExternalResource(
+        item.id_library_item,
+        {
+          providerName: 'dropbox',
+          providerId: 'file-readd',
+          syncStatus: 'pending',
+          lastSyncedAt: null,
+          processedFile: false,
+        },
+        trx,
+      );
+
+      expect(reinserted).not.toBeNull();
+      const activeRows = await trx('external_resources')
+        .where({ library_item_id: item.id_library_item, provider_id: 'file-readd', active: true })
+        .count<{ count: string }[]>('* as count');
+      expect(parseInt(activeRows[0].count)).toBe(1);
+    });
+  });
+
   describe('externalResourceRowToApi', () => {
     it('maps snake_case columns to the camelCase wire contract', () => {
       const api = externalResourceRowToApi({

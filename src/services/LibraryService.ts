@@ -115,10 +115,6 @@ export class LibraryService {
     },
     uuid?: string,
   ): Promise<LibraryItem[]> {
-    this._logger.log({
-      origin: 'LibraryService.getLibrary',
-      data: { user, path },
-    });
     try {
       const cleanPath = path.replace(`${user.email}/`, '');
       const objectDB = isValidUUID(uuid)
@@ -818,9 +814,9 @@ export class LibraryService {
       this._logger.log({
         origin: 'LibraryService.putExternalResource',
         message: err.stack || err.message,
-        data: { user, libraryItemUuid, externalResource },
+        data: { id_user: user.id_user, libraryItemUuid, externalResource },
       });
-      throw Error(err);
+      throw err;
     }
   }
 
@@ -855,9 +851,9 @@ export class LibraryService {
       this._logger.log({
         origin: 'LibraryService.deleteExternalResource',
         message: err.stack || err.message,
-        data: { user, libraryItemUuid, providerId, providerName },
+        data: { id_user: user.id_user, libraryItemUuid, providerId, providerName },
       });
-      throw Error(err);
+      throw err;
     }
   }
 
@@ -997,11 +993,11 @@ export class LibraryService {
       return url;
     } catch (err) {
       this._logger.log({
-        origin: 'sourcePutRequest',
+        origin: 'LibraryService.sourcePutRequest',
         message: err.message,
-        data: { user, params },
+        data: { id_user: user.id_user, params },
       });
-      throw Error(err);
+      throw err;
     }
   }
 

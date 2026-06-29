@@ -48,8 +48,7 @@ export class LibraryDB {
       const db = trx || this.db;
       const objects = await db('library_items as li')
         .where({ user_id, active: true, synced: true })
-        .orderBy('key', 'asc')
-        .debug(false);
+        .orderBy('key', 'asc');
       return objects.map((item) => item.key);
     } catch (err) {
       this._logger.log({
@@ -81,8 +80,7 @@ export class LibraryDB {
             builder.where(true);
           }
         })
-        .orderBy('order_rank', 'asc')
-        .debug(false);
+        .orderBy('order_rank', 'asc');
       return objects;
     } catch (err) {
       this._logger.log({
@@ -111,8 +109,7 @@ export class LibraryDB {
             builder.where(true);
           }
         })
-        .orderBy('order_rank', 'asc')
-        .debug(false);
+        .orderBy('order_rank', 'asc');
       return objects;
     } catch (err) {
       this._logger.log({
@@ -376,7 +373,6 @@ export class LibraryDB {
       `,
           [destination, origin, user_id, `${origin}%`],
         )
-        .debug(false)
         .then((result) => result.rows);
       return objectsMoved;
     } catch (err) {
@@ -554,8 +550,7 @@ export class LibraryDB {
         .andWhereNot('type', 0)
         .andWhereRaw('last_play_date is not null')
         .orderBy('last_play_date', 'desc')
-        .first()
-        .debug(false);
+        .first();
       return itemDb;
     } catch (err) {
       this._logger.log({
@@ -650,8 +645,7 @@ export class LibraryDB {
       .where({ user_id, active: true })
       .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [pathDepth])
       .whereRaw('key like ?', [`${path}%`])
-      .whereBetween('order_rank', orderRange)
-      .debug(false);
+      .whereBetween('order_rank', orderRange);
   }
 
   async updateBySourcePath(
@@ -792,8 +786,7 @@ export class LibraryDB {
           provider_id: providerId,
           provider_name: providerName,
           active: true,
-        })
-        .debug(false);
+        });
       return object;
     } catch (err) {
       this._logger.log({
@@ -813,8 +806,7 @@ export class LibraryDB {
       const db = trx || this.db;
       const objects = await db('external_resources')
         .whereIn('library_item_id', libraryItemIds)
-        .where({ active: true })
-        .debug(false);
+        .where({ active: true });
       return objects as ExternalResourceDb[];
     } catch (err) {
       this._logger.log({

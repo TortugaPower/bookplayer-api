@@ -54,16 +54,6 @@ export type UserDevice = {
   updated_at?: string;
 };
 
-export type UserParam = {
-  id_param?: number;
-  user_id: number;
-  param: string;
-  value: string;
-  active: boolean;
-  created_at?: string;
-  updated_at?: string;
-};
-
 export enum SubscriptionTierEnum {
   FREE = 'free',
   PLUS = 'plus',
@@ -75,15 +65,6 @@ export type SubscriptionTier = SubscriptionTierEnum.FREE
   | SubscriptionTierEnum.PLUS 
   | SubscriptionTierEnum.LITE 
   | SubscriptionTierEnum.PRO;
-
-export type UserState = {
-  id_user: number,
-  email: string,
-  external_id: string,
-  period_type: string,
-  type: string,
-  entitlement_ids: SubscriptionTier[]
-}
 
 export type SubscriptionState = {
   active: boolean;
@@ -109,7 +90,12 @@ export type RevenuecatEvent = {
   app_id: string;
   country_code: string;
   currency: string;
+  // RC sends both, but in our stored webhook payloads `entitlement_ids` is the
+  // populated field (~98% of events, full history) while `entitlement_id` is
+  // almost always null. SubscriptionService reads the plural array; the
+  // singular is kept only to mirror the wire shape.
   entitlement_id: string;
+  entitlement_ids?: string[];
   environment: string;
   event_timestamp_ms: number;
   expiration_at_ms: number;

@@ -32,17 +32,33 @@ export const checkSubscription = async (
 
 export const requireSubscription = (allowedTypes: SubscriptionTier[]) => {
   return async (req: IRequest, res: IResponse, next: INext): Promise<void> => {
-    
     if (!req.user) {
-      res.status(400).json({ error: "User data missing." });
+      res.status(400).json({ message: 'User data missing.' });
       return;
     }
-    if (req.user.subscriptions?.some((t: SubscriptionTier) => allowedTypes.includes(t))) {
+    const hasTier = (subs?: SubscriptionTier[]) =>
+      subs?.some((t: SubscriptionTier) => allowedTypes.includes(t));
+
+    if (hasTier(req.user.subscriptions)) {
       next();
-    } else {
-      res.status(403).json({ 
-        error: `Requires one of: ${allowedTypes.join(', ')}` 
-      });
+      return;
     }
+
+    // Local/cached tiers don't satisfy the requirement, but they can lag a
+    // recent upgrade (e.g. lite → pro before the pro webhook is processed).
+    // Before denying a paid action, confirm the live entitlements with RC.
+    const externalId =
+      req.user.external_id ||
+      (await userDB.getExternalIdByUserId(req.user.id_user));
+    const live = await subscriptionService.fetchLiveEntitlements(externalId);
+    if (live?.active && hasTier(live.subscriptions as SubscriptionTier[])) {
+      req.user.subscriptions = live.subscriptions;
+      next();
+      return;
+    }
+
+    res.status(403).json({
+      message: `Requires one of: ${allowedTypes.join(', ')}`,
+    });
   };
-}
+};

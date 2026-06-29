@@ -282,12 +282,14 @@ export async function createTestSubscriptionEvent(
     period_type?: string;
     aliases?: string[];
     app_user_id?: string;
+    entitlement_ids?: string[];
   },
 ): Promise<{ id_subscription_event: number }> {
   const eventTs = params.event_timestamp_ms ?? Date.now();
   const json = {
     aliases: params.aliases,
     app_user_id: params.app_user_id ?? params.original_app_user_id,
+    entitlement_ids: params.entitlement_ids,
     event_timestamp_ms: eventTs,
     expiration_at_ms: params.expiration_at_ms,
     original_app_user_id: params.original_app_user_id,

@@ -7,9 +7,7 @@ export type LatestSubscriptionEvent = {
   type: string | null;
   period_type: string | null;
   expiration_at_ms: string | null;
-  json: {
-    entitlement_ids: string[] | null
-  } | null
+  entitlement_ids: string[] | null;
 };
 
 export class SubscriptionDB {
@@ -23,7 +21,7 @@ export class SubscriptionDB {
     try {
       const db = trx || this.db;
       const result = await db.raw(
-        `SELECT type, period_type, expiration_at_ms, json
+        `SELECT type, period_type, expiration_at_ms, json->'entitlement_ids' AS entitlement_ids
          FROM (
            SELECT id_subscription_event, type, period_type, expiration_at_ms, json
              FROM subscription_events WHERE original_app_user_id = ?

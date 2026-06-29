@@ -188,4 +188,66 @@ describe('LibraryService — external resource flows', () => {
       ).rejects.toThrow();
     });
   });
+
+  describe('deleteExternalResource', () => {
+    it('soft-deletes the resource and returns it in the camelCase wire shape', async () => {
+      const trx = getTestTransaction();
+      const user = await createTestUser(trx);
+      const uuid = '77777777-7777-7777-7777-777777777777';
+      const item = await createTestLibraryItem(trx, {
+        user_id: user.id_user,
+        key: 'book.m4b',
+        uuid,
+      });
+      await createTestExternalResource(trx, {
+        library_item_id: item.id_library_item,
+        provider_name: 'dropbox',
+        provider_id: 'id:del-file',
+      });
+
+      const result = await service.deleteExternalResource(
+        user as any,
+        uuid,
+        'id:del-file',
+        'dropbox',
+      );
+
+      expect(result.providerId).toBe('id:del-file');
+      expect(result.providerName).toBe('dropbox');
+
+      const row = await trx('external_resources')
+        .where({ library_item_id: item.id_library_item, provider_id: 'id:del-file' })
+        .first();
+      expect(row.active).toBe(false);
+    });
+
+    it('throws when the library item is not found', async () => {
+      const trx = getTestTransaction();
+      const user = await createTestUser(trx);
+
+      await expect(
+        service.deleteExternalResource(
+          user as any,
+          '88888888-8888-8888-8888-888888888888',
+          'id:whatever',
+          'dropbox',
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('throws when the resource does not exist on the item', async () => {
+      const trx = getTestTransaction();
+      const user = await createTestUser(trx);
+      const uuid = '99999999-9999-9999-9999-999999999999';
+      await createTestLibraryItem(trx, {
+        user_id: user.id_user,
+        key: 'book.m4b',
+        uuid,
+      });
+
+      await expect(
+        service.deleteExternalResource(user as any, uuid, 'id:absent', 'dropbox'),
+      ).rejects.toThrow();
+    });
+  });
 });
