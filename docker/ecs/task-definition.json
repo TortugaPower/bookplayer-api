@@ -117,6 +117,18 @@
           "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:REVENUECAT_PROJECT_ID::"
         },
         {
+          "name": "REVENUECAT_ENTITLEMENT_PRO",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:REVENUECAT_ENTITLEMENT_PRO::"
+        },
+        {
+          "name": "REVENUECAT_ENTITLEMENT_PLUS",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:REVENUECAT_ENTITLEMENT_PLUS::"
+        },
+        {
+          "name": "REVENUECAT_ENTITLEMENT_LITE",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:REVENUECAT_ENTITLEMENT_LITE::"
+        },
+        {
           "name": "PROXY_FILE_URL",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:327317202676:secret:prod/bookplayer-api:PROXY_FILE_URL::"
         },

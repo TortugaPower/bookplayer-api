@@ -22,6 +22,7 @@ development.env
 store/*
 .development.env
 dump.rdb
+tsconfig.tsbuildinfo
 
 # Apple root certificates (should be downloaded fresh from Apple)
 certs/*.cer

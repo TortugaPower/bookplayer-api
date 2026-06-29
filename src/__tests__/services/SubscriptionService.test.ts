@@ -67,25 +67,25 @@ describe('SubscriptionService.isActive', () => {
 
   it('returns true on positive cache hit without DB or RC calls', async () => {
     const externalId = randomUUID();
-    await cache.setObject(`sub:${externalId}`, { active: true, verified: 'rc' }, 3600);
+    await cache.setObject(`sub:v2:${externalId}`, { active: true, verified: 'rc' }, 3600);
     const rcMock = makeRcMock({ active: false, expiresMs: null });
     (service as any)._rcV2 = rcMock;
 
     const result = await service.isActive(externalId);
 
-    expect(result).toBe(true);
+    expect(result?.active).toBe(true);
     expect(rcMock.fetchActiveStatus).not.toHaveBeenCalled();
   });
 
   it('returns false on RC-verified negative cache hit without RC call', async () => {
     const externalId = randomUUID();
-    await cache.setObject(`sub:${externalId}`, { active: false, verified: 'rc' }, 1800);
+    await cache.setObject(`sub:v2:${externalId}`, { active: false, verified: 'rc' }, 1800);
     const rcMock = makeRcMock({ active: false, expiresMs: null });
     (service as any)._rcV2 = rcMock;
 
     const result = await service.isActive(externalId);
 
-    expect(result).toBe(false);
+    expect(result?.active).toBe(false);
     expect(rcMock.fetchActiveStatus).not.toHaveBeenCalled();
   });
 
@@ -102,9 +102,28 @@ describe('SubscriptionService.isActive', () => {
 
     const result = await service.isActive(externalId);
 
-    expect(result).toBe(true);
-    const cached = JSON.parse(cache.store.get(`sub:${externalId}`)!.value);
-    expect(cached).toEqual({ active: true, verified: 'local' });
+    expect(result?.active).toBe(true);
+    const cached = JSON.parse(cache.store.get(`sub:v2:${externalId}`)!.value);
+    expect(cached).toEqual({ active: true, verified: 'local', subscriptions: [] });
+  });
+
+  it('surfaces entitlement_ids from the local event as subscriptions', async () => {
+    const trx = getTestTransaction();
+    const externalId = randomUUID();
+    await createTestSubscriptionEvent(trx, {
+      original_app_user_id: externalId,
+      type: 'RENEWAL',
+      expiration_at_ms: Date.now() + 5 * 86_400_000,
+      entitlement_ids: ['pro'],
+    });
+    (service as any)._rcV2 = makeRcMock({ active: true, expiresMs: null });
+
+    const result = await service.isActive(externalId);
+
+    expect(result?.active).toBe(true);
+    expect(result?.subscriptions).toEqual(['pro']);
+    const cached = JSON.parse(cache.store.get(`sub:v2:${externalId}`)!.value);
+    expect(cached).toEqual({ active: true, verified: 'local', subscriptions: ['pro'] });
   });
 
   it('returns false when last event is EXPIRATION and falls through to RC', async () => {
@@ -120,10 +139,10 @@ describe('SubscriptionService.isActive', () => {
 
     const result = await service.isActive(externalId);
 
-    expect(result).toBe(false);
+    expect(result?.active).toBe(false);
     expect(rcMock.fetchActiveStatus).toHaveBeenCalledWith(externalId);
-    const cached = JSON.parse(cache.store.get(`sub:${externalId}`)!.value);
-    expect(cached).toEqual({ active: false, verified: 'rc' });
+    const cached = JSON.parse(cache.store.get(`sub:v2:${externalId}`)!.value);
+    expect(cached).toEqual({ active: false, verified: 'rc', subscriptions: [] });
   });
 
   it('stale-revalidate: local says inactive (expired RENEWAL), RC says active → return true', async () => {
@@ -143,10 +162,10 @@ describe('SubscriptionService.isActive', () => {
 
     const result = await service.isActive(externalId);
 
-    expect(result).toBe(true);
+    expect(result?.active).toBe(true);
     expect(rcMock.fetchActiveStatus).toHaveBeenCalledWith(externalId);
-    const cached = JSON.parse(cache.store.get(`sub:${externalId}`)!.value);
-    expect(cached).toEqual({ active: true, verified: 'rc' });
+    const cached = JSON.parse(cache.store.get(`sub:v2:${externalId}`)!.value);
+    expect(cached).toEqual({ active: true, verified: 'rc', subscriptions: [] });
   });
 
   it('returns false and does NOT cache when RC times out', async () => {
@@ -156,8 +175,8 @@ describe('SubscriptionService.isActive', () => {
 
     const result = await service.isActive(externalId);
 
-    expect(result).toBe(false);
-    expect(cache.store.has(`sub:${externalId}`)).toBe(false);
+    expect(result?.active).toBe(false);
+    expect(cache.store.has(`sub:v2:${externalId}`)).toBe(false);
   });
 
   it('orders by event_timestamp_ms, not insertion id', async () => {
@@ -183,7 +202,7 @@ describe('SubscriptionService.isActive', () => {
     const result = await service.isActive(externalId);
 
     // Latest event by timestamp is EXPIRATION → local says inactive → RC says inactive
-    expect(result).toBe(false);
+    expect(result?.active).toBe(false);
     expect(rcMock.fetchActiveStatus).toHaveBeenCalled();
   });
 
@@ -203,9 +222,9 @@ describe('SubscriptionService.isActive', () => {
       service.isActive(externalId),
     ]);
 
-    expect(a).toBe(true);
-    expect(b).toBe(true);
-    expect(c).toBe(true);
+    expect(a?.active).toBe(true);
+    expect(b?.active).toBe(true);
+    expect(c?.active).toBe(true);
     expect(cache.setObject).toHaveBeenCalledTimes(1);
   });
 
@@ -221,9 +240,9 @@ describe('SubscriptionService.isActive', () => {
 
     const result = await service.isActive(externalId);
 
-    expect(result).toBe(true);
-    const cached = JSON.parse(cache.store.get(`sub:${externalId}`)!.value);
-    expect(cached).toEqual({ active: true, verified: 'local' });
+    expect(result?.active).toBe(true);
+    const cached = JSON.parse(cache.store.get(`sub:v2:${externalId}`)!.value);
+    expect(cached).toEqual({ active: true, verified: 'local', subscriptions: [] });
   });
 
   it('matches user via aliases JSON path', async () => {
@@ -240,7 +259,7 @@ describe('SubscriptionService.isActive', () => {
 
     const result = await service.isActive(aliasId);
 
-    expect(result).toBe(true);
+    expect(result?.active).toBe(true);
   });
 
   it('SUBSCRIPTION_CACHE_ENABLED=false bypasses cache and RC fallback', async () => {
@@ -257,7 +276,7 @@ describe('SubscriptionService.isActive', () => {
 
     const result = await service.isActive(externalId);
 
-    expect(result).toBe(true);
+    expect(result?.active).toBe(true);
     expect(cache.setObject).not.toHaveBeenCalled();
     expect(rcMock.fetchActiveStatus).not.toHaveBeenCalled();
   });
@@ -269,12 +288,12 @@ describe('SubscriptionService.invalidateCache', () => {
     const cache = makeCacheMock();
     (service as any)._cache = cache;
     const externalId = randomUUID();
-    await cache.setObject(`sub:${externalId}`, { active: true, verified: 'rc' }, 3600);
+    await cache.setObject(`sub:v2:${externalId}`, { active: true, verified: 'rc' }, 3600);
 
     await service.invalidateCache(externalId);
 
-    expect(cache.deleteObject).toHaveBeenCalledWith(`sub:${externalId}`);
-    expect(cache.store.has(`sub:${externalId}`)).toBe(false);
+    expect(cache.deleteObject).toHaveBeenCalledWith(`sub:v2:${externalId}`);
+    expect(cache.store.has(`sub:v2:${externalId}`)).toBe(false);
   });
 
   it('is a no-op for empty externalId', async () => {
@@ -285,5 +304,78 @@ describe('SubscriptionService.invalidateCache', () => {
     await service.invalidateCache('');
 
     expect(cache.deleteObject).not.toHaveBeenCalled();
+  });
+});
+
+describe('SubscriptionService.fetchLiveEntitlements', () => {
+  let service: SubscriptionService;
+  let cache: ReturnType<typeof makeCacheMock>;
+
+  beforeEach(() => {
+    service = new SubscriptionService();
+    (service as any)._logger = mockLoggerService;
+    cache = makeCacheMock();
+    (service as any)._cache = cache;
+  });
+
+  it('returns live RC entitlements and refreshes the cache', async () => {
+    const externalId = randomUUID();
+    const rcMock = makeRcMock({ active: true, expiresMs: null });
+    (rcMock.fetchActiveStatus as any).mockResolvedValue({
+      active: true,
+      expiresMs: null,
+      entitlementIds: ['pro'],
+    });
+    (service as any)._rcV2 = rcMock;
+
+    const result = await service.fetchLiveEntitlements(externalId);
+
+    expect(result).toEqual({ active: true, verified: 'rc', subscriptions: ['pro'] });
+    // main cache refreshed on active
+    expect(cache.store.has(`sub:v2:${externalId}`)).toBe(true);
+  });
+
+  it('throttles repeated forced lookups (one RC call per window)', async () => {
+    const externalId = randomUUID();
+    const rcMock = makeRcMock({ active: true, expiresMs: null });
+    (rcMock.fetchActiveStatus as any).mockResolvedValue({
+      active: true,
+      expiresMs: null,
+      entitlementIds: ['plus'],
+    });
+    (service as any)._rcV2 = rcMock;
+
+    const a = await service.fetchLiveEntitlements(externalId);
+    const b = await service.fetchLiveEntitlements(externalId);
+
+    expect(a).toEqual(b);
+    expect(rcMock.fetchActiveStatus).toHaveBeenCalledTimes(1); // second served from throttle cache
+  });
+
+  it('invalidateCache clears the throttle so the next check re-hits RC', async () => {
+    const externalId = randomUUID();
+    const rcMock = makeRcMock({ active: true, expiresMs: null });
+    (rcMock.fetchActiveStatus as any).mockResolvedValue({
+      active: true,
+      expiresMs: null,
+      entitlementIds: ['plus'],
+    });
+    (service as any)._rcV2 = rcMock;
+
+    await service.fetchLiveEntitlements(externalId);
+    await service.invalidateCache(externalId);
+    await service.fetchLiveEntitlements(externalId);
+
+    expect(rcMock.fetchActiveStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns null and does not cache when RC is unreachable', async () => {
+    const externalId = randomUUID();
+    (service as any)._rcV2 = makeRcThrowingMock('timeout');
+
+    const result = await service.fetchLiveEntitlements(externalId);
+
+    expect(result).toBeNull();
+    expect(cache.store.has(`sub:v2:livecheck:${externalId}`)).toBe(false);
   });
 });

@@ -568,6 +568,7 @@ export class PasskeyService {
 
   // Check if user has an active subscription. Backed by SubscriptionService cache.
   async hasSubscription(externalId: string): Promise<boolean> {
-    return this._subscriptionService.isActive(externalId);
+    const subState = await this._subscriptionService.isActive(externalId);
+    return subState?.active ?? false;
   }
 }

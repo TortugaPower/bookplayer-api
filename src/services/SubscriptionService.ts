@@ -1,4 +1,4 @@
-import { SubscriptionUser, RevenuecatEvent, SubscriptionEventType } from '../types/user';
+import { SubscriptionUser, RevenuecatEvent, SubscriptionEventType, SubscriptionState } from '../types/user';
 import { RestClientService } from './RestClientService';
 import { logger } from './LoggerService';
 import { EmailService } from './EmailService';
@@ -7,20 +7,21 @@ import { UserDB } from './db/UserDB';
 import { RedisService } from './RedisService';
 import { RevenueCatV2Client } from './RevenueCatV2Client';
 
-type CachedSubscriptionState = {
-  active: boolean;
-  verified: 'rc' | 'local';
-};
-
 const POSITIVE_TTL_CAP = 30 * 86_400;       // 30 days
 const POSITIVE_TTL_GRACE = 3600;            // 1 hour
 const POSITIVE_TTL_FLOOR = 60;
 const NEGATIVE_TTL = 1800;                  // 30 minutes (RC-verified)
+const LIVE_RECHECK_TTL = 120;               // throttle for forced RC tier checks
 const CANARY_PROBABILITY = 0.05;
+const MISSING_SUB_STATE = {
+  active: false,
+  verified: 'local',
+  subscriptions: []
+} as SubscriptionState;
 
 export class SubscriptionService {
   private readonly _logger = logger;
-  private _inflight: Map<string, Promise<boolean>> = new Map();
+  private _inflight: Map<string, Promise<SubscriptionState>> = new Map();
 
   constructor(
     private _subscriptionDB: SubscriptionDB = new SubscriptionDB(),
@@ -31,7 +32,7 @@ export class SubscriptionService {
     private _rcV2: RevenueCatV2Client = new RevenueCatV2Client(),
   ) {}
 
-  async parseNewEvent(event: RevenuecatEvent): Promise<SubscriptionUser> {
+  async parseNewEvent(event: RevenuecatEvent): Promise<SubscriptionUser | null> {
     try {
       const { original_app_user_id, aliases } = event;
       await this._subscriptionDB.insertSubscriptionEvent(event);
@@ -52,19 +53,19 @@ export class SubscriptionService {
     }
   }
 
-  async isActive(externalId: string): Promise<boolean> {
-    if (!externalId) return false;
+  async isActive(externalId: string): Promise<SubscriptionState | null> {
+    if (!externalId) return null;
     if (process.env.SUBSCRIPTION_CACHE_ENABLED === 'false') {
-      return this._isActiveFromLocalDB(externalId);
+      return (await this._isActiveFromLocalDB(externalId)).state;
     }
 
-    const cacheKey = `sub:${externalId}`;
-    const cached = (await this._cache.getObject(cacheKey)) as CachedSubscriptionState | null;
+    const cacheKey = this._cacheKey(externalId);
+    const cached = (await this._cache.getObject(cacheKey)) as SubscriptionState | null;
     if (cached) {
       // Local data can lag RC (alias merges, missed webhooks), so a local-only
       // negative isn't trustworthy — only RC-verified negatives are. Positives
       // are always trustworthy.
-      if (cached.active || cached.verified === 'rc') return cached.active;
+      if (cached.active || cached.verified === 'rc') return cached;
     }
 
     const existing = this._inflight.get(externalId);
@@ -79,7 +80,65 @@ export class SubscriptionService {
 
   async invalidateCache(externalId: string): Promise<void> {
     if (!externalId) return;
-    await this._cache.deleteObject(`sub:${externalId}`);
+    await this._cache.deleteObject(this._cacheKey(externalId));
+    // Also clear the forced-recheck throttle so a subscription change is picked
+    // up immediately rather than waiting out LIVE_RECHECK_TTL.
+    await this._cache.deleteObject(this._liveCheckKey(externalId));
+  }
+
+  // `v2` namespaces the cache after SubscriptionState gained `subscriptions`.
+  // Without the bump, entries written before deploy would deserialize with
+  // `subscriptions: undefined` (for up to the positive-TTL cap) and silently
+  // fail PRO gating / drop presigned URLs.
+  private _cacheKey(externalId: string): string {
+    return `sub:v2:${externalId}`;
+  }
+
+  private _liveCheckKey(externalId: string): string {
+    return `sub:v2:livecheck:${externalId}`;
+  }
+
+  // Force a live RevenueCat lookup, bypassing the local-DB/cache path, and
+  // refresh the cache with the result. Used as a last-resort tier check before
+  // denying a paid action: a user who just upgraded (e.g. lite → pro) may have
+  // stale local data (pro webhook not yet processed), so we confirm against RC
+  // before gating them out. Returns null if RC is unreachable.
+  async fetchLiveEntitlements(externalId: string): Promise<SubscriptionState | null> {
+    if (!externalId) return null;
+    // Throttle forced lookups: this runs on the deny path of
+    // `requireSubscription`, so an active-but-wrong-tier user (e.g. `plus`
+    // hitting a PRO route) would otherwise trigger a live RC call on every
+    // request. Reuse a recent live result for a short window to bound that.
+    const throttleKey = this._liveCheckKey(externalId);
+    const recent = (await this._cache.getObject(throttleKey)) as SubscriptionState | null;
+    if (recent) return recent;
+    try {
+      const rc = await this._rcV2.fetchActiveStatus(externalId);
+      const subState: SubscriptionState = {
+        active: rc.active,
+        verified: 'rc',
+        subscriptions: rc.entitlementIds ?? [],
+      };
+      await this._cache.setObject(throttleKey, subState, LIVE_RECHECK_TTL);
+      if (rc.active) {
+        await this._cache.setObject(
+          this._cacheKey(externalId),
+          subState,
+          this._positiveTTL(rc.expiresMs),
+        );
+      }
+      return subState;
+    } catch (err) {
+      this._logger.log(
+        {
+          origin: 'SubscriptionService.fetchLiveEntitlements',
+          message: err.message,
+          data: { externalId },
+        },
+        'warn',
+      );
+      return null;
+    }
   }
 
   async hasInAppPurchase(rc_id: string): Promise<boolean> {
@@ -124,25 +183,28 @@ export class SubscriptionService {
   private async _resolveActive(
     externalId: string,
     cacheKey: string,
-  ): Promise<boolean> {
-    const localActive = await this._isActiveFromLocalDB(externalId);
-    if (localActive) {
-      const event = await this._subscriptionDB.getLatestActiveEvent(externalId);
-      const expiresMs = event?.expiration_at_ms ? Number(event.expiration_at_ms) : null;
+  ): Promise<SubscriptionState> {
+    // Reuse the event already fetched by _isActiveFromLocalDB (state +
+    // expiresMs) — no second identical query on this hot path.
+    const { state: localState, expiresMs } = await this._isActiveFromLocalDB(externalId);
+    if (localState.active) {
       const ttlSec = this._positiveTTL(expiresMs);
-      await this._cache.setObject(cacheKey, { active: true, verified: 'local' }, ttlSec);
+      await this._cache.setObject(cacheKey, localState, ttlSec);
       this._maybeCanary(externalId, true);
-      return true;
+
+      return localState;
     }
 
     // Local says inactive — verify against RC before gating.
     let rcActive = false;
     let rcExpiresMs: number | null = null;
     let rcReachable = false;
+    let rcEntitlements: string[] | null = null;
     try {
       const rc = await this._rcV2.fetchActiveStatus(externalId);
       rcActive = rc.active;
       rcExpiresMs = rc.expiresMs;
+      rcEntitlements = rc.entitlementIds;
       rcReachable = true;
     } catch (err) {
       this._logger.log({
@@ -152,28 +214,46 @@ export class SubscriptionService {
       }, 'warn');
     }
 
+    const subState = {
+      active: rcActive,
+      verified: 'rc',
+      subscriptions: rcEntitlements ?? []
+    } as SubscriptionState;
+
     if (rcActive) {
       const ttlSec = this._positiveTTL(rcExpiresMs);
-      await this._cache.setObject(cacheKey, { active: true, verified: 'rc' }, ttlSec);
-      return true;
+      await this._cache.setObject(cacheKey, subState, ttlSec);
+      return subState;
     }
 
     if (rcReachable) {
       // Confirmed inactive by RC — cache for 30 min.
-      await this._cache.setObject(cacheKey, { active: false, verified: 'rc' }, NEGATIVE_TTL);
+      await this._cache.setObject(cacheKey, subState, NEGATIVE_TTL);
     }
     // RC unreachable: don't cache; next request retries verification.
-    return false;
+    return subState;
   }
 
-  private async _isActiveFromLocalDB(externalId: string): Promise<boolean> {
+  // Returns the local-DB-derived state plus the event's expiry, so callers can
+  // compute the cache TTL without re-querying the same event.
+  private async _isActiveFromLocalDB(
+    externalId: string,
+  ): Promise<{ state: SubscriptionState; expiresMs: number | null }> {
     const event = await this._subscriptionDB.getLatestActiveEvent(externalId);
-    if (!event) return false;
-    if (event.type === SubscriptionEventType.EXPIRATION) return false;
+    if (!event || event.type === SubscriptionEventType.EXPIRATION) {
+      return { state: MISSING_SUB_STATE, expiresMs: null };
+    }
     // null expiration_at_ms = lifetime grant (e.g. NON_RENEWING_PURCHASE promo).
     const expiresMs = event.expiration_at_ms ? Number(event.expiration_at_ms) : null;
-    if (expiresMs === null) return true;
-    return expiresMs > Date.now();
+
+    return {
+      state: {
+        active: expiresMs === null || expiresMs > Date.now(),
+        verified: 'local',
+        subscriptions: event.entitlement_ids || [],
+      },
+      expiresMs,
+    };
   }
 
   private _positiveTTL(expiresMs: number | null): number {

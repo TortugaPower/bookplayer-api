@@ -41,6 +41,11 @@ export const Envs = () => {
       .prop('REVENUECAT_API_V2', S.string().required())
       .prop('REVENUECAT_API_V2_KEY', S.string().required())
       .prop('REVENUECAT_PROJECT_ID', S.string().required())
+      // RC internal entitlement object ids -> tier. Stable per project; used to
+      // translate v2 active_entitlements (which return internal ids) to tiers.
+      .prop('REVENUECAT_ENTITLEMENT_PRO', S.string().required())
+      .prop('REVENUECAT_ENTITLEMENT_PLUS', S.string().required())
+      .prop('REVENUECAT_ENTITLEMENT_LITE', S.string().required())
       .prop('PROXY_FILE_URL', S.string().required())
       .prop('APP_VERSION', S.string().required())
       .prop('WEBAUTHN_RP_ID', S.string())

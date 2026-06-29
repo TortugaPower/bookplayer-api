@@ -4,6 +4,11 @@ import { logger } from '../services/LoggerService';
 import { LibraryDB } from '../services/db/LibraryDB';
 import { Bookmark, LibraryItem } from '../types/user';
 import { isValidUUID } from '../utils';
+import {
+  PutExternalResourceBody,
+  DeleteExternalResourceBody,
+  ItemPutRequestBody,
+} from '../validation/externalResource';
 
 export class LibraryController {
   private readonly _logger = logger;
@@ -124,6 +129,42 @@ export class LibraryController {
       return res.json({ content });
     } catch (err) {
       this._logger.log({ origin: 'LibraryController.putLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
+
+  public async putExternalResource(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const user = req.user;
+      // Body validated by validateBody(putExternalResourceSchema) at the route.
+      const { uuid, ...externalResource } = req.body as PutExternalResourceBody;
+
+      const content = (await this._libraryService.putExternalResource(user, uuid, externalResource)) ?? {};
+      return res.json({ content });
+    } catch (err) {
+      this._logger.log({ origin: 'LibraryController.putExternalResource', message: err.message, data: { id_user: req.user?.id_user, uuid: req.body?.uuid } }, 'error');
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
+
+  public async deleteExternalResource(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const user = req.user;
+      // Body validated by validateBody(deleteExternalResourceSchema) at the route.
+      const { uuid, providerId, providerName } = req.body as DeleteExternalResourceBody;
+
+      const content = (await this._libraryService.deleteExternalResource(user, uuid, providerId, providerName)) ?? {};
+      return res.json({ content });
+    } catch (err) {
+      this._logger.log({ origin: 'LibraryController.deleteExternalResource', message: err.message, data: { id_user: req.user?.id_user, uuid: req.body?.uuid } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }
@@ -303,6 +344,32 @@ export class LibraryController {
       });
     } catch (err) {
       this._logger.log({ origin: 'LibraryController.itemThumbnailPutRequest', message: err.message, data: { user: req.user, body: req.body } }, 'error');
+      res.status(400).json({ message: err.message });
+      return;
+    }
+  }
+
+  public async itemPutRequest(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    try {
+      const user = req.user;
+      // Body validated by validateBody(itemPutRequestSchema) at the route.
+      const data = req.body as ItemPutRequestBody;
+      // sourcePutRequest returns a presigned URL string, or `true` when
+      // confirming an upload (data.uploaded). Mirror itemThumbnailPutRequest so
+      // the confirm path doesn't leak `{ url: true }` to the client.
+      const result = await this._libraryService.sourcePutRequest(user, data);
+      if (!result) {
+        throw new Error('problem creating the request url');
+      }
+      return res.json({
+        url: !data.uploaded ? result : '',
+        uploaded: !!(data.uploaded && result),
+      });
+    } catch (err) {
+      this._logger.log({ origin: 'LibraryController.itemPutRequest', message: err.message, data: { id_user: req.user?.id_user, uuid: req.body?.uuid } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }

@@ -3,11 +3,41 @@ import database from '../../database';
 import { logger } from '../LoggerService';
 import {
   Bookmark,
+  ExternalResource,
+  ExternalResourceDb,
   ItemMatchPayload,
   LibraryItemDB,
   LibraryItemMovedDB,
 } from '../../types/user';
 import { isValidUUID } from '../../utils';
+
+// Map a snake_case external_resources row to the camelCase wire contract.
+export function externalResourceRowToApi(row: ExternalResourceDb): ExternalResource {
+  return {
+    providerName: row.provider_name,
+    providerId: row.provider_id,
+    syncStatus: row.sync_status,
+    lastSyncedAt: row.last_synced_at,
+    processedFile: row.processed_file,
+    hostId: row.host_id ?? null,
+  };
+}
+
+// Map the camelCase wire contract to a snake_case row for insert.
+function externalResourceToRow(
+  resource: ExternalResource,
+  libraryItemId: number,
+): Omit<ExternalResourceDb, 'id' | 'active' | 'created_at' | 'updated_at'> {
+  return {
+    library_item_id: libraryItemId,
+    provider_name: resource.providerName,
+    provider_id: resource.providerId,
+    sync_status: resource.syncStatus,
+    last_synced_at: resource.lastSyncedAt,
+    processed_file: resource.processedFile,
+    host_id: resource.hostId ?? null,
+  };
+}
 
 export class LibraryDB {
   private readonly _logger = logger;
@@ -18,8 +48,7 @@ export class LibraryDB {
       const db = trx || this.db;
       const objects = await db('library_items as li')
         .where({ user_id, active: true, synced: true })
-        .orderBy('key', 'asc')
-        .debug(false);
+        .orderBy('key', 'asc');
       return objects.map((item) => item.key);
     } catch (err) {
       this._logger.log({
@@ -51,8 +80,7 @@ export class LibraryDB {
             builder.where(true);
           }
         })
-        .orderBy('order_rank', 'asc')
-        .debug(false);
+        .orderBy('order_rank', 'asc');
       return objects;
     } catch (err) {
       this._logger.log({
@@ -81,8 +109,7 @@ export class LibraryDB {
             builder.where(true);
           }
         })
-        .orderBy('order_rank', 'asc')
-        .debug(false);
+        .orderBy('order_rank', 'asc');
       return objects;
     } catch (err) {
       this._logger.log({
@@ -346,7 +373,6 @@ export class LibraryDB {
       `,
           [destination, origin, user_id, `${origin}%`],
         )
-        .debug(false)
         .then((result) => result.rows);
       return objectsMoved;
     } catch (err) {
@@ -524,8 +550,7 @@ export class LibraryDB {
         .andWhereNot('type', 0)
         .andWhereRaw('last_play_date is not null')
         .orderBy('last_play_date', 'desc')
-        .first()
-        .debug(false);
+        .first();
       return itemDb;
     } catch (err) {
       this._logger.log({
@@ -620,8 +645,7 @@ export class LibraryDB {
       .where({ user_id, active: true })
       .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [pathDepth])
       .whereRaw('key like ?', [`${path}%`])
-      .whereBetween('order_rank', orderRange)
-      .debug(false);
+      .whereBetween('order_rank', orderRange);
   }
 
   async updateBySourcePath(
@@ -716,5 +740,137 @@ export class LibraryDB {
     await trx('library_items')
       .where({ user_id: params.user_id, key: params.key, active: true })
       .update({ uuid: params.uuid });
+  }
+
+  async markExternalSourceUploaded(
+    libraryItemId: number,
+    trx?: Knex.Transaction,
+  ): Promise<boolean> {
+    const runner = async (tx: Knex.Transaction): Promise<boolean> => {
+      // Scoped only by library_item_id: assumes a single external source per
+      // item. The schema permits multiple active providers per item (unique
+      // index on library_item_id, provider_name, provider_id), so if concurrent
+      // multi-provider items become a real scenario, `external_set` must carry
+      // the provider and this update must scope to it — otherwise confirming one
+      // upload marks every provider 'downloaded'.
+      const idExternal = await tx('external_resources')
+        .update({ sync_status: 'downloaded' })
+        .where({ library_item_id: libraryItemId })
+        .returning('library_item_id');
+      const idUpdated = await tx('library_items')
+        .update({ synced: true })
+        .where({ id_library_item: libraryItemId })
+        .returning('id_library_item');
+      return !!idExternal[0]?.library_item_id && !!idUpdated[0]?.id_library_item;
+    };
+    try {
+      if (trx) {
+        return await runner(trx);
+      }
+      return await this.db.transaction(runner);
+    } catch (err) {
+      this._logger.log({
+        origin: 'LibraryDB.markExternalSourceUploaded',
+        message: err.message,
+        data: { libraryItemId },
+      });
+      return false;
+    }
+  }
+
+  async getExternalResource(
+    libraryItemId: number,
+    providerId: string,
+    providerName: string,
+    trx?: Knex.Transaction,
+  ): Promise<ExternalResourceDb | null> {
+    try {
+      const db = trx || this.db;
+      const [object] = await db('external_resources')
+        .where({
+          library_item_id: libraryItemId,
+          provider_id: providerId,
+          provider_name: providerName,
+          active: true,
+        });
+      return object;
+    } catch (err) {
+      this._logger.log({
+        origin: 'LibraryDB.getExternalResource',
+        message: err.message,
+        data: { libraryItemId, providerId, providerName },
+      });
+      return null;
+    }
+  }
+
+  async getExternalResources(
+    libraryItemIds: number[],
+    trx?: Knex.Transaction,
+  ): Promise<ExternalResourceDb[] | null> {
+    try {
+      const db = trx || this.db;
+      const objects = await db('external_resources')
+        .whereIn('library_item_id', libraryItemIds)
+        .where({ active: true });
+      return objects as ExternalResourceDb[];
+    } catch (err) {
+      this._logger.log({
+        origin: 'LibraryDB.getExternalResources',
+        message: err.message,
+        data: { libraryItemIds },
+      });
+      return null;
+    }
+  }
+
+  async insertExternalResource(
+    libraryItemId: number,
+    externalResource: ExternalResource,
+    trx?: Knex.Transaction,
+  ): Promise<ExternalResourceDb | null> {
+    try {
+      const db = trx || this.db;
+      const rowToInsert = externalResourceToRow(externalResource, libraryItemId);
+      const [newRow] = await db('external_resources')
+        .insert(rowToInsert)
+        .returning('*');
+      return (newRow as ExternalResourceDb) || null;
+    } catch (err) {
+      this._logger.log({
+        origin: 'LibraryDB.insertExternalResource',
+        message: err.message,
+        data: { libraryItemId, externalResource },
+      });
+      return null;
+    }
+  }
+
+  async softDeleteExternalResource(
+    libraryItemId: number,
+    providerId: string,
+    providerName: string,
+    trx?: Knex.Transaction,
+  ): Promise<ExternalResourceDb | null> {
+    try {
+      const db = trx || this.db;
+      const [updatedRow] = await db('external_resources')
+        .where({
+          library_item_id: libraryItemId,
+          provider_id: providerId,
+          provider_name: providerName,
+          active: true,
+        })
+        .update({ active: false, updated_at: new Date() })
+        .returning('*');
+      return (updatedRow as ExternalResourceDb) || null;
+    } catch (err) {
+      this._logger.log({
+        origin: 'LibraryDB.softDeleteExternalResource',
+        message: err.message,
+        data: { libraryItemId, providerId, providerName },
+      });
+      return null;
+    }
   }
 }
