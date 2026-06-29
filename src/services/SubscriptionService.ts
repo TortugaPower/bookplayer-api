@@ -56,7 +56,7 @@ export class SubscriptionService {
   async isActive(externalId: string): Promise<SubscriptionState | null> {
     if (!externalId) return null;
     if (process.env.SUBSCRIPTION_CACHE_ENABLED === 'false') {
-      return this._isActiveFromLocalDB(externalId);
+      return (await this._isActiveFromLocalDB(externalId)).state;
     }
 
     const cacheKey = this._cacheKey(externalId);
@@ -184,21 +184,15 @@ export class SubscriptionService {
     externalId: string,
     cacheKey: string,
   ): Promise<SubscriptionState> {
-    const localState = await this._isActiveFromLocalDB(externalId);
+    // Reuse the event already fetched by _isActiveFromLocalDB (state +
+    // expiresMs) — no second identical query on this hot path.
+    const { state: localState, expiresMs } = await this._isActiveFromLocalDB(externalId);
     if (localState.active) {
-      const event = await this._subscriptionDB.getLatestActiveEvent(externalId);
-      const expiresMs = event?.expiration_at_ms ? Number(event.expiration_at_ms) : null;
-      const subscriptions = event?.entitlement_ids ?? [];
-      const subState = {
-        active: localState.active,
-        verified: 'local',
-        subscriptions: subscriptions ?? []
-      } as SubscriptionState
       const ttlSec = this._positiveTTL(expiresMs);
-      await this._cache.setObject(cacheKey, subState, ttlSec);
+      await this._cache.setObject(cacheKey, localState, ttlSec);
       this._maybeCanary(externalId, true);
-      
-      return subState;
+
+      return localState;
     }
 
     // Local says inactive — verify against RC before gating.
@@ -240,17 +234,25 @@ export class SubscriptionService {
     return subState;
   }
 
-  private async _isActiveFromLocalDB(externalId: string): Promise<SubscriptionState> {
+  // Returns the local-DB-derived state plus the event's expiry, so callers can
+  // compute the cache TTL without re-querying the same event.
+  private async _isActiveFromLocalDB(
+    externalId: string,
+  ): Promise<{ state: SubscriptionState; expiresMs: number | null }> {
     const event = await this._subscriptionDB.getLatestActiveEvent(externalId);
-    if (!event) return MISSING_SUB_STATE;
-    if (event.type === SubscriptionEventType.EXPIRATION) return MISSING_SUB_STATE;
+    if (!event || event.type === SubscriptionEventType.EXPIRATION) {
+      return { state: MISSING_SUB_STATE, expiresMs: null };
+    }
     // null expiration_at_ms = lifetime grant (e.g. NON_RENEWING_PURCHASE promo).
     const expiresMs = event.expiration_at_ms ? Number(event.expiration_at_ms) : null;
 
     return {
-      active: (expiresMs === null || expiresMs > Date.now()) ? true : false,
-      verified: 'local',
-      subscriptions: event.entitlement_ids || []
+      state: {
+        active: expiresMs === null || expiresMs > Date.now(),
+        verified: 'local',
+        subscriptions: event.entitlement_ids || [],
+      },
+      expiresMs,
     };
   }
 
