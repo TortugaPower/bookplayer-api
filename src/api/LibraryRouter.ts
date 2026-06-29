@@ -57,7 +57,7 @@ LibraryRouter.put('/bookmark', checkSubscription, (req, res, next) =>
 LibraryRouter.post('/thumbnail_set', checkSubscription, (req, res, next) =>
   controller.itemThumbnailPutRequest(req, res).catch(next),
 );
-LibraryRouter.post('/external_set', checkSubscription, requireSubscription([SubscriptionTierEnum.PRO]), validateBody(itemPutRequestSchema), (req, res, next) =>
+LibraryRouter.post('/external_set', checkSubscription, validateBody(itemPutRequestSchema), requireSubscription([SubscriptionTierEnum.PRO]), (req, res, next) =>
   controller.itemPutRequest(req, res).catch(next),
 );
 LibraryRouter.get('/keys', checkSubscription, (req, res, next) =>

@@ -1,9 +1,16 @@
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterAll, jest } from '@jest/globals';
 import { RevenueCatV2Client } from '../../services/RevenueCatV2Client';
 import { mockLoggerService } from '../setup';
 
-// Simulates RC's two endpoints: the customer (returns internal entitlement ids)
-// and the project entitlements list (the id -> lookup_key map).
+// The id->tier map is supplied via env (REVENUECAT_ENTITLEMENT_*). Set known
+// ids so the customer payload's internal ids translate to lookup keys.
+const ENV = {
+  REVENUECAT_ENTITLEMENT_PRO: 'entla0aca3f4af',
+  REVENUECAT_ENTITLEMENT_PLUS: 'entlb697e08b61',
+  REVENUECAT_ENTITLEMENT_LITE: 'entl3df01b68f9',
+};
+const ORIGINAL_ENV = { ...process.env };
+
 const CUSTOMER_PRO_PLUS = {
   active_entitlements: {
     items: [
@@ -13,99 +20,76 @@ const CUSTOMER_PRO_PLUS = {
   },
 };
 
-const ENTITLEMENTS_MAP = {
-  items: [
-    { id: 'entl3df01b68f9', lookup_key: 'lite' },
-    { id: 'entla0aca3f4af', lookup_key: 'pro' },
-    { id: 'entlb697e08b61', lookup_key: 'plus' },
-  ],
-};
-
-function makeClient() {
-  const callService = jest.fn(async (opts: any) => {
-    if (String(opts.service).includes('/entitlements')) return ENTITLEMENTS_MAP;
-    return CUSTOMER_PRO_PLUS;
-  });
-  const store = new Map<string, object>();
-  const cache = {
-    getObject: jest.fn(async (k: string) => store.get(k) ?? null),
-    setObject: jest.fn(async (k: string, v: object) => {
-      store.set(k, v);
-      return 'OK';
-    }),
-    deleteObject: jest.fn(async (k: string) => store.delete(k)),
-  };
+function makeClient(customer: object = CUSTOMER_PRO_PLUS) {
+  const callService = jest.fn(async () => customer);
   const client = new RevenueCatV2Client();
   (client as any)._restClient = { callService };
-  (client as any)._cache = cache;
   (client as any)._logger = mockLoggerService;
-  return { client, callService, cache, store };
+  return { client, callService };
 }
 
 describe('RevenueCatV2Client.fetchActiveStatus', () => {
   beforeEach(() => {
     mockLoggerService.log.mockClear();
+    Object.assign(process.env, ENV);
   });
 
-  it('translates internal entitlement ids to tier lookup keys', async () => {
-    const { client } = makeClient();
+  afterAll(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  it('translates internal entitlement ids to tier lookup keys via env map', async () => {
+    const { client, callService } = makeClient();
     const result = await client.fetchActiveStatus('ext-1');
 
     expect(result.active).toBe(true);
     expect(result.expiresMs).toBeNull(); // a lifetime grant present → maximally active
     expect(result.entitlementIds.sort()).toEqual(['plus', 'pro']);
+    // No extra entitlements-map call — translation is from env only.
+    expect(callService).toHaveBeenCalledTimes(1);
   });
 
-  it('caches the entitlement map: a second call does not refetch it', async () => {
-    const { client, callService } = makeClient();
-    await client.fetchActiveStatus('ext-1');
-    await client.fetchActiveStatus('ext-1');
-
-    const mapCalls = callService.mock.calls.filter((c: any) =>
-      String(c[0].service).includes('/entitlements'),
-    );
-    expect(mapCalls).toHaveLength(1); // fetched once, served from cache after
-  });
-
-  it('refreshes the map once when an unknown id appears, then drops it if still unknown', async () => {
-    const { client, callService } = makeClient();
-    // Customer has an id not present in the (stale) map.
-    callService.mockImplementation(async (opts: any) => {
-      if (String(opts.service).includes('/entitlements')) {
-        return { items: [{ id: 'entla0aca3f4af', lookup_key: 'pro' }] }; // missing the new id
-      }
-      return {
-        active_entitlements: {
-          items: [
-            { entitlement_id: 'entla0aca3f4af', expires_at: null },
-            { entitlement_id: 'entlNEW999', expires_at: null },
-          ],
-        },
-      };
+  it('drops (and warns about) an id with no env mapping', async () => {
+    const { client } = makeClient({
+      active_entitlements: {
+        items: [
+          { entitlement_id: 'entla0aca3f4af', expires_at: null }, // pro
+          { entitlement_id: 'entlUNMAPPED', expires_at: null }, // not in env
+        ],
+      },
     });
 
     const result = await client.fetchActiveStatus('ext-2');
 
-    expect(result.entitlementIds).toEqual(['pro']); // unknown id dropped
-    const mapCalls = callService.mock.calls.filter((c: any) =>
-      String(c[0].service).includes('/entitlements'),
-    );
-    expect(mapCalls.length).toBeGreaterThanOrEqual(2); // initial + self-heal refresh
-    expect(mockLoggerService.log).toHaveBeenCalled(); // warned about the unknown id
+    expect(result.entitlementIds).toEqual(['pro']);
+    expect(mockLoggerService.log).toHaveBeenCalled();
   });
 
-  it('returns active with no tiers when the entitlement map is unavailable', async () => {
-    const { client, callService } = makeClient();
-    callService.mockImplementation(async (opts: any) => {
-      if (String(opts.service).includes('/entitlements')) {
-        throw new Error('map endpoint down');
-      }
-      return CUSTOMER_PRO_PLUS;
+  it('drops a tier whose env var is unset at runtime (defensive)', async () => {
+    delete process.env.REVENUECAT_ENTITLEMENT_LITE;
+    const { client } = makeClient({
+      active_entitlements: {
+        items: [
+          { entitlement_id: 'entla0aca3f4af', expires_at: null }, // pro
+          { entitlement_id: 'entl3df01b68f9', expires_at: null }, // lite, but env unset
+        ],
+      },
     });
 
     const result = await client.fetchActiveStatus('ext-3');
 
-    expect(result.active).toBe(true); // active is computed from expires_at, independent of the map
-    expect(result.entitlementIds).toEqual([]); // can't translate → dropped, never leaks raw ids
+    expect(result.entitlementIds).toEqual(['pro']);
+  });
+
+  it('stays active with no tiers when none of the active ids are mapped', async () => {
+    delete process.env.REVENUECAT_ENTITLEMENT_PRO;
+    delete process.env.REVENUECAT_ENTITLEMENT_PLUS;
+    delete process.env.REVENUECAT_ENTITLEMENT_LITE;
+    const { client } = makeClient();
+
+    const result = await client.fetchActiveStatus('ext-4');
+
+    expect(result.active).toBe(true); // active is independent of the tier map
+    expect(result.entitlementIds).toEqual([]);
   });
 });

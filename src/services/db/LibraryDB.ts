@@ -747,6 +747,12 @@ export class LibraryDB {
     trx?: Knex.Transaction,
   ): Promise<boolean> {
     const runner = async (tx: Knex.Transaction): Promise<boolean> => {
+      // Scoped only by library_item_id: assumes a single external source per
+      // item. The schema permits multiple active providers per item (unique
+      // index on library_item_id, provider_name, provider_id), so if concurrent
+      // multi-provider items become a real scenario, `external_set` must carry
+      // the provider and this update must scope to it — otherwise confirming one
+      // upload marks every provider 'downloaded'.
       const idExternal = await tx('external_resources')
         .update({ sync_status: 'downloaded' })
         .where({ library_item_id: libraryItemId })

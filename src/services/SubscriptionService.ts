@@ -11,6 +11,7 @@ const POSITIVE_TTL_CAP = 30 * 86_400;       // 30 days
 const POSITIVE_TTL_GRACE = 3600;            // 1 hour
 const POSITIVE_TTL_FLOOR = 60;
 const NEGATIVE_TTL = 1800;                  // 30 minutes (RC-verified)
+const LIVE_RECHECK_TTL = 120;               // throttle for forced RC tier checks
 const CANARY_PROBABILITY = 0.05;
 const MISSING_SUB_STATE = {
   active: false,
@@ -80,6 +81,9 @@ export class SubscriptionService {
   async invalidateCache(externalId: string): Promise<void> {
     if (!externalId) return;
     await this._cache.deleteObject(this._cacheKey(externalId));
+    // Also clear the forced-recheck throttle so a subscription change is picked
+    // up immediately rather than waiting out LIVE_RECHECK_TTL.
+    await this._cache.deleteObject(this._liveCheckKey(externalId));
   }
 
   // `v2` namespaces the cache after SubscriptionState gained `subscriptions`.
@@ -90,6 +94,10 @@ export class SubscriptionService {
     return `sub:v2:${externalId}`;
   }
 
+  private _liveCheckKey(externalId: string): string {
+    return `sub:v2:livecheck:${externalId}`;
+  }
+
   // Force a live RevenueCat lookup, bypassing the local-DB/cache path, and
   // refresh the cache with the result. Used as a last-resort tier check before
   // denying a paid action: a user who just upgraded (e.g. lite → pro) may have
@@ -97,6 +105,13 @@ export class SubscriptionService {
   // before gating them out. Returns null if RC is unreachable.
   async fetchLiveEntitlements(externalId: string): Promise<SubscriptionState | null> {
     if (!externalId) return null;
+    // Throttle forced lookups: this runs on the deny path of
+    // `requireSubscription`, so an active-but-wrong-tier user (e.g. `plus`
+    // hitting a PRO route) would otherwise trigger a live RC call on every
+    // request. Reuse a recent live result for a short window to bound that.
+    const throttleKey = this._liveCheckKey(externalId);
+    const recent = (await this._cache.getObject(throttleKey)) as SubscriptionState | null;
+    if (recent) return recent;
     try {
       const rc = await this._rcV2.fetchActiveStatus(externalId);
       const subState: SubscriptionState = {
@@ -104,6 +119,7 @@ export class SubscriptionService {
         verified: 'rc',
         subscriptions: rc.entitlementIds ?? [],
       };
+      await this._cache.setObject(throttleKey, subState, LIVE_RECHECK_TTL);
       if (rc.active) {
         await this._cache.setObject(
           this._cacheKey(externalId),

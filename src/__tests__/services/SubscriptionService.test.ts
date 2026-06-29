@@ -306,3 +306,76 @@ describe('SubscriptionService.invalidateCache', () => {
     expect(cache.deleteObject).not.toHaveBeenCalled();
   });
 });
+
+describe('SubscriptionService.fetchLiveEntitlements', () => {
+  let service: SubscriptionService;
+  let cache: ReturnType<typeof makeCacheMock>;
+
+  beforeEach(() => {
+    service = new SubscriptionService();
+    (service as any)._logger = mockLoggerService;
+    cache = makeCacheMock();
+    (service as any)._cache = cache;
+  });
+
+  it('returns live RC entitlements and refreshes the cache', async () => {
+    const externalId = randomUUID();
+    const rcMock = makeRcMock({ active: true, expiresMs: null });
+    (rcMock.fetchActiveStatus as any).mockResolvedValue({
+      active: true,
+      expiresMs: null,
+      entitlementIds: ['pro'],
+    });
+    (service as any)._rcV2 = rcMock;
+
+    const result = await service.fetchLiveEntitlements(externalId);
+
+    expect(result).toEqual({ active: true, verified: 'rc', subscriptions: ['pro'] });
+    // main cache refreshed on active
+    expect(cache.store.has(`sub:v2:${externalId}`)).toBe(true);
+  });
+
+  it('throttles repeated forced lookups (one RC call per window)', async () => {
+    const externalId = randomUUID();
+    const rcMock = makeRcMock({ active: true, expiresMs: null });
+    (rcMock.fetchActiveStatus as any).mockResolvedValue({
+      active: true,
+      expiresMs: null,
+      entitlementIds: ['plus'],
+    });
+    (service as any)._rcV2 = rcMock;
+
+    const a = await service.fetchLiveEntitlements(externalId);
+    const b = await service.fetchLiveEntitlements(externalId);
+
+    expect(a).toEqual(b);
+    expect(rcMock.fetchActiveStatus).toHaveBeenCalledTimes(1); // second served from throttle cache
+  });
+
+  it('invalidateCache clears the throttle so the next check re-hits RC', async () => {
+    const externalId = randomUUID();
+    const rcMock = makeRcMock({ active: true, expiresMs: null });
+    (rcMock.fetchActiveStatus as any).mockResolvedValue({
+      active: true,
+      expiresMs: null,
+      entitlementIds: ['plus'],
+    });
+    (service as any)._rcV2 = rcMock;
+
+    await service.fetchLiveEntitlements(externalId);
+    await service.invalidateCache(externalId);
+    await service.fetchLiveEntitlements(externalId);
+
+    expect(rcMock.fetchActiveStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns null and does not cache when RC is unreachable', async () => {
+    const externalId = randomUUID();
+    (service as any)._rcV2 = makeRcThrowingMock('timeout');
+
+    const result = await service.fetchLiveEntitlements(externalId);
+
+    expect(result).toBeNull();
+    expect(cache.store.has(`sub:v2:livecheck:${externalId}`)).toBe(false);
+  });
+});
