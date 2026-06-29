@@ -49,6 +49,9 @@ jobs:
       REVENUECAT_API_V2: https://ci.dummy/v2
       REVENUECAT_API_V2_KEY: ci-dummy
       REVENUECAT_PROJECT_ID: ci-dummy
+      REVENUECAT_ENTITLEMENT_PRO: ci-dummy-pro
+      REVENUECAT_ENTITLEMENT_PLUS: ci-dummy-plus
+      REVENUECAT_ENTITLEMENT_LITE: ci-dummy-lite
       PROXY_FILE_URL: https://ci.dummy
       APP_VERSION: latest
 
