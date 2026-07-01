@@ -18,9 +18,9 @@ export function repo() {
   return { owner, name, full };
 }
 
-function headers() {
+function headers(tok) {
   return {
-    Authorization: `Bearer ${token()}`,
+    Authorization: `Bearer ${tok || token()}`,
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
     'Content-Type': 'application/json',
@@ -41,10 +41,10 @@ async function rest(method, path, body) {
   return res.status === 204 ? null : res.json();
 }
 
-async function graphql(queryStr, variables) {
+async function graphql(queryStr, variables, tok) {
   const res = await fetch(GQL, {
     method: 'POST',
-    headers: headers(),
+    headers: headers(tok),
     body: JSON.stringify({ query: queryStr, variables }),
   });
   const json = await res.json().catch(() => ({}));
@@ -136,10 +136,16 @@ export async function listReviewThreads(prNumber) {
 }
 
 export async function resolveReviewThread(threadId) {
+  // The default GITHUB_TOKEN (github-actions[bot]) is NOT allowed to resolve review threads
+  // ("Resource not accessible by integration"), even with pull-requests: write. If a PAT / App
+  // token is provided via REVIEW_RESOLVE_TOKEN, use it for the resolve mutation; otherwise fall
+  // back to GITHUB_TOKEN (which will fail — threads then only show as GitHub's auto "Outdated").
+  const tok = process.env.REVIEW_RESOLVE_TOKEN || process.env.GITHUB_TOKEN;
   return graphql(
     `mutation($threadId:ID!){
       resolveReviewThread(input:{threadId:$threadId}){ thread{ id isResolved } }
     }`,
     { threadId },
+    tok,
   );
 }

@@ -104,6 +104,7 @@ function extractJson(text) {
 async function runAgent() {
   let finalText = '';
   let turns = 0;
+  let resultSubtype = null;
   const stderrChunks = [];
   const iterator = query({
     prompt: USER_PROMPT,
@@ -134,15 +135,18 @@ async function runAgent() {
             }
           }
         }
-      } else if (msg.type === 'result' && msg.subtype && msg.subtype !== 'success') {
-        console.warn(`Agent terminated: ${msg.subtype}`);
+      } else if (msg.type === 'result') {
+        resultSubtype = msg.subtype || null;
+        if (resultSubtype && resultSubtype !== 'success') {
+          console.warn(`Agent terminated: ${resultSubtype}`);
+        }
       }
     }
   } catch (err) {
     err.capturedStderr = stderrChunks.join('');
     throw err;
   }
-  return { finalText, turns };
+  return { finalText, turns, resultSubtype };
 }
 
 function renderSummary(result, stats, unpostable) {
@@ -196,13 +200,31 @@ async function main() {
   requireEnv('GITHUB_TOKEN');
   console.log(`Reviewing PR #${PR_NUMBER} (base ${BASE}, head ${COMMIT.slice(0, 8)}) with ${MODEL}`);
 
-  const { finalText, turns } = await runAgent();
-  console.log(`Agent finished in ${turns} turns`);
-  if (!finalText) throw new Error('Agent produced no text output');
+  const { finalText, turns, resultSubtype } = await runAgent();
+  console.log(`Agent finished in ${turns} turns (${resultSubtype || 'no-result'})`);
 
-  const parsed = extractJson(finalText);
-  if (!parsed.verdict || !parsed.summary || !Array.isArray(parsed.findings)) {
-    throw new Error(`Invalid agent JSON shape: ${JSON.stringify(parsed).slice(0, 200)}`);
+  // Parse the agent's JSON. If it truncated (e.g. hit the turn limit on a large PR) or
+  // produced malformed output, degrade gracefully: post a visible note and exit 0 rather
+  // than hard-failing the check with nothing.
+  let parsed;
+  try {
+    if (!finalText) throw new Error('agent produced no text output');
+    parsed = extractJson(finalText);
+    if (!parsed.verdict || !parsed.summary || !Array.isArray(parsed.findings)) {
+      throw new Error('JSON missing verdict/summary/findings');
+    }
+  } catch (e) {
+    const reason =
+      resultSubtype === 'error_max_turns'
+        ? 'hit the turn limit before finishing — likely a large PR. Bump `REVIEW_MAX_TURNS` or split the PR into smaller ones.'
+        : `could not produce a structured result (${e.message}).`;
+    console.warn(`Review incomplete: ${reason}`);
+    if (!DRY_RUN) {
+      await upsertSummary(
+        ['## ⚠️ Claude PR Review — incomplete', '', `The reviewer ${reason}`, '', MARKER_SUMMARY].join('\n'),
+      ).catch((err) => console.warn(`Could not post incomplete-review note: ${err.message}`));
+    }
+    return;
   }
 
   // Current findings, de-duplicated by fingerprint.
