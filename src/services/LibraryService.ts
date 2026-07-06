@@ -61,7 +61,9 @@ export class LibraryService {
           lastPlayDateTimestamp: itemTemp.last_play_date,
           type: itemTemp.type,
           thumbnail: itemTemp.thumbnail,
-          url: '',
+          // null, not '': iOS decodes this as URL? and an empty string fails
+          // decoding, permanently wedging the upload retry loop
+          url: null,
           synced: itemTemp.synced,
           source_path: itemTemp.source_path,
           uuid: itemTemp.uuid,
