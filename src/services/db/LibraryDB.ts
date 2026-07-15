@@ -243,35 +243,117 @@ export class LibraryDB {
   /// `newKeySql` is the SQL expression that computes the destination key from the
   /// `removing` array and `removeIndex` scalar (both defined in the inner SELECT).
   /// `newKeyParams` carries any `?` placeholders the expression uses, in order.
-  private async deactivateConflictingDestinations(
+  private static escapeLikePrefix(prefix: string): string {
+    // Keys routinely contain `_` (a LIKE wildcard); escape so a folder named
+    // "My_Books" can't match a sibling "MyXBooks" subtree.
+    return prefix.replace(/[\\%_]/g, (m) => `\\${m}`);
+  }
+
+  /**
+   * The single subtree key-rewrite primitive: relocate every active row under
+   * `oldPrefix/` (and, with `includeSelf`, the row whose key IS `oldPrefix`)
+   * to the same position under `newPrefix`. All move/rename/promote flows are
+   * prefix replacements, so they all funnel through here — this is the only
+   * place that builds the match set (wildcard-escaped, '/'-boundary-correct:
+   * same-prefix siblings like "Series 2" are never captured by "Series").
+   *
+   * `collisionWinner` decides who survives when a computed destination key is
+   * already held by an active row:
+   * - 'mover': the row being moved wins; the occupant is deactivated
+   *   (explicit user-initiated moves/renames — the mover is canonical).
+   * - 'occupant': the occupant wins; the stale mover is deactivated
+   *   (upload move-fallback — destination rows are the client's re-created
+   *   state and may own newer uploads).
+   * Deactivation nulls the uuid to free both partial unique indexes, matching
+   * the dedupe migration.
+   *
+   * Returns the rewritten rows including `old_key`. Throws on error — run it
+   * inside a transaction that rolls back as a unit; public wrappers keep their
+   * catch/log/null contracts.
+   */
+  private async rewriteKeyPrefix(
     user_id: number,
-    removeIndexBasis: string,
-    originLikePattern: string,
-    newKeySql: string,
-    newKeyParams: unknown[],
+    oldPrefix: string,
+    newPrefix: string,
+    opts: { includeSelf: boolean; collisionWinner: 'mover' | 'occupant' },
     db: Knex | Knex.Transaction,
-  ): Promise<void> {
-    await db.raw(
+  ): Promise<LibraryItemMovedDB[]> {
+    if (opts.includeSelf && newPrefix === '') {
+      throw new Error('rewriteKeyPrefix: includeSelf requires a non-empty newPrefix');
+    }
+
+    const escapedChildPattern = `${LibraryDB.escapeLikePrefix(oldPrefix)}/%`;
+
+    // Children keep everything after the old prefix; an empty newPrefix also
+    // swallows the separator so promote-to-root never yields a leading '/'.
+    const childKeySql =
+      newPrefix === ''
+        ? `substr(key, length(cast(? as text)) + 2)`
+        : `concat(cast(? as text), substr(key, length(cast(? as text)) + 1))`;
+    const childKeyParams =
+      newPrefix === '' ? [oldPrefix] : [newPrefix, oldPrefix];
+
+    const matchSql = opts.includeSelf
+      ? `(key = cast(? as text) or key like ? escape '\\')`
+      : `key like ? escape '\\'`;
+    const matchParams = opts.includeSelf
+      ? [oldPrefix, escapedChildPattern]
+      : [escapedChildPattern];
+
+    const moversSql = `
+      select id_library_item, key as old_key,
+             case when key = cast(? as text) then cast(? as text)
+                  else ${childKeySql} end as new_key
+      from library_items
+      where user_id = ? and active = true and ${matchSql}
+    `;
+    const moversParams = [
+      oldPrefix,
+      newPrefix,
+      ...childKeyParams,
+      user_id,
+      ...matchParams,
+    ];
+
+    if (opts.collisionWinner === 'mover') {
+      await db.raw(
+        `
+        with movers as (${moversSql})
+        update library_items
+        set active = false, uuid = null, updated_at = now()
+        where user_id = ? and active = true
+          and key in (select new_key from movers)
+          and id_library_item not in (select id_library_item from movers);
+        `,
+        [...moversParams, user_id],
+      );
+    } else {
+      await db.raw(
+        `
+        with movers as (${moversSql})
+        update library_items li
+        set active = false, uuid = null, updated_at = now()
+        from movers m
+        join library_items dest
+          on dest.user_id = ? and dest.active = true and dest.key = m.new_key
+        where li.id_library_item = m.id_library_item;
+        `,
+        [...moversParams, user_id],
+      );
+    }
+
+    const moved = await db.raw(
       `
-      with movers as (
-        select id_library_item, ${newKeySql} as new_key
-        from (
-          select id_library_item,
-                 string_to_array(key, '/') as removing,
-                 array_length(string_to_array(?, '/'), 1) as removeIndex
-          from library_items
-          where user_id=? and active=true and key like ?
-        ) as sub
-      )
-      update library_items
-      set active=false, uuid=null, updated_at=now()
-      where user_id=?
-        and active=true
-        and key in (select new_key from movers)
-        and id_library_item not in (select id_library_item from movers);
+      with movers as (${moversSql})
+      update library_items li
+      set key = m.new_key, updated_at = now()
+      from movers m
+      where li.id_library_item = m.id_library_item and li.active = true
+      returning li.id_library_item, li.key, m.old_key, li.type, li.original_filename, li.source_path;
       `,
-      [...newKeyParams, removeIndexBasis, user_id, originLikePattern, user_id],
+      moversParams,
     );
+    return moved.rows;
   }
 
   async moveFiles(
@@ -281,41 +363,18 @@ export class LibraryDB {
     trx?: Knex.Transaction,
   ): Promise<LibraryItemMovedDB[]> {
     try {
-      const destinationPath = destination !== '' ? `${destination}/` : '';
       const db = trx || this.db;
-
-      await this.deactivateConflictingDestinations(
+      // Nest origin INSIDE destination: its last segment becomes the new key
+      const lastSegment = origin.split('/').pop();
+      const newKey =
+        destination !== '' ? `${destination}/${lastSegment}` : lastSegment;
+      return await this.rewriteKeyPrefix(
         user_id,
         origin,
-        `${origin}%`,
-        `concat(cast(? as text), array_to_string(removing[removeIndex:array_length(removing, 1)], '/'))`,
-        [destinationPath],
+        newKey,
+        { includeSelf: true, collisionWinner: 'mover' },
         db,
       );
-
-      const objectsMoved = await db
-        .raw(
-          `
-      update library_items ss
-      set key=filtro.newKey
-      from (select filtroKey.id_library_item,
-              concat(cast(? as text), array_to_string(removing[removeIndex:array_length(removing, 1)], '/')) as newKey,
-              filtroKey.old_key as old_key
-            from (
-                select id_library_item,
-                        string_to_array(key, '/') as removing,
-                        array_length(string_to_array(?, '/'), 1) as removeIndex,
-                        key as old_key
-                from library_items
-                where user_id=? and active=true and key like ?
-            ) as filtroKey) as filtro
-      where ss.id_library_item = filtro.id_library_item
-      returning ss.id_library_item, ss.key, ss.type, filtro.old_key, ss.original_filename, ss.source_path;
-      `,
-          [destinationPath, origin, user_id, `${origin}%`],
-        )
-        .then((result) => result.rows);
-      return objectsMoved;
     } catch (err) {
       this._logger.log({
         origin: 'LibraryDB.moveFiles',
@@ -334,50 +393,48 @@ export class LibraryDB {
   ): Promise<LibraryItemMovedDB[]> {
     try {
       const db = trx || this.db;
-
-      await this.deactivateConflictingDestinations(
+      // destination is the item's full new key: origin prefix is REPLACED
+      return await this.rewriteKeyPrefix(
         user_id,
         origin,
-        `${origin}%`,
-        `concat(
-          cast(? as text),
-          case when array_to_string(removing[removeIndex::int + 1:array_length(removing, 1)], '') != '' then '/' else '' end,
-          array_to_string(removing[removeIndex::int + 1:array_length(removing, 1)], '/')
-        )`,
-        [destination],
+        destination,
+        { includeSelf: true, collisionWinner: 'mover' },
         db,
       );
-
-      const objectsMoved = await db
-        .raw(
-          `
-      update library_items ss
-      set key=filtro.newKey
-      from (select filtroKey.id_library_item,
-              concat(
-                cast(? as text),
-                case when array_to_string(removing[removeIndex::int + 1:array_length(removing, 1)], '') != '' then '/' else '' end,
-                array_to_string(removing[removeIndex::int + 1:array_length(removing, 1)], '/')
-              ) as newKey,
-              filtroKey.old_key as old_key
-            from (
-                select id_library_item,
-                        string_to_array(key, '/') as removing,
-                        array_length(string_to_array(?, '/'), 1) as removeIndex,
-                        key as old_key
-                from library_items
-                where user_id=? and active=true and key like ?
-            ) as filtroKey) as filtro
-      where ss.id_library_item = filtro.id_library_item
-      returning ss.id_library_item, ss.key, ss.type, filtro.old_key, ss.source_path, ss.original_filename;
-      `,
-          [destination, origin, user_id, `${origin}%`],
-        )
-        .then((result) => result.rows);
-      return objectsMoved;
     } catch (err) {
       this._logger.log({
         origin: 'LibraryDB.renameFiles',
+        message: err.message,
+        data: { user_id, origin, destination },
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Children-only variant of renameFiles for the rename merge path: the
+   * origin folder row must stay put (the service soft-deletes it and keeps
+   * the pre-existing destination folder), only its subtree moves under the
+   * destination key.
+   */
+  async moveFolderChildren(
+    user_id: number,
+    origin: string,
+    destination: string,
+    trx?: Knex.Transaction,
+  ): Promise<LibraryItemMovedDB[]> {
+    try {
+      const db = trx || this.db;
+      return await this.rewriteKeyPrefix(
+        user_id,
+        origin,
+        destination,
+        { includeSelf: false, collisionWinner: 'mover' },
+        db,
+      );
+    } catch (err) {
+      this._logger.log({
+        origin: 'LibraryDB.moveFolderChildren',
         message: err.message,
         data: { user_id, origin, destination },
       });
@@ -389,40 +446,21 @@ export class LibraryDB {
     user_id: number,
     folderPath: string,
     trx?: Knex.Transaction,
-  ): Promise<LibraryItemDB[]> {
+  ): Promise<LibraryItemMovedDB[]> {
     try {
       const db = trx || this.db;
-
-      await this.deactivateConflictingDestinations(
+      // Children only (the folder row is soft-deleted by the caller):
+      // promote them into the folder's parent, or the root
+      const parentSegments = folderPath.split('/');
+      parentSegments.pop();
+      const parentPrefix = parentSegments.join('/');
+      return await this.rewriteKeyPrefix(
         user_id,
         folderPath,
-        `${folderPath}/%`,
-        `array_to_string(removing[1:removeIndex-1] || removing[removeIndex+1:], '/')`,
-        [],
+        parentPrefix,
+        { includeSelf: false, collisionWinner: 'mover' },
         db,
       );
-
-      const objectsMoved = await db
-        .raw(
-          `
-      update library_items ss
-      set key=filtro.newKey
-      from (select filtroKey.id_library_item,
-                  array_to_string(removing[1:removeIndex-1] || removing[removeIndex+1:], '/') as newKey
-            from (
-                    select id_library_item,
-                            string_to_array(key, '/') as removing,
-                            array_length(string_to_array(?, '/'), 1) as removeIndex
-                    from library_items
-                    where user_id=? and active=true and key like ?
-                ) as filtroKey) as filtro
-      where ss.id_library_item = filtro.id_library_item
-      returning ss.id_library_item, ss.key, ss.type, ss.original_filename, ss.source_path;
-      `,
-          [folderPath, user_id, `${folderPath}/%`],
-        )
-        .then((result) => result.rows);
-      return objectsMoved;
     } catch (err) {
       this._logger.log({
         origin: 'LibraryDB.moveFilesUp',
@@ -431,6 +469,47 @@ export class LibraryDB {
       });
       return null;
     }
+  }
+
+  /**
+   * Relocate a single item — and, for container types, its subtree — to an
+   * exact new key. Used by the upload uuid-fallback in putObject: the client
+   * moved the item locally and is re-uploading it at the new path.
+   *
+   * Collision semantics are the OPPOSITE of moveFiles/renameFiles: when a
+   * child's rewritten key is already taken by an active row, the occupant wins
+   * and the stale old-path child is deactivated (uuid nulled to free the
+   * partial unique indexes) — destination rows are the client's re-created
+   * state and may own newer uploads.
+   *
+   * Throws on error instead of returning null: this runs inside the caller's
+   * transaction, which must roll back as a unit.
+   */
+  async moveItemToKey(
+    user_id: number,
+    id_library_item: number,
+    oldKey: string,
+    newKey: string,
+    moveChildren: boolean,
+    trx: Knex.Transaction,
+  ): Promise<LibraryItemDB | null> {
+    if (moveChildren) {
+      await this.rewriteKeyPrefix(
+        user_id,
+        oldKey,
+        newKey,
+        { includeSelf: false, collisionWinner: 'occupant' },
+        trx,
+      );
+    }
+
+    // The caller resolved the row by uuid and needs it back in full, so the
+    // self update stays by id with returning('*')
+    const moved = await trx('library_items')
+      .update({ key: newKey, updated_at: trx.fn.now() })
+      .where({ id_library_item, user_id, active: true })
+      .returning('*');
+    return moved[0] || null;
   }
 
   async insertLibraryItem(
@@ -464,6 +543,10 @@ export class LibraryDB {
           thumbnail: item.thumbnail || null,
           source_path: item.source_path,
           uuid: item.uuid,
+          // Spread so an absent value falls back to the column default —
+          // callers like moveLibraryObject's folder auto-create pass
+          // synced: true and it must not be silently dropped
+          ...(item.synced !== undefined ? { synced: item.synced } : {}),
         })
         .onConflict()
         .ignore()
@@ -474,15 +557,18 @@ export class LibraryDB {
         .where({ user_id, key: item.key, active: true })
         .first();
       if (!existing) {
-        // Shouldn't be reachable: the conflict path implies an active row at
-        // (user_id, key), and the partial unique index guarantees at most one.
-        // Logging so we have a breadcrumb if something exotic (e.g. a third
-        // concurrent tx deactivated the winner) ever produces this state.
+        // onConflict().ignore() maps to ON CONFLICT DO NOTHING with no target,
+        // so it swallows ANY unique violation — including
+        // library_items_uuid_user_unique (the same uuid active at a DIFFERENT
+        // key), which the (user_id, key) refetch can't see. putObject resolves
+        // that case as a move before inserting, so landing here means a race
+        // or corrupted state; the uuid in the breadcrumb is the first suspect.
         this._logger.log(
           {
             origin: 'LibraryDB.insertLibraryItem',
-            message: 'Insert conflict resolved but refetch found no winner',
-            data: { user_id, key: item.key },
+            message:
+              'Insert conflict resolved but refetch found no winner (possible library_items_uuid_user_unique conflict)',
+            data: { user_id, key: item.key, uuid: item.uuid },
           },
           'warn',
         );

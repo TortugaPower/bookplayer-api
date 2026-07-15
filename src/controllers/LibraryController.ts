@@ -129,7 +129,7 @@ export class LibraryController {
       return res.json({ content });
     } catch (err) {
       this._logger.log({ origin: 'LibraryController.putLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
-      res.status(400).json({ message: err.message });
+      res.status(err.statusCode || 400).json({ message: err.message });
       return;
     }
   }
