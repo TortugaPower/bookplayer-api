@@ -301,6 +301,14 @@ export class LibraryService {
         exactly: true,
       });
       let itemDb = objectDB[0];
+      if (!itemDb) {
+        // The key missed, but the client may be re-uploading an item it moved
+        // locally (the move never reached us): if the uuid belongs to an
+        // existing active item, honor it as a move — inserting would trip
+        // library_items_uuid_user_unique and wedge the client's sync queue in
+        // an infinite retry.
+        itemDb = await this.moveUploadTarget(user, libObj, cleanPath);
+      }
       const storagePrefix = await this._prefix.getPrefix(user);
       libObj.source_path = `${process.env.ROOT_FOLDER}/${moment().format(
         'YYYYMMDDHHmmss',
@@ -353,7 +361,75 @@ export class LibraryService {
         message: err.stack || err.message,
         data: { user, params },
       });
+      // Rewrapping in Error(err) drops custom fields; keep errors that carry
+      // an HTTP status (e.g. the 409 from moveUploadTarget) intact.
+      if (err.statusCode) throw err;
       throw Error(err);
+    }
+  }
+
+  /**
+   * Upload fallback: the requested key has no active row, but the request's
+   * uuid may belong to an item the client moved locally. If so, move it (and
+   * its subtree for container types) to the new key and return the moved row;
+   * returns null when there is nothing to move (normal insert should proceed).
+   */
+  private async moveUploadTarget(
+    user: User,
+    incoming: LibraryItemDB,
+    newKey: string,
+  ): Promise<LibraryItemDB | null> {
+    if (!isValidUUID(incoming.uuid)) return null;
+
+    const matches = await this._libraryDB.getLibraryByUuid(
+      user.id_user,
+      incoming.uuid,
+    );
+    const existing = matches?.[0];
+    if (!existing) return null;
+    if (existing.key === newKey) return existing;
+
+    if (parseInt(`${existing.type}`) !== parseInt(`${incoming.type}`)) {
+      // Same uuid on a different item type is corrupted client state — don't
+      // guess at a move; surface it instead of the opaque insert failure.
+      throw Object.assign(
+        new Error(
+          `Upload uuid ${incoming.uuid} belongs to an existing item of a different type at key=${existing.key}`,
+        ),
+        { statusCode: 409 },
+      );
+    }
+
+    const moveChildren =
+      parseInt(`${existing.type}`) !== parseInt(LibraryItemType.BOOK);
+
+    const trx = await this.db.transaction();
+    try {
+      const moved = await this._libraryDB.moveItemToKey(
+        user.id_user,
+        existing.id_library_item,
+        existing.key,
+        newKey,
+        moveChildren,
+        trx,
+      );
+      await trx.commit();
+
+      this._logger.log({
+        origin: 'LibraryService.moveUploadTarget',
+        message: 'Upload uuid matched an item at a different key; treated as move',
+        data: {
+          id_user: user.id_user,
+          uuid: incoming.uuid,
+          oldKey: existing.key,
+          newKey,
+        },
+      });
+
+      return moved;
+    } catch (err) {
+      await trx.rollback();
+      throw err;
     }
   }
 
@@ -706,61 +782,15 @@ export class LibraryService {
       if (!folderDeleted) {
         throw Error('folder not deleted');
       }
-      const allFilesInside = await this._libraryDB.getNestedObjects(
-        user.id_user,
-        sanitizedFolderPath,
-      );
       const dbMoved = await this._libraryDB.moveFilesUp(
         user.id_user,
         sanitizedFolderPath,
         trx,
       );
-      const groupCounts = parseInt(`${dbMoved.length / 10}`);
-      const groups =
-        groupCounts > 1 ? splitArrayGroups(dbMoved, groupCounts) : [dbMoved];
-      await Promise.all(
-        groups.map(async (group: LibraryItemMovedDB[]) => {
-          for (let indexTrx = 0; indexTrx < group.length; indexTrx++) {
-            const fileMoved = group[indexTrx];
-            const prevFile = allFilesInside.find(
-              (preFile) =>
-                preFile.id_library_item === fileMoved.id_library_item,
-            );
 
-            if (
-              prevFile &&
-              !fileMoved.source_path &&
-              parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
-            ) {
-              const suffix =
-                parseInt(prevFile.type) === parseInt(LibraryItemType.BOOK)
-                  ? ''
-                  : '/';
-              const sourceKey = `${storagePrefix}/${prevFile.key}${suffix}`;
-              const original_filename = `${
-                process.env.ROOT_FOLDER
-              }/${moment().format('YYYYMMDDHHmmss')}_${
-                fileMoved.original_filename
-              }`;
-              const targetKey = `${storagePrefix}/${original_filename}`;
-              const isMoved = await this._storage.moveFile({
-                sourceKey,
-                targetKey,
-              });
-              if (isMoved) {
-                await this._libraryDB.updateBySourcePath(
-                  {
-                    user_id: user.id_user,
-                    key: fileMoved.key,
-                    source_path: original_filename,
-                  },
-                  trx,
-                );
-              }
-            }
-          }
-        }),
-      );
+      // moveFilesUp returns old_key, so the legacy-book S3 relocation is the
+      // same shared path every other move flow uses
+      await this.processMovedFiles(user, dbMoved, trx);
 
       const keyPath = `${folderDB[0].key}/`;
       const folderKey = `${storagePrefix}/${folderDB[0].source_path || keyPath}`;
@@ -1079,7 +1109,10 @@ export class LibraryService {
         let movedChildren: LibraryItemMovedDB[] = [];
 
         if (nestedChildren.length > 0) {
-          movedChildren = await this._libraryDB.renameFiles(
+          // Children only: renaming the origin row here would collide it onto
+          // the destination key, deactivating the very folder we just merged
+          // into. The origin row is soft-deleted below instead.
+          movedChildren = await this._libraryDB.moveFolderChildren(
             user.id_user,
             item.key,
             destination.key,
