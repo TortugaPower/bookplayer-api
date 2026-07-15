@@ -396,6 +396,31 @@ describe('LibraryService — path-mutating flows (move / rename / folder_in_out)
       expect(siblingAfter.active).toBe(true);
     });
 
+    it('surfaces a descriptive error (not a TypeError) when the key rewrite fails', async () => {
+      const trx = getTestTransaction();
+      const user = await createTestUser(trx);
+      const folder = await createTestLibraryItem(trx, {
+        user_id: user.id_user,
+        key: 'Old Folder',
+        type: 0,
+      });
+      const itemDb = await trx('library_items')
+        .where({ id_library_item: folder.id_library_item })
+        .first();
+      // The wrappers return null on error (repo convention); the service must
+      // not turn that into an opaque `.length` TypeError
+      jest
+        .spyOn((service as any)._libraryDB, 'renameFiles')
+        .mockResolvedValue(null as never);
+
+      await expect(
+        service.renameLibraryObject(user as any, {
+          item: itemDb,
+          newName: 'New Folder',
+        }),
+      ).rejects.toThrow('key rewrite failed');
+    });
+
     it('merges into an existing empty destination folder and soft-deletes the origin', async () => {
       const trx = getTestTransaction();
       const user = await createTestUser(trx);

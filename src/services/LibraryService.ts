@@ -1229,6 +1229,15 @@ export class LibraryService {
     movedFiles: LibraryItemMovedDB[],
     trx: Knex.Transaction,
   ): Promise<void> {
+    if (!movedFiles) {
+      // The key-rewrite wrappers (moveFiles/renameFiles/moveFilesUp/
+      // moveFolderChildren) return null on error after logging; throw a real
+      // message here instead of letting `.length` below produce an opaque
+      // TypeError, so the caller's rollback logs the actual failure point
+      throw new Error(
+        'processMovedFiles: key rewrite failed (see LibraryDB logs)',
+      );
+    }
     const storagePrefix = await this._prefix.getPrefix(user);
     const groupCounts = parseInt(`${movedFiles.length / 10}`);
     const groups =
