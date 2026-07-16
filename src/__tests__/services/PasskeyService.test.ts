@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import moment from 'moment';
 import { randomUUID, randomBytes } from 'crypto';
 import { PasskeyService } from '../../services/PasskeyService';
@@ -583,6 +583,45 @@ describe('PasskeyService', () => {
         expect(decoded.external_id).toBe(user.external_id);
         expect(decoded.time).toBeDefined();
       });
+    });
+  });
+
+  describe('expectedOrigins', () => {
+    const originalHash = process.env.ANDROID_RELEASE_HASH;
+
+    afterEach(() => {
+      process.env.ANDROID_RELEASE_HASH = originalHash;
+    });
+
+    it('should allow the web origin plus a single android hash', () => {
+      process.env.ANDROID_RELEASE_HASH = 'android:apk-key-hash:playSigningHash';
+      const svc = new PasskeyService();
+      expect((svc as any).expectedOrigins).toEqual([
+        `https://${process.env.WEBAUTHN_RP_ID}`,
+        'android:apk-key-hash:playSigningHash',
+      ]);
+    });
+
+    it('should split a comma-separated list into multiple android origins', () => {
+      // Play App Signing: store builds assert with Google's app-signing cert, locally-signed
+      // release builds assert with the upload cert — both hashes must be accepted.
+      process.env.ANDROID_RELEASE_HASH =
+        'android:apk-key-hash:playSigningHash, android:apk-key-hash:uploadKeyHash';
+      const svc = new PasskeyService();
+      expect((svc as any).expectedOrigins).toEqual([
+        `https://${process.env.WEBAUTHN_RP_ID}`,
+        'android:apk-key-hash:playSigningHash',
+        'android:apk-key-hash:uploadKeyHash',
+      ]);
+    });
+
+    it('should ignore empty segments from trailing commas', () => {
+      process.env.ANDROID_RELEASE_HASH = 'android:apk-key-hash:playSigningHash,';
+      const svc = new PasskeyService();
+      expect((svc as any).expectedOrigins).toEqual([
+        `https://${process.env.WEBAUTHN_RP_ID}`,
+        'android:apk-key-hash:playSigningHash',
+      ]);
     });
   });
 });
