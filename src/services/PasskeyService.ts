@@ -36,10 +36,15 @@ export class PasskeyService {
   private readonly rpName = process.env.WEBAUTHN_RP_NAME;
   private readonly androidReleaseHash = process.env.ANDROID_RELEASE_HASH;
   private readonly origin = `https://${this.rpID}`;
-  // Origins allowed to complete WebAuthn ceremonies: the web origin plus the
-  // Android app's signing-key origin (android:apk-key-hash:...). ANDROID_RELEASE_HASH
-  // is validated as required at boot (config/envs.ts), so it's always present.
-  private readonly expectedOrigins = [this.origin, this.androidReleaseHash!];
+  // Origins allowed to complete WebAuthn ceremonies: the web origin plus the Android app's
+  // signing-key origins (android:apk-key-hash:...). ANDROID_RELEASE_HASH is validated as
+  // required at boot (config/envs.ts) and accepts a comma-separated list: with Play App
+  // Signing the store build asserts with Google's app-signing cert while locally-signed
+  // release builds assert with the upload cert — both need to be allowed.
+  private readonly expectedOrigins = [
+    this.origin,
+    ...this.androidReleaseHash!.split(',').map((hash) => hash.trim()).filter(Boolean),
+  ];
   private readonly challengeTTL = 300;
 
   // Registration
