@@ -242,7 +242,7 @@ export class UserDB {
       external_id?: string;
     },
     trx?: Knex.Transaction,
-  ): Promise<UserEvent> {
+  ): Promise<UserEvent | null> {
     try {
       const db = trx || this.db;
       const filter: {
@@ -257,7 +257,7 @@ export class UserDB {
         .where(filter)
         .orderBy('created_at', 'desc')
         .first();
-      return event;
+      return event || null;
     } catch (err) {
       this._logger.log({
         origin: 'UserDB.getLastUserEvent',

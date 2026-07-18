@@ -291,6 +291,7 @@ export class UserController {
 
       /// if the last time it was shown was less than two days ago, interrupt process
       if (
+        lastEvent != null &&
         !moment(lastEvent.created_at).isBefore(moment().subtract(2, 'days'))
       ) {
         return res.json({});
