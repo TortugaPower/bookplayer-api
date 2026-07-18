@@ -4,7 +4,7 @@ import cookie from 'cookie';
 import { UserEventEnum } from '../types/user';
 import moment from 'moment-timezone';
 import { SubscriptionService } from '../services/SubscriptionService';
-import { gte } from 'semver';
+import { gte, valid } from 'semver';
 
 export class UserController {
   constructor(
@@ -13,6 +13,14 @@ export class UserController {
   ) {}
 
   private readonly minVersion = '5.6.0';
+
+  /// semver's gte throws when app_version is missing/malformed (e.g. an older
+  /// client that omits it from the body), which surfaced as an unlogged 500 on
+  /// /user/second_onboarding. Treat any non-semver value as "not supported".
+  private meetsMinVersion(version?: string): boolean {
+    const parsed = valid(version);
+    return parsed != null && gte(parsed, this.minVersion);
+  }
 
   public async getAuth(req: IRequest, res: IResponse): Promise<IResponse> {
     const user = req.user;
@@ -206,7 +214,7 @@ export class UserController {
       return res.json({});
     }
 
-    const isVersionSupported = gte(app_version, this.minVersion);
+    const isVersionSupported = this.meetsMinVersion(app_version);
 
     /// Only allow AUS, ESP, PHL, MEX, RUS region for tip only onboarding
     if (
@@ -307,7 +315,7 @@ export class UserController {
           external_id: rc_id,
         });
 
-        const isVersionSupported = gte(app_version, this.minVersion);
+        const isVersionSupported = this.meetsMinVersion(app_version);
         switch (region) {
           case 'USA':
             if (totalCount <= 1) {

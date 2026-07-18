@@ -78,4 +78,24 @@ describe('UserController.secondOnboarding', () => {
     expect(res.json).toHaveBeenCalledWith({});
     expect(userService.getSecondOnboardings).not.toHaveBeenCalled();
   });
+
+  it('does not 500 when app_version is missing from the request (regression: semver gte on undefined)', async () => {
+    // gte(undefined, minVersion) used to throw "Invalid version" before any
+    // onboarding logic ran. first_seen = now keeps us in the <7-day early return.
+    const res = makeRes();
+    await expect(
+      controller.secondOnboarding(
+        {
+          body: {
+            rc_id: 'rc_123',
+            region: 'USA',
+            first_seen: Math.floor(Date.now() / 1000),
+          },
+        } as any,
+        res,
+      ),
+    ).resolves.toBeDefined();
+
+    expect(res.json).toHaveBeenCalledWith({});
+  });
 });
