@@ -184,7 +184,7 @@ export class UserServices {
     event_name: UserEventEnum;
     user_id?: number;
     external_id?: string;
-  }): Promise<UserEvent> {
+  }): Promise<UserEvent | null> {
     return this._userDB.getLastUserEvent(params);
   }
 
