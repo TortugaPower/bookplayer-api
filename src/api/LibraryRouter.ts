@@ -1,5 +1,6 @@
 import express from 'express';
 import { LibraryController } from '../controllers/LibraryController';
+import { recordSyncOperation } from './middlewares/recordSyncOperation';
 import { checkSubscription, requireSubscription } from './middlewares/subscription';
 import { SubscriptionTierEnum } from '../types/user';
 import { validateBody } from '../validation/validate';
@@ -11,6 +12,11 @@ import {
 
 const LibraryRouter = express.Router();
 const controller = new LibraryController();
+
+// Audit every state-mutating library request (fire-and-forget, gated by
+// SYNC_AUDIT_ENABLED). Must run before the route handlers so it can wrap the
+// response. See docs/sync-operations-audit-plan.md.
+LibraryRouter.use(recordSyncOperation);
 
 // Cloud data access. PRO has full cloud; LITE (not built yet) syncs DB data
 // only. S3 download/upload URLs embedded in these responses are further gated

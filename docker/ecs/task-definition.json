@@ -41,7 +41,8 @@
         { "name": "NODE_ENV", "value": "production" },
         { "name": "API_PORT", "value": "5003" },
         { "name": "API_HOST", "value": "0.0.0.0" },
-        { "name": "LOG_LEVEL", "value": "warn" }
+        { "name": "LOG_LEVEL", "value": "warn" },
+        { "name": "SYNC_AUDIT_ENABLED", "value": "true" }
       ],
       "secrets": [
         {
