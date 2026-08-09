@@ -160,37 +160,4 @@ describe('SyncAuditDB', () => {
       );
     });
   });
-
-  describe('purgeOlderThan', () => {
-    it('deletes rows untouched beyond the window but keeps recently-seen ones', async () => {
-      const trx = getTestTransaction();
-      const user = await createTestUser(trx);
-
-      await db.record({ ...baseOp(user.id_user), route: '/recent' });
-      // Backdate one row's last_seen_at past the retention window.
-      const [stale] = await trx('sync_operations')
-        .insert({
-          user_id: user.id_user,
-          job_type: SyncOperationJobType.UPLOAD,
-          http_method: 'PUT',
-          route: '/',
-          outcome: 'applied',
-          occurred_at: trx.raw("now() - interval '200 days'"),
-          first_seen_at: trx.raw("now() - interval '200 days'"),
-          last_seen_at: trx.raw("now() - interval '200 days'"),
-          occurrence_count: 1,
-        })
-        .returning('id');
-
-      const removed = await db.purgeOlderThan(90);
-      expect(removed).toBe(1);
-
-      const remaining = await trx('sync_operations').where({
-        user_id: user.id_user,
-      });
-      expect(remaining).toHaveLength(1);
-      expect(remaining[0].route).toBe('/recent');
-      expect(String(remaining[0].id)).not.toBe(String(stale.id));
-    });
-  });
 });

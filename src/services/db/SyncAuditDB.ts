@@ -88,22 +88,6 @@ export class SyncAuditDB {
     }
   }
 
-  /** Retention: delete rows untouched for `days`. Returns rows removed. */
-  async purgeOlderThan(days: number): Promise<number> {
-    try {
-      return await this.db('sync_operations')
-        .where('last_seen_at', '<', this.db.raw("now() - (? * interval '1 day')", [days]))
-        .del();
-    } catch (err) {
-      this._logger.log({
-        origin: 'SyncAuditDB.purgeOlderThan',
-        message: err.message,
-        data: { days },
-      });
-      return 0;
-    }
-  }
-
   private fingerprint(op: SyncOperationRecord): string {
     return crypto
       .createHash('md5')

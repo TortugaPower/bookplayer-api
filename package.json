@@ -10,7 +10,6 @@
     "dev": "tsc-watch --noClear -p ./tsconfig.json --onSuccess \"node ./dist/main.js\"",
     "lint": "eslint src --ext .js,.ts",
     "build": "tsc -b",
-    "purge:sync-audit": "node dist/scripts/purgeSyncOperations.js",
     "setup_env": "node scripts/env.js",
     "prod": "NODE_ENV=production node dist/main.js"
   },
