@@ -31,6 +31,10 @@ const NON_STRUCTURAL_UPDATE_KEYS = new Set([
   'relativePath',
   'key',
   'uuid',
+  // `id` is the client's item identifier, sent on every update including plain
+  // progress ticks; like relativePath/uuid it's not a change. Without it,
+  // progress-only updates leak past this filter and get logged (seen in prod).
+  'id',
   // originalFileName is an identifier the update handler ignores, not a change.
   'originalFileName',
   'currentTime',

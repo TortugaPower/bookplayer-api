@@ -58,9 +58,11 @@ describe('recordSyncOperation helpers', () => {
 
   describe('isProgressOnlyUpdate', () => {
     it('treats identifier + playback-only bodies as progress-only', () => {
+      // mirrors the real client update body observed in prod (includes `id`)
       expect(
         isProgressOnlyUpdate({
           relativePath: 'Book',
+          id: 123,
           uuid: 'abc',
           currentTime: 42,
           percentCompleted: 10,
@@ -282,7 +284,7 @@ describe('recordSyncOperation middleware', () => {
       path: '/',
       route: { path: '/' },
       user: { id_user: 7 },
-      body: { relativePath: 'Book', currentTime: 42, percentCompleted: 10 },
+      body: { relativePath: 'Book', id: 99, currentTime: 42, percentCompleted: 10 },
     };
     const res = makeRes();
     recordSyncOperation(req, res, jest.fn());
