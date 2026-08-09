@@ -166,7 +166,11 @@ export const recordSyncOperation = (
           outcome === 'error'
             ? extractMessage(res.locals.__syncAuditPayload)
             : null,
-        app_version: req.app_version ?? null,
+        // varchar(16): truncate for parity with the other bounded columns so a
+        // stray long value can't throw the insert and silently drop the row.
+        app_version: req.app_version
+          ? String(req.app_version).slice(0, 16)
+          : null,
       });
     } catch (err) {
       logger.log({

@@ -220,6 +220,25 @@ describe('recordSyncOperation middleware', () => {
     expect(arg.item_uuid).toBeNull();
   });
 
+  it('truncates app_version to the column width (varchar(16))', () => {
+    const req: any = {
+      method: 'POST',
+      path: '/move',
+      route: { path: '/move' },
+      user: { id_user: 7 },
+      body: { origin: 'a', destination: 'b' },
+      app_version: 'x'.repeat(40),
+    };
+    const res = makeRes();
+    recordSyncOperation(req, res, jest.fn());
+    res.statusCode = 200;
+    res.json({});
+    res.emitFinish();
+
+    const arg = recordMock().mock.calls[0][0] as SyncOperationRecord;
+    expect(arg.app_version).toHaveLength(16);
+  });
+
   it('records a failed op as error with the extracted message', () => {
     const req: any = {
       method: 'POST',
