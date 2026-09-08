@@ -8,12 +8,13 @@ controller→service→DB-class convention, naming rules, and request flow. Judg
 This service handles **per-user data, auth, and money** (Apple/Google/RevenueCat subscriptions), so
 security and authorization bugs are the highest-priority findings.
 
-**Main branch is `main`.** Diff against `origin/main`.
+**Main branch is `main`.** The harness hands you the unified diff as a file — the checkout is shallow
+(`fetch-depth: 1`), so there is no `origin/main` ref and no `gh` access inside the review, and `git log`
+and `git blame` see only the head commit.
 
 ## How to review
 
-1. Read the unified diff the harness wrote for you; its path is in the task prompt. The PR branch is
-   checked out in the working directory.
+1. Get the diff: `gh pr diff <number>`. The branch is checked out in the working directory.
 2. **Do not review the diff in isolation.** For each non-trivial change, open the surrounding code and
    its **callers** with `Read`/`Grep`/`Glob` before judging. Diff-only opinions are not acceptable.
    For a new/changed route, always open the router to confirm which middlewares (`auth`,
