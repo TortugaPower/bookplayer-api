@@ -9,7 +9,13 @@ on:
 jobs:
   test:
     name: Run Jest test suite
-    runs-on: ubuntu-latest
+    # The same arm64 runner the deploy uses: setup-node, `yarn install --frozen-lockfile` and `knex migrate` run
+    # here on every pull request, so a tool missing from that runner image surfaces on the PR, not mid-deploy
+    # after the image has been pushed.
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -74,12 +80,18 @@ jobs:
       - name: Run tests
         run: yarn test
 
-  # The production image, built natively on arm64 with push disabled: the same Dockerfile, platform and cache the
-  # deploy uses, so a Dockerfile or base-image change that cannot build on arm64 fails here, on the pull request,
-  # rather than on the deploy button. Shares the GitHub Actions layer cache with the deploy job.
+  # The production image, built natively on arm64 with push disabled: the same Dockerfile and platform the deploy
+  # uses, so a Dockerfile or base-image change that cannot build on arm64 fails here, on the pull request, rather
+  # than on the deploy button. Cache note: Actions cache scoping is one-way — a pull request's run reads entries
+  # written from `main` but its own `cache-to` populates only the PR's scope, so the deploy is warmed by this
+  # workflow's runs on pushes to `main`, never by a PR's.
   image-build:
     name: Build the production image (arm64, no push)
     runs-on: ubuntu-24.04-arm
+    # Builds contributor-authored content (Dockerfile, build context): a read-only token and a cap on the runner.
+    permissions:
+      contents: read
+    timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
