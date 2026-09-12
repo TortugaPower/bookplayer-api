@@ -246,6 +246,19 @@ test('the job that holds the secrets executes only the base branch\'s code', () 
   assert.equal(/node --test/.test(review.replace(/^\s*#.*$/gm, '')), false, 'the review job must not run tests from the pull request tree');
 });
 
+test('every action is pinned to a commit SHA, with its version beside it', () => {
+  // A mutable tag (`@v5`) lets the action's maintainer — or whoever ends up holding the tag — swap the code that
+  // runs inside the job with the secrets. A 40-hex commit cannot move. The trailing `# vX.Y.Z` is for the human
+  // who bumps it next, and for the reviewer reading a diff of the pin.
+  const text = readFileSync(WORKFLOW, 'utf8');
+  const uses = [...text.matchAll(/^\s+uses: (\S+)(.*)$/gm)];
+  assert.ok(uses.length >= 2, 'no uses: lines found in the workflow');
+  for (const [line, ref, rest] of uses) {
+    assert.match(ref, /^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/, `${line.trim()}: not pinned to a commit SHA`);
+    assert.match(rest, /^\s+# v\d+\.\d+\.\d+\s*$/, `${line.trim()}: no version comment beside the pin`);
+  }
+});
+
 test('the job that runs pull request code holds no secret', () => {
   // The other half of `pull_request_target`: the pull request's own harness tests execute its code, so that job
   // gets no secret, no environment, and a read-only token it does not persist.

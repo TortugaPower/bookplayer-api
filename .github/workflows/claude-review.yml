@@ -52,6 +52,9 @@ jobs:
       contents: read
       pull-requests: write   # post inline + summary comments and resolve review threads
     steps:
+      # Every `uses:` in this file is pinned to a commit SHA, version in the trailing comment. A mutable tag lets
+      # whoever controls it swap the code that runs inside the job holding the secrets; a commit cannot move.
+      # `test/workflow.test.mjs` fails on an unpinned action. Bump by editing the SHA and the comment together.
       # TWO checkouts. The harness — this directory, its lockfile, `review-guide.md` and `repo.mjs` — comes from
       # the base branch and is the only code this job executes. The pull request's tree is checked out beside it
       # and is what the agent reads: to the harness it is data, like the diff.
@@ -60,17 +63,20 @@ jobs:
       - name: Checkout the harness from the base branch
         id: harness
         timeout-minutes: 3
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           path: harness
           fetch-depth: 1
           persist-credentials: false
 
+      # checkout v7 refuses to fetch a FORK's head under `pull_request_target` unless `allow-unsafe-pr-checkout: true`.
+      # That never fires here: the job-level `if` above skips fork pull requests before any step runs. Leave the
+      # input unset on purpose — if that skip is ever loosened, the refusal is the second guard, not a nuisance.
       - name: Checkout PR head
         id: checkout
         timeout-minutes: 3
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The PR head commit (not the merge ref) so file line numbers match the commit_id inline comments are
           # anchored to. Beside the harness, never on top of it.
@@ -82,7 +88,7 @@ jobs:
 
       - name: Set up Node
         timeout-minutes: 3
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '20'
           # Cached: every round otherwise pulls the SDK and its platform binaries fresh, inside
@@ -188,7 +194,7 @@ jobs:
     steps:
       - name: Checkout PR head
         timeout-minutes: 3
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 1
@@ -212,7 +218,7 @@ jobs:
       - name: Set up Node
         if: steps.touches.outputs.harness == 'true'
         timeout-minutes: 3
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '20'
           cache: npm
