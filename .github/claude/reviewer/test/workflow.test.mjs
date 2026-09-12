@@ -246,6 +246,27 @@ test('the job that holds the secrets executes only the base branch\'s code', () 
   assert.equal(/node --test/.test(review.replace(/^\s*#.*$/gm, '')), false, 'the review job must not run tests from the pull request tree');
 });
 
+test('every action in the reviewer workflow is pinned to a commit SHA, with its version beside it', () => {
+  // A mutable tag (`@v5`) lets the action's maintainer — or whoever ends up holding the tag — swap the code that
+  // runs inside the job with the secrets. A 40-hex commit cannot move. The trailing `# vX.Y.Z` is for the human
+  // who bumps it next, and for the reviewer reading a diff of the pin.
+  //
+  // Scope: THIS workflow only. The harness is portable — the same suite runs in every repository that carries it —
+  // so it does not assert on the repository's other workflows; pinning those is that repository's own change.
+  // Limit: this is a shape check. Nothing local can verify that the commit IS the tag in the comment (that takes
+  // the upstream repository's refs); a bump that edits one and not the other passes here and is caught in review.
+  const text = readFileSync(WORKFLOW, 'utf8');
+  // Both step forms: `uses:` after a `name:`, and the bare `- uses:` step, which has no name key to hide behind.
+  const uses = [...text.matchAll(/^\s+(?:- )?uses: (\S+)(.*)$/gm)];
+  assert.ok(uses.length >= 2, 'no uses: lines found in the workflow');
+  for (const [line, ref, rest] of uses) {
+    if (ref.startsWith('./')) continue; // a local action is this repository's own code, pinned by the commit under review
+    // owner/repo[/subdirectory...]@sha — subdirectory actions (`gradle/actions/setup-gradle@…`) are one `uses:` too.
+    assert.match(ref, /^[\w.-]+\/[\w.-]+(?:\/[\w.-]+)*@[0-9a-f]{40}$/, `${line.trim()}: not pinned to a commit SHA`);
+    assert.match(rest, /^\s+# v\d+(?:\.\d+)*(?:-[\w.]+)?\s*$/, `${line.trim()}: no version comment beside the pin`);
+  }
+});
+
 test('the job that runs pull request code holds no secret', () => {
   // The other half of `pull_request_target`: the pull request's own harness tests execute its code, so that job
   // gets no secret, no environment, and a read-only token it does not persist.
