@@ -24,15 +24,48 @@ env:
   CONTAINER_NAME: bookplayer-api
 
 jobs:
+  # The credential model, shared by both jobs: the job requests a GitHub OIDC token and assumes
+  # `github-deploy-bookplayer-api`, whose trust policy accepts only a token minted for THIS repository's `production`
+  # environment (deployment-branch policy `main`) and whose permissions are exactly the deploy's — push to the
+  # bookplayer-api ECR repository, register a task definition, update the bookplayer-api service, pass its two task
+  # roles. A repository secret with an access key was readable by anyone who could edit a workflow; a token exists
+  # for the minutes the job runs and only for a run the environment admits.
+  #
+  # Two jobs, one gate each. `verify-credentials` runs only for a dry run and stops after proving the role and the
+  # ECR login. `deploy` runs only for a real dispatch AND only from `main` — the in-repo half of the guard, so a
+  # misconfigured environment policy alone can never let a branch migrate or deploy production. A step added to
+  # `deploy` later cannot forget a per-step guard, because there is none to forget.
+  verify-credentials:
+    name: Dry run — assume the deploy role and log in to ECR
+    if: ${{ inputs.dry_run }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write   # to request the OIDC token
+      contents: read
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::327317202676:role/github-deploy-bookplayer-api
+          role-session-name: github-deploy-verify-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # The login IS the ECR proof (GetAuthorizationToken, which the deploy needs); the ECS probe uses
+      # DescribeServices, which `wait-for-service-stability` needs. Nothing the deploy does not use.
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Who am I, and is the service reachable
+        run: |
+          aws sts get-caller-identity
+          aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].[serviceName,status,taskDefinition]' --output text
+          echo "dry run complete: role assumed, ECR login and the ECS service reachable; nothing built, migrated or deployed"
+
   deploy:
     name: Build and Deploy to ECS
+    if: ${{ !inputs.dry_run && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
-    # The job assumes an IAM role through GitHub's OIDC provider instead of holding a long-lived access key: the
-    # role `github-deploy-bookplayer-api` trusts only a token minted for THIS repository's `production` environment
-    # (whose deployment-branch policy is `main`), and its permissions are exactly this job's — push to the
-    # bookplayer-api ECR repository, register a task definition, update the bookplayer-api service, pass its two
-    # task roles. A repository secret with an access key was readable by anyone who could edit a workflow; a token
-    # exists for the minutes the job runs and only for a run the environment admits.
     environment: ${{ inputs.environment }}
     permissions:
       id-token: write   # to request the OIDC token
@@ -53,29 +86,15 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # `dry_run`: proves the role assumption and the ECR login and stops. Used to verify a change to this job's
-      # credentials without building, migrating or deploying anything.
-      - name: Dry run — who am I, and can I reach ECR
-        if: ${{ inputs.dry_run }}
-        # Probes use permissions the real deploy needs (and the role grants), nothing wider.
-        run: |
-          aws sts get-caller-identity
-          aws ecr describe-images --repository-name "$ECR_REPOSITORY" --max-items 1 --query 'imageDetails[0].imagePushedAt' --output text
-          aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].[serviceName,status,taskDefinition]' --output text
-          echo "dry run complete: role assumed, ECR and the ECS service reachable; stopping before build/migrate/deploy"
-
       - name: Set up Docker Buildx
-        if: ${{ !inputs.dry_run }}
         uses: docker/setup-buildx-action@v3
 
       - name: Set up QEMU for ARM64 builds
-        if: ${{ !inputs.dry_run }}
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
 
       - name: Build and push Docker image
-        if: ${{ !inputs.dry_run }}
         id: build-image
         uses: docker/build-push-action@v6
         with:
@@ -95,18 +114,15 @@ jobs:
       # tasks tolerate them. If this step fails the deploy stops here and the old
       # tasks keep serving — we never ship code ahead of its schema.
       - name: Set up Node.js
-        if: ${{ !inputs.dry_run }}
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: yarn
 
       - name: Install dependencies
-        if: ${{ !inputs.dry_run }}
         run: yarn install --frozen-lockfile
 
       - name: Run database migrations
-        if: ${{ !inputs.dry_run }}
         # NODE_ENV is intentionally left unset: knexfile.ts only defines a
         # `development` block (which reads the connection from env vars below),
         # and knex defaults to that block. Setting NODE_ENV=production would make
@@ -119,7 +135,6 @@ jobs:
           DB_DATABASE: ${{ secrets.DB_DATABASE }}
 
       - name: Render Amazon ECS task definition
-        if: ${{ !inputs.dry_run }}
         id: render-task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
@@ -128,7 +143,6 @@ jobs:
           image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
 
       - name: Deploy to Amazon ECS
-        if: ${{ !inputs.dry_run }}
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
           task-definition: ${{ steps.render-task-def.outputs.task-definition }}
@@ -137,7 +151,6 @@ jobs:
           wait-for-service-stability: true
 
       - name: Deployment summary
-        if: ${{ !inputs.dry_run }}
         run: |
           echo "## Deployment Complete! :rocket:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
