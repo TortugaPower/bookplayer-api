@@ -10,6 +10,11 @@ on:
         type: choice
         options:
           - production
+      dry_run:
+        description: 'Only assume the deploy role and log in to ECR, then stop (no build, no migration, no deploy)'
+        required: false
+        default: false
+        type: boolean
 
 env:
   AWS_REGION: us-east-1
@@ -19,9 +24,62 @@ env:
   CONTAINER_NAME: bookplayer-api
 
 jobs:
+  # The credential model, shared by both jobs: the job requests a GitHub OIDC token and assumes
+  # `github-deploy-bookplayer-api`, whose trust policy accepts only a token minted for THIS repository's `production`
+  # environment (deployment-branch policy `main`) and whose permissions are exactly the deploy's — push to the
+  # bookplayer-api ECR repository, register a task definition, update the bookplayer-api service, pass its two task
+  # roles. A repository secret with an access key was readable by anyone who could edit a workflow; a token exists
+  # for the minutes the job runs and only for a run the environment admits.
+  #
+  # Two jobs, one gate each. `verify-credentials` runs only for a dry run and stops after proving the role and the
+  # ECR login. `deploy` runs only for a real dispatch AND only from `main` — the in-repo half of the guard, so a
+  # misconfigured environment policy alone can never let a branch migrate or deploy production. A step added to
+  # `deploy` later cannot forget a per-step guard, because there is none to forget. `guard` turns the case where
+  # neither job would run — a real dispatch from a branch — into a red run with a message, not a silent no-op.
+  guard:
+    name: Real deploys run from main only
+    if: ${{ !inputs.dry_run && github.ref != 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::error::Real deploys only run from main (this run is ${{ github.ref }}). Use dry_run to verify credentials from a branch."
+          exit 1
+
+  verify-credentials:
+    name: Dry run — assume the deploy role and log in to ECR
+    if: ${{ inputs.dry_run }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write   # to request the OIDC token
+      contents: read
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::327317202676:role/github-deploy-bookplayer-api
+          role-session-name: github-deploy-verify-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # The login IS the ECR proof (GetAuthorizationToken, which the deploy needs); the ECS probe uses
+      # DescribeServices, which `wait-for-service-stability` needs. Nothing the deploy does not use.
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Who am I, and is the service reachable
+        run: |
+          aws sts get-caller-identity
+          aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].[serviceName,status,taskDefinition]' --output text
+          echo "dry run complete: trust policy, ECR login and ECS read access verified; RegisterTaskDefinition and PassRole are first exercised by the real deploy. Nothing built, migrated or deployed."
+
   deploy:
     name: Build and Deploy to ECS
+    if: ${{ !inputs.dry_run && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      id-token: write   # to request the OIDC token
+      contents: read
 
     steps:
       - name: Checkout code
@@ -30,8 +88,8 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::327317202676:role/github-deploy-bookplayer-api
+          role-session-name: github-deploy-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
