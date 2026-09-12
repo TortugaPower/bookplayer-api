@@ -90,18 +90,22 @@ runs:
         # (int32 length 8, int32 code 80877103) and expects the server's one-byte answer, 'S' or 'N': the packet has
         # crossed the tunnel, the bastion and the security group, and a PostgreSQL server replied. No credentials.
         probe() {
-          timeout 5 bash -c 'exec 3<>"/dev/tcp/127.0.0.1/$0" && printf "\x00\x00\x00\x08\x04\xd2\x16\x2f" >&3 && IFS= read -r -n 1 r <&3 && printf "%s" "$r"' "$LOCAL_PORT" 2>/dev/null || true
+          timeout 2 bash -c 'exec 3<>"/dev/tcp/127.0.0.1/$0" && printf "\x00\x00\x00\x08\x04\xd2\x16\x2f" >&3 && IFS= read -r -n 1 r <&3 && printf "%s" "$r"' "$LOCAL_PORT" 2>/dev/null || true
         }
-        for i in $(seq 1 45); do
-          if ! kill -0 "$pid" 2>/dev/null; then echo "::error::start-session exited"; cat "$RUNNER_TEMP/ssm-tunnel.log"; exit 1; fi
+        # Worst case 40 × (2s probe + 1s sleep) = 2 min, inside the callers' 3-minute step cap, so the diagnostics
+        # below always get to print. Elapsed time is reported from SECONDS, not the iteration count.
+        stop_tunnel() { pkill -P "$pid" 2>/dev/null || true; kill "$pid" 2>/dev/null || true; rm -f "$RUNNER_TEMP/ssm-tunnel.pid"; }
+        SECONDS=0
+        for i in $(seq 1 40); do
+          if ! kill -0 "$pid" 2>/dev/null; then echo "::error::start-session exited"; cat "$RUNNER_TEMP/ssm-tunnel.log"; stop_tunnel; exit 1; fi
           reply=$(probe)
           if [ "$reply" = S ] || [ "$reply" = N ]; then
             # The answer came through the port this process bound (checked free above); confirm the process is
             # still the one holding it, so a session that died during the bind race cannot pass on an early probe.
-            if ! kill -0 "$pid" 2>/dev/null; then echo "::error::start-session exited right after the probe"; cat "$RUNNER_TEMP/ssm-tunnel.log"; exit 1; fi
-            echo "tunnel up after ${i}s: PostgreSQL at $RDS_HOST answered the SSLRequest with '$reply' (S = TLS available)"
+            if ! kill -0 "$pid" 2>/dev/null; then echo "::error::start-session exited right after the probe"; cat "$RUNNER_TEMP/ssm-tunnel.log"; stop_tunnel; exit 1; fi
+            echo "tunnel up after ${SECONDS}s: PostgreSQL at $RDS_HOST answered the SSLRequest with '$reply' (S = TLS available)"
             exit 0
           fi
           sleep 1
         done
-        echo "::error::no PostgreSQL answer through the tunnel after 45s"; cat "$RUNNER_TEMP/ssm-tunnel.log"; kill "$pid" 2>/dev/null || true; exit 1
+        echo "::error::no PostgreSQL answer through the tunnel after ${SECONDS}s"; cat "$RUNNER_TEMP/ssm-tunnel.log"; stop_tunnel; exit 1

@@ -594,6 +594,7 @@ describe('MyService', () => {
 | `NODE_ENV` | development / production |
 | `API_PORT` | Server port (default: 5003) |
 | `DB_HOST` | PostgreSQL host |
+| `DB_PORT` | PostgreSQL port (optional, default `5432`; the deploy's migration step sets it to its tunnel port) |
 | `DB_USER` | PostgreSQL user |
 | `DB_PASSWORD` | PostgreSQL password |
 | `DB_DATABASE` | PostgreSQL database name |

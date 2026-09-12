@@ -74,7 +74,9 @@ jobs:
       id-token: write   # to request the OIDC token
       contents: read
     steps:
-      # Only for the local tunnel action below; nothing from the tree is executed.
+      # For the local tunnel action below. That action's shell runs from the selected ref with the deploy role's
+      # credentials — no different from the workflow file itself under `workflow_dispatch`, and the same gate applies:
+      # the environment's deployment-branch policy (see above) is what constrains which ref gets here.
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
