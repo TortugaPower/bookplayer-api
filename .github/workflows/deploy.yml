@@ -18,6 +18,8 @@ on:
 
 env:
   AWS_REGION: us-east-1
+  # The role both jobs assume; written once so a rename cannot leave one job pointing at the old name.
+  DEPLOY_ROLE_ARN: arn:aws:iam::327317202676:role/github-deploy-bookplayer-api
   ECR_REPOSITORY: bookplayer-api
   ECS_CLUSTER: bookplayer-cluster
   ECS_SERVICE: bookplayer-api
@@ -45,6 +47,10 @@ jobs:
           echo "::error::Real deploys only run from main (this run is ${{ github.ref }}). Use dry_run to verify credentials from a branch."
           exit 1
 
+  # `verify-credentials` has no ref condition on purpose — it exists to verify credentials from a branch — which
+  # means the `production` environment's deployment-branch policy is the ONLY thing stopping a branch-edited copy
+  # of this job from assuming the deploy role. Keep that policy at `main` (widen it deliberately and briefly when
+  # a branch has to be verified, then restore it), and keep the role's permissions to what the deploy needs.
   verify-credentials:
     name: Dry run — assume the deploy role and log in to ECR
     if: ${{ inputs.dry_run }}
@@ -55,27 +61,34 @@ jobs:
       contents: read
     steps:
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
         with:
-          role-to-assume: arn:aws:iam::327317202676:role/github-deploy-bookplayer-api
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
           role-session-name: github-deploy-verify-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
 
       # The login IS the ECR proof (GetAuthorizationToken, which the deploy needs); the ECS probe uses
       # DescribeServices, which `wait-for-service-stability` needs. Nothing the deploy does not use.
       - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
 
       - name: Who am I, and is the service reachable
         run: |
           aws sts get-caller-identity
+          # describe-services exits 0 for a missing or misnamed service (empty `services`, a `failures` entry), so the
+          # status is asserted rather than printed.
+          status=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].status' --output text)
+          if [ "$status" != "ACTIVE" ]; then echo "::error::service $ECS_CLUSTER/$ECS_SERVICE is not ACTIVE (got: $status)"; exit 1; fi
           aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].[serviceName,status,taskDefinition]' --output text
           echo "dry run complete: trust policy, ECR login and ECS read access verified; RegisterTaskDefinition and PassRole are first exercised by the real deploy. Nothing built, migrated or deployed."
 
   deploy:
     name: Build and Deploy to ECS
     if: ${{ !inputs.dry_run && github.ref == 'refs/heads/main' }}
-    runs-on: ubuntu-latest
+    # A native arm64 runner: the image is linux/arm64 and used to be built under QEMU on an x86 runner, which
+    # crashed `yarn install` with SIGILL (exit 132) once the node:20-alpine base moved — Node's JIT under user-mode
+    # emulation. Building where the image runs removes the emulator, and the build with it takes a third of the time.
+    runs-on: ubuntu-24.04-arm
     environment: ${{ inputs.environment }}
     permissions:
       id-token: write   # to request the OIDC token
@@ -83,30 +96,25 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
         with:
-          role-to-assume: arn:aws:iam::327317202676:role/github-deploy-bookplayer-api
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
           role-session-name: github-deploy-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Set up QEMU for ARM64 builds
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Build and push Docker image
         id: build-image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: ./docker/Dockerfile
@@ -124,7 +132,7 @@ jobs:
       # tasks tolerate them. If this step fails the deploy stops here and the old
       # tasks keep serving — we never ship code ahead of its schema.
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 20
           cache: yarn
@@ -146,14 +154,14 @@ jobs:
 
       - name: Render Amazon ECS task definition
         id: render-task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        uses: aws-actions/amazon-ecs-render-task-definition@138c24f321fdbdf7edee4a685519d253cae2cdea # v1.9.0
         with:
           task-definition: docker/ecs/task-definition.json
           container-name: ${{ env.CONTAINER_NAME }}
           image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
 
       - name: Deploy to Amazon ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        uses: aws-actions/amazon-ecs-deploy-task-definition@c465972ecbd160473f22e683363b422a5412a3de # v2.6.3
         with:
           task-definition: ${{ steps.render-task-def.outputs.task-definition }}
           service: ${{ env.ECS_SERVICE }}
