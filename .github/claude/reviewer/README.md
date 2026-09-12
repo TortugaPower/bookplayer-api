@@ -151,8 +151,8 @@ so the workflow file that runs is the base branch's; the job checks the harness 
 a second job that holds no secret, no environment and a read-only token. The consequence to know about: a pull
 request that changes the harness is reviewed by the harness it is changing *from*; merging is what promotes it.
 
-**Actions are pinned to commit SHAs**, version in a trailing comment (`uses: actions/checkout@3d3c42e5… # v7.0.1`),
-and `test/workflow.test.mjs` fails on a mutable tag: a tag can be moved onto different code by whoever holds it, and
+**The reviewer workflow's actions are pinned to commit SHAs**, version in a trailing comment
+(`uses: actions/checkout@3d3c42e5… # v7.0.1`), and `test/workflow.test.mjs` fails on a mutable tag in this workflow: a tag can be moved onto different code by whoever holds it, and
 this job holds the secrets. Fork pull requests are skipped at the job level on purpose (they would receive the
 environment's secrets under `pull_request_target`), which is also why checkout v7's refusal to fetch a fork's head
 never fires here and `allow-unsafe-pr-checkout` stays unset.
