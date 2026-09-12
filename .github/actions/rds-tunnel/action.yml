@@ -1,0 +1,111 @@
+name: Open a tunnel to the private RDS instance
+description: >
+  Session Manager port-forward through the bastion to the RDS endpoint, so a step on this runner can reach a
+  database that has no public address. Proves the tunnel end to end with a PostgreSQL SSLRequest before returning.
+  The caller closes it when done: a step with `if: always()` that reads `$RUNNER_TEMP/ssm-tunnel.pid`, kills the
+  plugin child (`pkill -P`) and then the CLI wrapper — killing only the wrapper can leave the plugin holding the port
+  and the session open.
+
+inputs:
+  bastion-instance-id:
+    description: EC2 instance id of the SSM-managed bastion inside the VPC
+    required: true
+  rds-instance:
+    description: RDS DB instance identifier; its endpoint is looked up with rds:DescribeDBInstances
+    required: true
+  local-port:
+    description: Local port the tunnel listens on. Non-default on purpose, so nothing on the runner can already hold it.
+    required: false
+    default: '15432'
+  plugin-version:
+    description: Session Manager plugin version to install (arm64 Ubuntu build)
+    required: true
+  plugin-sha256:
+    description: SHA-256 of that plugin .deb; the install fails on a mismatch
+    required: true
+
+outputs:
+  pid:
+    description: PID of the `aws ssm start-session` process holding the tunnel
+    value: ${{ steps.open.outputs.pid }}
+  host:
+    description: The RDS endpoint the tunnel forwards to
+    value: ${{ steps.endpoint.outputs.host }}
+
+runs:
+  using: composite
+  steps:
+    # Not on the runner image. Pinned by version and checksum, like every action in the workflow: `latest` is a
+    # mutable pointer into a bucket, and this binary runs with the deploy role's credentials in its environment.
+    - name: Install the Session Manager plugin
+      shell: bash
+      env:
+        PLUGIN_VERSION: ${{ inputs.plugin-version }}
+        PLUGIN_SHA256: ${{ inputs.plugin-sha256 }}
+      run: |
+        set -euo pipefail
+        if [ "$(uname -m)" != "aarch64" ]; then echo "::error::this action pins the arm64 plugin build; runner is $(uname -m)"; exit 1; fi
+        deb="$RUNNER_TEMP/session-manager-plugin.deb"
+        curl -fsSL --retry 3 --retry-all-errors --connect-timeout 10 --max-time 120 \
+          "https://s3.amazonaws.com/session-manager-downloads/plugin/${PLUGIN_VERSION}/ubuntu_arm64/session-manager-plugin.deb" -o "$deb"
+        echo "${PLUGIN_SHA256}  ${deb}" | sha256sum -c -
+        sudo dpkg -i "$deb" >/dev/null
+        session-manager-plugin --version
+
+    - name: Resolve the RDS endpoint
+      id: endpoint
+      shell: bash
+      env:
+        RDS_INSTANCE: ${{ inputs.rds-instance }}
+      run: |
+        set -euo pipefail
+        host=$(aws rds describe-db-instances --db-instance-identifier "$RDS_INSTANCE" --query 'DBInstances[0].Endpoint.Address' --output text)
+        case "$host" in *.rds.amazonaws.com) ;; *) echo "::error::unexpected endpoint for $RDS_INSTANCE: '$host'"; exit 1;; esac
+        echo "host=$host" >> "$GITHUB_OUTPUT"
+
+    - name: Open the tunnel and wait for PostgreSQL to answer through it
+      id: open
+      shell: bash
+      env:
+        BASTION_INSTANCE_ID: ${{ inputs.bastion-instance-id }}
+        RDS_HOST: ${{ steps.endpoint.outputs.host }}
+        LOCAL_PORT: ${{ inputs.local-port }}
+      run: |
+        set -euo pipefail
+        # The probe below asks whoever answers on the local port; make sure that can only be this tunnel.
+        if timeout 1 bash -c 'exec 3<>"/dev/tcp/127.0.0.1/$0"' "$LOCAL_PORT" 2>/dev/null; then
+          echo "::error::port $LOCAL_PORT is already in use on the runner; refusing to probe an unknown listener"; exit 1
+        fi
+        aws ssm start-session \
+          --target "$BASTION_INSTANCE_ID" \
+          --document-name AWS-StartPortForwardingSessionToRemoteHost \
+          --parameters "{\"host\":[\"$RDS_HOST\"],\"portNumber\":[\"5432\"],\"localPortNumber\":[\"$LOCAL_PORT\"]}" \
+          > "$RUNNER_TEMP/ssm-tunnel.log" 2>&1 &
+        pid=$!
+        echo "pid=$pid" >> "$GITHUB_OUTPUT"
+        # For the caller's `if: always()` cleanup: the step output exists only when this step succeeds, the file
+        # exists from the moment the session is started.
+        echo "$pid" > "$RUNNER_TEMP/ssm-tunnel.pid"
+        # A TCP connect to the local port only proves the plugin is listening. This sends PostgreSQL's SSLRequest
+        # (int32 length 8, int32 code 80877103) and expects the server's one-byte answer, 'S' or 'N': the packet has
+        # crossed the tunnel, the bastion and the security group, and a PostgreSQL server replied. No credentials.
+        probe() {
+          timeout 2 bash -c 'exec 3<>"/dev/tcp/127.0.0.1/$0" && printf "\x00\x00\x00\x08\x04\xd2\x16\x2f" >&3 && IFS= read -r -n 1 r <&3 && printf "%s" "$r"' "$LOCAL_PORT" 2>/dev/null || true
+        }
+        # Worst case 40 × (2s probe + 1s sleep) = 2 min, inside the callers' 3-minute step cap, so the diagnostics
+        # below always get to print. Elapsed time is reported from SECONDS, not the iteration count.
+        stop_tunnel() { pkill -P "$pid" 2>/dev/null || true; kill "$pid" 2>/dev/null || true; rm -f "$RUNNER_TEMP/ssm-tunnel.pid"; }
+        SECONDS=0
+        for i in $(seq 1 40); do
+          if ! kill -0 "$pid" 2>/dev/null; then echo "::error::start-session exited"; cat "$RUNNER_TEMP/ssm-tunnel.log"; stop_tunnel; exit 1; fi
+          reply=$(probe)
+          if [ "$reply" = S ] || [ "$reply" = N ]; then
+            # The answer came through the port this process bound (checked free above); confirm the process is
+            # still the one holding it, so a session that died during the bind race cannot pass on an early probe.
+            if ! kill -0 "$pid" 2>/dev/null; then echo "::error::start-session exited right after the probe"; cat "$RUNNER_TEMP/ssm-tunnel.log"; stop_tunnel; exit 1; fi
+            echo "tunnel up after ${SECONDS}s: PostgreSQL at $RDS_HOST answered the SSLRequest with '$reply' (S = TLS available)"
+            exit 0
+          fi
+          sleep 1
+        done
+        echo "::error::no PostgreSQL answer through the tunnel after ${SECONDS}s"; cat "$RUNNER_TEMP/ssm-tunnel.log"; stop_tunnel; exit 1

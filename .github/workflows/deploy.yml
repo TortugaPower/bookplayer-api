@@ -11,7 +11,7 @@ on:
         options:
           - production
       dry_run:
-        description: 'Only assume the deploy role and log in to ECR, then stop (no build, no migration, no deploy)'
+        description: 'Only assume the deploy role, log in to ECR and open the database tunnel, then stop (no build, no migration, no deploy)'
         required: false
         default: false
         type: boolean
@@ -24,13 +24,25 @@ env:
   ECS_CLUSTER: bookplayer-cluster
   ECS_SERVICE: bookplayer-api
   CONTAINER_NAME: bookplayer-api
+  # The database has no public address. The migration step reaches it through a Session Manager port-forward on the
+  # bastion; the deploy role may start a session on THIS instance with THAT document only, and look up THIS
+  # instance's endpoint. Nothing here is secret — the tunnel is authenticated by the role, the database by DB_*.
+  BASTION_INSTANCE_ID: i-029cec6605709e94d
+  RDS_INSTANCE: bookplayer-db
+  # Non-default local port: nothing on the runner can already be listening there, so the readiness probe can only be
+  # answered through this tunnel. knexfile.ts reads it as DB_PORT (default 5432).
+  DB_TUNNEL_PORT: '15432'
+  # The Session Manager plugin is not on the runner image; pinned by version AND checksum, like the actions.
+  # Bump both together: https://s3.amazonaws.com/session-manager-downloads/plugin/latest/VERSION
+  SSM_PLUGIN_VERSION: 1.2.835.0
+  SSM_PLUGIN_SHA256: 0add94c4c8b6ca63f26e44fd655d662b0f6455a268b5b9ebebee0f462214e928
 
 jobs:
   # The credential model, shared by both jobs: the job requests a GitHub OIDC token and assumes
   # `github-deploy-bookplayer-api`, whose trust policy accepts only a token minted for THIS repository's `production`
   # environment (deployment-branch policy `main`) and whose permissions are exactly the deploy's — push to the
   # bookplayer-api ECR repository, register a task definition, update the bookplayer-api service, pass its two task
-  # roles. A repository secret with an access key was readable by anyone who could edit a workflow; a token exists
+  # roles, port-forward through the bastion to the database, describe that database instance. A repository secret with an access key was readable by anyone who could edit a workflow; a token exists
   # for the minutes the job runs and only for a run the environment admits.
   #
   # Two jobs, one gate each. `verify-credentials` runs only for a dry run and stops after proving the role and the
@@ -52,14 +64,24 @@ jobs:
   # of this job from assuming the deploy role. Keep that policy at `main` (widen it deliberately and briefly when
   # a branch has to be verified, then restore it), and keep the role's permissions to what the deploy needs.
   verify-credentials:
-    name: Dry run — assume the deploy role and log in to ECR
+    name: Dry run — assume the deploy role, log in to ECR, reach the database through the bastion
     if: ${{ inputs.dry_run }}
-    runs-on: ubuntu-latest
+    # Same runner as the deploy: the tunnel action pins the arm64 plugin build, and the dry run should exercise the
+    # exact steps the deploy will.
+    runs-on: ubuntu-24.04-arm
     environment: ${{ inputs.environment }}
     permissions:
       id-token: write   # to request the OIDC token
       contents: read
     steps:
+      # For the local tunnel action below. That action's shell runs from the selected ref with the deploy role's
+      # credentials — no different from the workflow file itself under `workflow_dispatch`, and the same gate applies:
+      # the environment's deployment-branch policy (see above) is what constrains which ref gets here.
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
         with:
@@ -80,7 +102,37 @@ jobs:
           status=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].status' --output text)
           if [ "$status" != "ACTIVE" ]; then echo "::error::service $ECS_CLUSTER/$ECS_SERVICE is not ACTIVE (got: $status)"; exit 1; fi
           aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].[serviceName,status,taskDefinition]' --output text
-          echo "dry run complete: trust policy, ECR login and ECS read access verified; RegisterTaskDefinition and PassRole are first exercised by the real deploy. Nothing built, migrated or deployed."
+
+      # The same action the deploy uses, so the dry run proves StartSession on the bastion, the endpoint lookup, the
+      # plugin pin and that a PostgreSQL server answers through the tunnel — without credentials and without a query.
+      - name: Open the database tunnel
+        id: tunnel
+        timeout-minutes: 3
+        uses: ./.github/actions/rds-tunnel
+        with:
+          bastion-instance-id: ${{ env.BASTION_INSTANCE_ID }}
+          rds-instance: ${{ env.RDS_INSTANCE }}
+          local-port: ${{ env.DB_TUNNEL_PORT }}
+          plugin-version: ${{ env.SSM_PLUGIN_VERSION }}
+          plugin-sha256: ${{ env.SSM_PLUGIN_SHA256 }}
+
+      # Always, and from the pid FILE: the step output exists only if the tunnel step succeeded, and a tunnel that
+      # failed halfway can still be holding a session. The plugin is a child of the CLI wrapper and is commonly
+      # reparented when only the wrapper dies, so the child goes first.
+      - name: Close the database tunnel
+        if: always()
+        run: |
+          pidfile="$RUNNER_TEMP/ssm-tunnel.pid"
+          if [ ! -f "$pidfile" ]; then echo "no tunnel to close"; exit 0; fi
+          pid=$(cat "$pidfile")
+          pkill -P "$pid" 2>/dev/null || true
+          kill "$pid" 2>/dev/null || true
+          rm -f "$pidfile"
+          echo "tunnel closed"
+
+      - name: Dry run complete
+        run: |
+          echo "dry run complete: trust policy, ECR login, ECS read access and the database tunnel verified; RegisterTaskDefinition and PassRole are first exercised by the real deploy. Nothing built, migrated or deployed."
 
   deploy:
     name: Build and Deploy to ECS
@@ -140,17 +192,49 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Open the database tunnel
+        id: tunnel
+        timeout-minutes: 3
+        uses: ./.github/actions/rds-tunnel
+        with:
+          bastion-instance-id: ${{ env.BASTION_INSTANCE_ID }}
+          rds-instance: ${{ env.RDS_INSTANCE }}
+          local-port: ${{ env.DB_TUNNEL_PORT }}
+          plugin-version: ${{ env.SSM_PLUGIN_VERSION }}
+          plugin-sha256: ${{ env.SSM_PLUGIN_SHA256 }}
+
       - name: Run database migrations
+        timeout-minutes: 15
         # NODE_ENV is intentionally left unset: knexfile.ts only defines a
         # `development` block (which reads the connection from env vars below),
         # and knex defaults to that block. Setting NODE_ENV=production would make
         # knex look for a non-existent `production` config and fail.
         run: npx knex migrate:latest --knexfile knexfile.ts
         env:
-          DB_HOST: ${{ secrets.DB_HOST }}
+          # The local end of the tunnel. `127.0.0.1` rather than `localhost` on purpose: knexfile.ts turns TLS off
+          # for the literal string `localhost`. Note what that TLS is: knexfile.ts uses `rejectUnauthorized: false`
+          # for any other host, so the connection is encrypted but the server is NOT authenticated by TLS (its
+          # certificate would not name 127.0.0.1 anyway); the trust here is the SSM session and the security group.
+          # Verifying the RDS CA with `servername` set to the endpoint is a follow-up with the IAM-auth work.
+          DB_HOST: 127.0.0.1
+          DB_PORT: ${{ env.DB_TUNNEL_PORT }}
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_DATABASE: ${{ secrets.DB_DATABASE }}
+
+      # Always, and from the pid FILE: the step output exists only if the tunnel step succeeded, and a tunnel that
+      # failed halfway can still be holding a session. The plugin is a child of the CLI wrapper and is commonly
+      # reparented when only the wrapper dies, so the child goes first.
+      - name: Close the database tunnel
+        if: always()
+        run: |
+          pidfile="$RUNNER_TEMP/ssm-tunnel.pid"
+          if [ ! -f "$pidfile" ]; then echo "no tunnel to close"; exit 0; fi
+          pid=$(cat "$pidfile")
+          pkill -P "$pid" 2>/dev/null || true
+          kill "$pid" 2>/dev/null || true
+          rm -f "$pidfile"
+          echo "tunnel closed"
 
       - name: Render Amazon ECS task definition
         id: render-task-def
