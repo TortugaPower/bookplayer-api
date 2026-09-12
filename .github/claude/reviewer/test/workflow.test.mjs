@@ -256,7 +256,8 @@ test('every action in the reviewer workflow is pinned to a commit SHA, with its 
   // Limit: this is a shape check. Nothing local can verify that the commit IS the tag in the comment (that takes
   // the upstream repository's refs); a bump that edits one and not the other passes here and is caught in review.
   const text = readFileSync(WORKFLOW, 'utf8');
-  const uses = [...text.matchAll(/^\s+uses: (\S+)(.*)$/gm)];
+  // Both step forms: `uses:` after a `name:`, and the bare `- uses:` step, which has no name key to hide behind.
+  const uses = [...text.matchAll(/^\s+(?:- )?uses: (\S+)(.*)$/gm)];
   assert.ok(uses.length >= 2, 'no uses: lines found in the workflow');
   for (const [line, ref, rest] of uses) {
     if (ref.startsWith('./')) continue; // a local action is this repository's own code, pinned by the commit under review
