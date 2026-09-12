@@ -34,7 +34,17 @@ jobs:
   # Two jobs, one gate each. `verify-credentials` runs only for a dry run and stops after proving the role and the
   # ECR login. `deploy` runs only for a real dispatch AND only from `main` — the in-repo half of the guard, so a
   # misconfigured environment policy alone can never let a branch migrate or deploy production. A step added to
-  # `deploy` later cannot forget a per-step guard, because there is none to forget.
+  # `deploy` later cannot forget a per-step guard, because there is none to forget. `guard` turns the case where
+  # neither job would run — a real dispatch from a branch — into a red run with a message, not a silent no-op.
+  guard:
+    name: Real deploys run from main only
+    if: ${{ !inputs.dry_run && github.ref != 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::error::Real deploys only run from main (this run is ${{ github.ref }}). Use dry_run to verify credentials from a branch."
+          exit 1
+
   verify-credentials:
     name: Dry run — assume the deploy role and log in to ECR
     if: ${{ inputs.dry_run }}
@@ -60,7 +70,7 @@ jobs:
         run: |
           aws sts get-caller-identity
           aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].[serviceName,status,taskDefinition]' --output text
-          echo "dry run complete: role assumed, ECR login and the ECS service reachable; nothing built, migrated or deployed"
+          echo "dry run complete: trust policy, ECR login and ECS read access verified; RegisterTaskDefinition and PassRole are first exercised by the real deploy. Nothing built, migrated or deployed."
 
   deploy:
     name: Build and Deploy to ECS
