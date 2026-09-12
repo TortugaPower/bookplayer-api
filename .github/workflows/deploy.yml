@@ -57,10 +57,12 @@ jobs:
       # credentials without building, migrating or deploying anything.
       - name: Dry run — who am I, and can I reach ECR
         if: ${{ inputs.dry_run }}
+        # Probes use permissions the real deploy needs (and the role grants), nothing wider.
         run: |
           aws sts get-caller-identity
-          aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" --query 'repositories[0].repositoryUri' --output text
-          echo "dry run complete: role assumed, ECR reachable; stopping before build/migrate/deploy"
+          aws ecr describe-images --repository-name "$ECR_REPOSITORY" --max-items 1 --query 'imageDetails[0].imagePushedAt' --output text
+          aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].[serviceName,status,taskDefinition]' --output text
+          echo "dry run complete: role assumed, ECR and the ECS service reachable; stopping before build/migrate/deploy"
 
       - name: Set up Docker Buildx
         if: ${{ !inputs.dry_run }}
