@@ -29,7 +29,9 @@ env:
   # instance's endpoint. Nothing here is secret — the tunnel is authenticated by the role, the database by DB_*.
   BASTION_INSTANCE_ID: i-029cec6605709e94d
   RDS_INSTANCE: bookplayer-db
-  DB_TUNNEL_PORT: '5432'
+  # Non-default local port: nothing on the runner can already be listening there, so the readiness probe can only be
+  # answered through this tunnel. knexfile.ts reads it as DB_PORT (default 5432).
+  DB_TUNNEL_PORT: '15432'
   # The Session Manager plugin is not on the runner image; pinned by version AND checksum, like the actions.
   # Bump both together: https://s3.amazonaws.com/session-manager-downloads/plugin/latest/VERSION
   SSM_PLUGIN_VERSION: 1.2.835.0
@@ -112,11 +114,19 @@ jobs:
           plugin-version: ${{ env.SSM_PLUGIN_VERSION }}
           plugin-sha256: ${{ env.SSM_PLUGIN_SHA256 }}
 
+      # Always, and from the pid FILE: the step output exists only if the tunnel step succeeded, and a tunnel that
+      # failed halfway can still be holding a session. The plugin is a child of the CLI wrapper and is commonly
+      # reparented when only the wrapper dies, so the child goes first.
       - name: Close the database tunnel
-        if: always() && steps.tunnel.outputs.pid != ''
-        env:
-          TUNNEL_PID: ${{ steps.tunnel.outputs.pid }}
-        run: kill "$TUNNEL_PID" 2>/dev/null || true
+        if: always()
+        run: |
+          pidfile="$RUNNER_TEMP/ssm-tunnel.pid"
+          if [ ! -f "$pidfile" ]; then echo "no tunnel to close"; exit 0; fi
+          pid=$(cat "$pidfile")
+          pkill -P "$pid" 2>/dev/null || true
+          kill "$pid" 2>/dev/null || true
+          rm -f "$pidfile"
+          echo "tunnel closed"
 
       - name: Dry run complete
         run: |
@@ -200,18 +210,29 @@ jobs:
         run: npx knex migrate:latest --knexfile knexfile.ts
         env:
           # The local end of the tunnel. `127.0.0.1` rather than `localhost` on purpose: knexfile.ts turns TLS off
-          # for the literal string `localhost`, and the connection should stay TLS end to end through the tunnel.
-          # knexfile.ts sets no port, so knex uses 5432 — which is why DB_TUNNEL_PORT must stay 5432.
+          # for the literal string `localhost`. Note what that TLS is: knexfile.ts uses `rejectUnauthorized: false`
+          # for any other host, so the connection is encrypted but the server is NOT authenticated by TLS (its
+          # certificate would not name 127.0.0.1 anyway); the trust here is the SSM session and the security group.
+          # Verifying the RDS CA with `servername` set to the endpoint is a follow-up with the IAM-auth work.
           DB_HOST: 127.0.0.1
+          DB_PORT: ${{ env.DB_TUNNEL_PORT }}
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_DATABASE: ${{ secrets.DB_DATABASE }}
 
+      # Always, and from the pid FILE: the step output exists only if the tunnel step succeeded, and a tunnel that
+      # failed halfway can still be holding a session. The plugin is a child of the CLI wrapper and is commonly
+      # reparented when only the wrapper dies, so the child goes first.
       - name: Close the database tunnel
-        if: always() && steps.tunnel.outputs.pid != ''
-        env:
-          TUNNEL_PID: ${{ steps.tunnel.outputs.pid }}
-        run: kill "$TUNNEL_PID" 2>/dev/null || true
+        if: always()
+        run: |
+          pidfile="$RUNNER_TEMP/ssm-tunnel.pid"
+          if [ ! -f "$pidfile" ]; then echo "no tunnel to close"; exit 0; fi
+          pid=$(cat "$pidfile")
+          pkill -P "$pid" 2>/dev/null || true
+          kill "$pid" 2>/dev/null || true
+          rm -f "$pidfile"
+          echo "tunnel closed"
 
       - name: Render Amazon ECS task definition
         id: render-task-def

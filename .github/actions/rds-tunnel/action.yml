@@ -2,7 +2,9 @@ name: Open a tunnel to the private RDS instance
 description: >
   Session Manager port-forward through the bastion to the RDS endpoint, so a step on this runner can reach a
   database that has no public address. Proves the tunnel end to end with a PostgreSQL SSLRequest before returning.
-  The caller kills `pid` when done (a step with `if: always()`).
+  The caller closes it when done: a step with `if: always()` that reads `$RUNNER_TEMP/ssm-tunnel.pid`, kills the
+  plugin child (`pkill -P`) and then the CLI wrapper — killing only the wrapper can leave the plugin holding the port
+  and the session open.
 
 inputs:
   bastion-instance-id:
@@ -12,9 +14,9 @@ inputs:
     description: RDS DB instance identifier; its endpoint is looked up with rds:DescribeDBInstances
     required: true
   local-port:
-    description: Local port the tunnel listens on
+    description: Local port the tunnel listens on. Non-default on purpose, so nothing on the runner can already hold it.
     required: false
-    default: '5432'
+    default: '15432'
   plugin-version:
     description: Session Manager plugin version to install (arm64 Ubuntu build)
     required: true
@@ -44,7 +46,8 @@ runs:
         set -euo pipefail
         if [ "$(uname -m)" != "aarch64" ]; then echo "::error::this action pins the arm64 plugin build; runner is $(uname -m)"; exit 1; fi
         deb="$RUNNER_TEMP/session-manager-plugin.deb"
-        curl -fsSL "https://s3.amazonaws.com/session-manager-downloads/plugin/${PLUGIN_VERSION}/ubuntu_arm64/session-manager-plugin.deb" -o "$deb"
+        curl -fsSL --retry 3 --retry-all-errors --connect-timeout 10 --max-time 120 \
+          "https://s3.amazonaws.com/session-manager-downloads/plugin/${PLUGIN_VERSION}/ubuntu_arm64/session-manager-plugin.deb" -o "$deb"
         echo "${PLUGIN_SHA256}  ${deb}" | sha256sum -c -
         sudo dpkg -i "$deb" >/dev/null
         session-manager-plugin --version
@@ -69,6 +72,10 @@ runs:
         LOCAL_PORT: ${{ inputs.local-port }}
       run: |
         set -euo pipefail
+        # The probe below asks whoever answers on the local port; make sure that can only be this tunnel.
+        if timeout 1 bash -c 'exec 3<>"/dev/tcp/127.0.0.1/$0"' "$LOCAL_PORT" 2>/dev/null; then
+          echo "::error::port $LOCAL_PORT is already in use on the runner; refusing to probe an unknown listener"; exit 1
+        fi
         aws ssm start-session \
           --target "$BASTION_INSTANCE_ID" \
           --document-name AWS-StartPortForwardingSessionToRemoteHost \
@@ -76,6 +83,9 @@ runs:
           > "$RUNNER_TEMP/ssm-tunnel.log" 2>&1 &
         pid=$!
         echo "pid=$pid" >> "$GITHUB_OUTPUT"
+        # For the caller's `if: always()` cleanup: the step output exists only when this step succeeds, the file
+        # exists from the moment the session is started.
+        echo "$pid" > "$RUNNER_TEMP/ssm-tunnel.pid"
         # A TCP connect to the local port only proves the plugin is listening. This sends PostgreSQL's SSLRequest
         # (int32 length 8, int32 code 80877103) and expects the server's one-byte answer, 'S' or 'N': the packet has
         # crossed the tunnel, the bastion and the security group, and a PostgreSQL server replied. No credentials.
@@ -86,6 +96,9 @@ runs:
           if ! kill -0 "$pid" 2>/dev/null; then echo "::error::start-session exited"; cat "$RUNNER_TEMP/ssm-tunnel.log"; exit 1; fi
           reply=$(probe)
           if [ "$reply" = S ] || [ "$reply" = N ]; then
+            # The answer came through the port this process bound (checked free above); confirm the process is
+            # still the one holding it, so a session that died during the bind race cannot pass on an early probe.
+            if ! kill -0 "$pid" 2>/dev/null; then echo "::error::start-session exited right after the probe"; cat "$RUNNER_TEMP/ssm-tunnel.log"; exit 1; fi
             echo "tunnel up after ${i}s: PostgreSQL at $RDS_HOST answered the SSLRequest with '$reply' (S = TLS available)"
             exit 0
           fi
