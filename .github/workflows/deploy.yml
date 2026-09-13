@@ -11,7 +11,7 @@ on:
         options:
           - production
       dry_run:
-        description: 'Only assume the deploy role, log in to ECR and open the database tunnel, then stop (no build, no migration, no deploy)'
+        description: 'Only assume the deploy role, log in to ECR, open the database tunnel and log in to the database with an IAM token, then stop (no build, no migration, no deploy)'
         required: false
         default: false
         type: boolean
@@ -36,13 +36,20 @@ env:
   # Bump both together: https://s3.amazonaws.com/session-manager-downloads/plugin/latest/VERSION
   SSM_PLUGIN_VERSION: 1.2.835.0
   SSM_PLUGIN_SHA256: 0add94c4c8b6ca63f26e44fd655d662b0f6455a268b5b9ebebee0f462214e928
+  # The migration step authenticates with an RDS IAM token minted by the deploy role (`rds-db:connect` on this one
+  # database user), not a password: no database credential lives in GitHub. The user is a member of `rds_iam` and of
+  # the schema owner `bpadmin2022`, and every session starts as that owner (`ALTER ROLE ... SET role`), so ALTERs
+  # work and new tables are owned like the existing ones. Neither value is secret.
+  DB_MIGRATION_USER: migrator_iam
+  DB_NAME: bookplayer-db
 
 jobs:
   # The credential model, shared by both jobs: the job requests a GitHub OIDC token and assumes
   # `github-deploy-bookplayer-api`, whose trust policy accepts only a token minted for THIS repository's `production`
   # environment (deployment-branch policy `main`) and whose permissions are exactly the deploy's — push to the
   # bookplayer-api ECR repository, register a task definition, update the bookplayer-api service, pass its two task
-  # roles, port-forward through the bastion to the database, describe that database instance. A repository secret with an access key was readable by anyone who could edit a workflow; a token exists
+  # roles, port-forward through the bastion to the database, describe that database instance, connect to it as the
+  # migration user with an IAM token. A repository secret with an access key was readable by anyone who could edit a workflow; a token exists
   # for the minutes the job runs and only for a run the environment admits.
   #
   # Two jobs, one gate each. `verify-credentials` runs only for a dry run and stops after proving the role and the
@@ -119,6 +126,50 @@ jobs:
       # Always, and from the pid FILE: the step output exists only if the tunnel step succeeded, and a tunnel that
       # failed halfway can still be holding a session. The plugin is a child of the CLI wrapper and is commonly
       # reparented when only the wrapper dies, so the child goes first.
+      # A 15-minute token for the endpoint NAME (the token is bound to the endpoint, not to the address the client
+      # connects through, so it is valid across the tunnel). Signed locally; no API call, so a missing `rds-db:connect`
+      # shows up only at login — which is exactly what the next step tests.
+      - name: Mint a database token
+        id: db-token
+        env:
+          RDS_HOST: ${{ steps.tunnel.outputs.host }}
+        run: |
+          token=$(aws rds generate-db-auth-token --hostname "$RDS_HOST" --port 5432 --username "$DB_MIGRATION_USER")
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      # The deploy's exact credentials and path, minus the migration: `rds-db:connect` on the role, the database user's
+      # IAM membership, and that a session starts as the schema owner. Read-only; nothing is migrated in a dry run.
+      - name: Log in to the database with the IAM token
+        timeout-minutes: 2
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: ${{ env.DB_TUNNEL_PORT }}
+          DB_USER: ${{ env.DB_MIGRATION_USER }}
+          DB_PASSWORD: ${{ steps.db-token.outputs.token }}
+          DB_DATABASE: ${{ env.DB_NAME }}
+        run: |
+          node -e '
+            const { Client } = require("pg");
+            const c = new Client({ host: process.env.DB_HOST, port: Number(process.env.DB_PORT), user: process.env.DB_USER,
+              password: process.env.DB_PASSWORD, database: process.env.DB_DATABASE, ssl: { rejectUnauthorized: false } });
+            c.connect()
+              .then(() => c.query("select session_user, current_user"))
+              .then((r) => { console.log(`IAM login ok: session_user=${r.rows[0].session_user} current_user=${r.rows[0].current_user}`);
+                if (r.rows[0].current_user !== "bpadmin2022") { console.error("::error::session did not start as the schema owner"); process.exit(1); }
+                return c.end(); })
+              .catch((e) => { console.error("::error::" + e.message); process.exit(1); });
+          '
+
       - name: Close the database tunnel
         if: always()
         run: |
@@ -132,7 +183,7 @@ jobs:
 
       - name: Dry run complete
         run: |
-          echo "dry run complete: trust policy, ECR login, ECS read access and the database tunnel verified; RegisterTaskDefinition and PassRole are first exercised by the real deploy. Nothing built, migrated or deployed."
+          echo "dry run complete: trust policy, ECR login, ECS read access, the database tunnel and the IAM database login verified; RegisterTaskDefinition and PassRole are first exercised by the real deploy. Nothing built, migrated or deployed."
 
   deploy:
     name: Build and Deploy to ECS
@@ -203,6 +254,15 @@ jobs:
           plugin-version: ${{ env.SSM_PLUGIN_VERSION }}
           plugin-sha256: ${{ env.SSM_PLUGIN_SHA256 }}
 
+      - name: Mint a database token
+        id: db-token
+        env:
+          RDS_HOST: ${{ steps.tunnel.outputs.host }}
+        run: |
+          token=$(aws rds generate-db-auth-token --hostname "$RDS_HOST" --port 5432 --username "$DB_MIGRATION_USER")
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
       - name: Run database migrations
         timeout-minutes: 15
         # NODE_ENV is intentionally left unset: knexfile.ts only defines a
@@ -218,9 +278,9 @@ jobs:
           # Verifying the RDS CA with `servername` set to the endpoint is a follow-up with the IAM-auth work.
           DB_HOST: 127.0.0.1
           DB_PORT: ${{ env.DB_TUNNEL_PORT }}
-          DB_USER: ${{ secrets.DB_USER }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          DB_DATABASE: ${{ secrets.DB_DATABASE }}
+          DB_USER: ${{ env.DB_MIGRATION_USER }}
+          DB_PASSWORD: ${{ steps.db-token.outputs.token }}
+          DB_DATABASE: ${{ env.DB_NAME }}
 
       # Always, and from the pid FILE: the step output exists only if the tunnel step succeeded, and a tunnel that
       # failed halfway can still be holding a session. The plugin is a child of the CLI wrapper and is commonly
