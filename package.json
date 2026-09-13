@@ -1,6 +1,9 @@
 {
   "name": "bookplayer-api",
   "version": "0.1.0",
+  "engines": {
+    "node": ">=24 <25"
+  },
   "description": "Bookplayer-api",
   "main": "src/index.js",
   "scripts": {

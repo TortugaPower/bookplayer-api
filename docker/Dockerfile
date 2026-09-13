@@ -5,8 +5,13 @@
 # AMD64 (Synology DS920+, DS720+) architectures
 # =====================================================
 
+# Base image: Node 24 LTS on Alpine, pinned by digest (this is 24.21.0). A digest cannot move, so two builds of the
+# same commit produce the same image; bump it deliberately — the multi-arch index digest from
+# `docker buildx imagetools inspect node:24-alpine` — and update the version here. Nothing bumps it automatically
+# (Dependabot was deferred), so re-pin with each Node 24 security release (roughly monthly) and whenever Alpine ships
+# an OpenSSL fix; the node major itself lives in .nvmrc, which the workflows read.
 # Stage 1: Dependencies
-FROM node:20-alpine AS deps
+FROM node:24-alpine@sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81 AS deps
 WORKDIR /app
 
 # Install build dependencies for native modules
@@ -19,7 +24,7 @@ COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile
 
 # Stage 2: Builder
-FROM node:20-alpine AS builder
+FROM node:24-alpine@sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81 AS builder
 WORKDIR /app
 
 # Copy dependencies from deps stage
@@ -30,7 +35,7 @@ COPY . .
 RUN yarn build
 
 # Stage 3: Production dependencies only
-FROM node:20-alpine AS prod-deps
+FROM node:24-alpine@sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81 AS prod-deps
 WORKDIR /app
 
 RUN apk add --no-cache python3 make g++
@@ -40,7 +45,7 @@ RUN yarn install --frozen-lockfile --production && \
     yarn cache clean
 
 # Stage 4: Production runtime
-FROM node:20-alpine AS production
+FROM node:24-alpine@sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81 AS production
 WORKDIR /app
 
 # Add non-root user for security
