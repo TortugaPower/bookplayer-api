@@ -110,6 +110,21 @@ jobs:
           if [ "$status" != "ACTIVE" ]; then echo "::error::service $ECS_CLUSTER/$ECS_SERVICE is not ACTIVE (got: $status)"; exit 1; fi
           aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].[serviceName,status,taskDefinition]' --output text
 
+      # Everything that executes third-party code runs BEFORE the tunnel exists, and with install scripts off: this job
+      # has no ref condition (see above), so a branch-controlled lockfile must never get to run while the deploy role's
+      # credentials and a path to the production database are both in the environment. Only `pg` (pure JS) is needed.
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --ignore-scripts
+
+      - name: Fetch the RDS CA bundle
+        uses: ./.github/actions/rds-ca-bundle
+
       # The same action the deploy uses, so the dry run proves StartSession on the bastion, the endpoint lookup, the
       # plugin pin and that a PostgreSQL server answers through the tunnel — without credentials and without a query.
       - name: Open the database tunnel
@@ -123,12 +138,9 @@ jobs:
           plugin-version: ${{ env.SSM_PLUGIN_VERSION }}
           plugin-sha256: ${{ env.SSM_PLUGIN_SHA256 }}
 
-      # Always, and from the pid FILE: the step output exists only if the tunnel step succeeded, and a tunnel that
-      # failed halfway can still be holding a session. The plugin is a child of the CLI wrapper and is commonly
-      # reparented when only the wrapper dies, so the child goes first.
       # A 15-minute token for the endpoint NAME (the token is bound to the endpoint, not to the address the client
       # connects through, so it is valid across the tunnel). Signed locally; no API call, so a missing `rds-db:connect`
-      # shows up only at login — which is exactly what the next step tests.
+      # shows up only at login — which is exactly what the next step tests. Minted immediately before its only use.
       - name: Mint a database token
         id: db-token
         env:
@@ -138,17 +150,9 @@ jobs:
           echo "::add-mask::$token"
           echo "token=$token" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 20
-          cache: yarn
-
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
-
       # The deploy's exact credentials and path, minus the migration: `rds-db:connect` on the role, the database user's
-      # IAM membership, and that a session starts as the schema owner. Read-only; nothing is migrated in a dry run.
+      # IAM membership, that a session starts as the schema owner, and that the server presents a certificate for the
+      # endpoint name signed by the RDS CA. Read-only; nothing is migrated in a dry run.
       - name: Log in to the database with the IAM token
         timeout-minutes: 2
         env:
@@ -157,19 +161,26 @@ jobs:
           DB_USER: ${{ env.DB_MIGRATION_USER }}
           DB_PASSWORD: ${{ steps.db-token.outputs.token }}
           DB_DATABASE: ${{ env.DB_NAME }}
+          DB_SSL_CA: ${{ runner.temp }}/rds-global-bundle.pem
+          DB_SSL_SERVERNAME: ${{ steps.tunnel.outputs.host }}
         run: |
           node -e '
             const { Client } = require("pg");
+            const { readFileSync } = require("fs");
             const c = new Client({ host: process.env.DB_HOST, port: Number(process.env.DB_PORT), user: process.env.DB_USER,
-              password: process.env.DB_PASSWORD, database: process.env.DB_DATABASE, ssl: { rejectUnauthorized: false } });
+              password: process.env.DB_PASSWORD, database: process.env.DB_DATABASE,
+              ssl: { ca: readFileSync(process.env.DB_SSL_CA, "utf8"), servername: process.env.DB_SSL_SERVERNAME, rejectUnauthorized: true } });
             c.connect()
               .then(() => c.query("select session_user, current_user"))
-              .then((r) => { console.log(`IAM login ok: session_user=${r.rows[0].session_user} current_user=${r.rows[0].current_user}`);
+              .then((r) => { console.log(`IAM login ok over a verified TLS session: session_user=${r.rows[0].session_user} current_user=${r.rows[0].current_user}`);
                 if (r.rows[0].current_user !== "bpadmin2022") { console.error("::error::session did not start as the schema owner"); process.exit(1); }
                 return c.end(); })
               .catch((e) => { console.error("::error::" + e.message); process.exit(1); });
           '
 
+      # Always, and from the pid FILE: the step output exists only if the tunnel step succeeded, and a tunnel that
+      # failed halfway can still be holding a session. The plugin is a child of the CLI wrapper and is commonly
+      # reparented when only the wrapper dies, so the child goes first.
       - name: Close the database tunnel
         if: always()
         run: |
@@ -243,6 +254,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: Fetch the RDS CA bundle
+        uses: ./.github/actions/rds-ca-bundle
+
       - name: Open the database tunnel
         id: tunnel
         timeout-minutes: 3
@@ -263,8 +277,10 @@ jobs:
           echo "::add-mask::$token"
           echo "token=$token" >> "$GITHUB_OUTPUT"
 
+      # Under the token's 15-minute validity: a connection knex opened after expiry would fail mid-run, so the step
+      # ends first.
       - name: Run database migrations
-        timeout-minutes: 15
+        timeout-minutes: 10
         # NODE_ENV is intentionally left unset: knexfile.ts only defines a
         # `development` block (which reads the connection from env vars below),
         # and knex defaults to that block. Setting NODE_ENV=production would make
@@ -272,15 +288,16 @@ jobs:
         run: npx knex migrate:latest --knexfile knexfile.ts
         env:
           # The local end of the tunnel. `127.0.0.1` rather than `localhost` on purpose: knexfile.ts turns TLS off
-          # for the literal string `localhost`. Note what that TLS is: knexfile.ts uses `rejectUnauthorized: false`
-          # for any other host, so the connection is encrypted but the server is NOT authenticated by TLS (its
-          # certificate would not name 127.0.0.1 anyway); the trust here is the SSM session and the security group.
-          # Verifying the RDS CA with `servername` set to the endpoint is a follow-up with the IAM-auth work.
+          # for the literal string `localhost`. With DB_SSL_CA set, knexfile.ts verifies the server's certificate
+          # against the RDS CA bundle for the endpoint NAME (the certificate does not name 127.0.0.1), so the bearer
+          # token only ever reaches the RDS instance — not merely whatever answers at the tunnel's local end.
           DB_HOST: 127.0.0.1
           DB_PORT: ${{ env.DB_TUNNEL_PORT }}
           DB_USER: ${{ env.DB_MIGRATION_USER }}
           DB_PASSWORD: ${{ steps.db-token.outputs.token }}
           DB_DATABASE: ${{ env.DB_NAME }}
+          DB_SSL_CA: ${{ runner.temp }}/rds-global-bundle.pem
+          DB_SSL_SERVERNAME: ${{ steps.tunnel.outputs.host }}
 
       # Always, and from the pid FILE: the step output exists only if the tunnel step succeeded, and a tunnel that
       # failed halfway can still be holding a session. The plugin is a child of the CLI wrapper and is commonly

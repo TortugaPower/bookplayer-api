@@ -1,0 +1,21 @@
+name: Fetch the RDS CA bundle
+description: >
+  Downloads Amazon's global RDS certificate bundle to $RUNNER_TEMP/rds-global-bundle.pem so a client can verify the
+  database server's certificate (`ssl: { ca, servername: <endpoint> }`) instead of trusting whatever answers.
+  Not pinned by hash on purpose: the bundle is AWS's trust store, published over TLS from its own domain, and it
+  changes when AWS rotates CAs — a pinned copy would silently stop matching the server. It is checked to be PEM
+  with at least one certificate.
+
+runs:
+  using: composite
+  steps:
+    - name: Download and check the bundle
+      shell: bash
+      run: |
+        set -euo pipefail
+        bundle="$RUNNER_TEMP/rds-global-bundle.pem"
+        curl -fsSL --retry 3 --retry-all-errors --connect-timeout 10 --max-time 60 \
+          https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem -o "$bundle"
+        n=$(grep -c "BEGIN CERTIFICATE" "$bundle" || true)
+        if [ "${n:-0}" -lt 1 ]; then echo "::error::the RDS CA bundle is not a PEM certificate bundle"; exit 1; fi
+        echo "RDS CA bundle: $n certificates"

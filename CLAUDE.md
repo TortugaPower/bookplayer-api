@@ -595,6 +595,8 @@ describe('MyService', () => {
 | `API_PORT` | Server port (default: 5003) |
 | `DB_HOST` | PostgreSQL host |
 | `DB_PORT` | PostgreSQL port (optional, default `5432`; the deploy's migration step sets it to its tunnel port) |
+| `DB_SSL_CA` | Optional path to a CA bundle; when set, knex (migrations) verifies the server certificate against it |
+| `DB_SSL_SERVERNAME` | Optional TLS server name to verify (default `DB_HOST`); the RDS endpoint when connecting through a tunnel |
 | `DB_USER` | PostgreSQL user |
 | `DB_PASSWORD` | PostgreSQL password |
 | `DB_DATABASE` | PostgreSQL database name |

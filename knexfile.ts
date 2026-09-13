@@ -1,7 +1,23 @@
 import dotenv from 'dotenv';
+import { readFileSync } from 'fs';
 dotenv.config({
   path: `${process.env.NODE_ENV || '.development'}.env`,
 });
+
+// Off for a local server. With DB_SSL_CA set (the deploy's migration step, connecting through a tunnel at
+// 127.0.0.1), the server's certificate is verified against that CA bundle for DB_SSL_SERVERNAME — the RDS endpoint
+// name, which is what the certificate carries. Otherwise the historical behaviour: encrypted, server unverified.
+const sslConfig = () => {
+  if (process.env.DB_HOST === 'localhost') return false;
+  if (process.env.DB_SSL_CA) {
+    return {
+      ca: readFileSync(process.env.DB_SSL_CA, 'utf8'),
+      servername: process.env.DB_SSL_SERVERNAME || process.env.DB_HOST,
+      rejectUnauthorized: true,
+    };
+  }
+  return { rejectUnauthorized: false };
+};
 
 module.exports = {
   development: {
@@ -13,7 +29,7 @@ module.exports = {
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
       database: process.env.DB_DATABASE,
-      ssl: process.env.DB_HOST === 'localhost' ? false : { rejectUnauthorized: false },
+      ssl: sslConfig(),
     },
     pool: {
       min: 2,
