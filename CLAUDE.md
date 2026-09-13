@@ -660,7 +660,7 @@ See `docker/ecs/README.md` for deployment instructions.
 
 | Technology | Version | Purpose |
 |------------|---------|---------|
-| Node.js | 20.x | Runtime |
+| Node.js | 24.x (LTS; `.nvmrc`) | Runtime |
 | TypeScript | 4.5.5 | Language |
 | Express | 4.17.2 | HTTP framework |
 | Knex.js | 1.0.2 | Database query builder |

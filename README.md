@@ -15,7 +15,7 @@ We're currently using AWS to host our servers:
 ## Local setup
 
 Requirements:
-* NodeJS (v16)
+* NodeJS 24 (LTS) — `nvm use` reads `.nvmrc`
   * Yarn
 * PostgresSQL
 * Redis

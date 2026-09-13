@@ -7,7 +7,9 @@
 
 # Base image: Node 24 LTS on Alpine, pinned by digest (this is 24.21.0). A digest cannot move, so two builds of the
 # same commit produce the same image; bump it deliberately — the multi-arch index digest from
-# `docker buildx imagetools inspect node:24-alpine` — and update the version here.
+# `docker buildx imagetools inspect node:24-alpine` — and update the version here. Nothing bumps it automatically
+# (Dependabot was deferred), so re-pin with each Node 24 security release (roughly monthly) and whenever Alpine ships
+# an OpenSSL fix; the node major itself lives in .nvmrc, which the workflows read.
 # Stage 1: Dependencies
 FROM node:24-alpine@sha256:50c8e8ca1d27439048670df5883f32d57cf81cff6233222c893fd0d9884cbd81 AS deps
 WORKDIR /app
