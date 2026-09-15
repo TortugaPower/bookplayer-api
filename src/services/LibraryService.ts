@@ -1276,20 +1276,40 @@ export class LibraryService {
             // orphaning those instead. So on failure we record where the file
             // really is. The move itself still succeeds — it is a display-path
             // change — and the item stays playable from its legacy key.
+            // Where the object is, as best we can establish it.
+            let pinnedSourcePath = original_filename;
+
             if (!isMoved) {
-              // Two different failures hide behind `false`: the object is
-              // still at old_key and the copy failed, or there was never an
-              // object to copy. Only the first is worth pinning — recording a
-              // path that holds nothing would also freeze the item, since the
-              // guard above skips anything that already has a source_path, so
-              // no later move would retry the relocation.
-              //
-              // fileExists returns null when the probe itself fails, so only a
-              // definitive false counts as "nothing there"; anything else
-              // falls through to pinning, which is right for the common case.
+              // A failed move does not locate the bytes on its own. moveFile
+              // is copy-then-delete, so the failure may be a copy that never
+              // landed (bytes at old_key) or a delete that landed on S3 but
+              // lost its response (bytes at the target, source already gone).
+              // fileExists also reports 403 as false, so a false is "could not
+              // find it", not "it is not there". Probe before concluding.
               const sourceStillThere = await this._storage.fileExists({
                 key: sourceKey,
               });
+              const targetLanded =
+                sourceStillThere === false
+                  ? await this._storage.fileExists({ key: targetKey })
+                  : null;
+
+              // Anything short of a definitive "source is gone" means the
+              // object is, or is presumed, still at the old key — the common
+              // case, and the safe default when the probe itself failed
+              // (fileExists returns null then).
+              if (sourceStillThere !== false) {
+                pinnedSourcePath = fileMoved.old_key;
+              }
+
+              // Nothing found at either key. Pinning would record a path that
+              // holds nothing and freeze the row: the guard above skips items
+              // that already have a source_path, so no later move would retry
+              // the relocation. Leave it null instead — still broken, but
+              // still detectable and still retryable.
+              const foundNothing =
+                sourceStillThere === false && targetLanded !== true;
+
               this._logger.log(
                 {
                   origin: 'LibraryService.processMovedFiles',
@@ -1299,18 +1319,19 @@ export class LibraryService {
                     oldKey: fileMoved.old_key,
                     newKey: fileMoved.key,
                     sourceStillThere,
-                    pinned: sourceStillThere !== false,
+                    targetLanded,
+                    pinnedSourcePath: foundNothing ? null : pinnedSourcePath,
                   },
                 },
                 'error',
               );
-              if (sourceStillThere === false) continue;
+              if (foundNothing) continue;
             }
             await this._libraryDB.updateBySourcePath(
               {
                 user_id: user.id_user,
                 key: fileMoved.key,
-                source_path: isMoved ? original_filename : fileMoved.old_key,
+                source_path: pinnedSourcePath,
               },
               trx,
             );

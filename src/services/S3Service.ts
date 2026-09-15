@@ -24,7 +24,13 @@ export class S3Service {
   private client = new S3({ region: process.env.S3_REGION });
   private clientObject = new S3Client({ region: process.env.S3_REGION });
 
-  async fileExists(key: string): Promise<boolean> {
+  /**
+   * Tri-state on purpose: true/false are definitive, null means the probe
+   * itself failed and the caller must not read that as "absent". Note a 403
+   * also yields false — on a bucket without s3:ListBucket that is how a
+   * permission problem surfaces, not proof the key is missing.
+   */
+  async fileExists(key: string): Promise<boolean | null> {
     try {
       const data = await this.client.headObject({
         Bucket: process.env.S3_BUCKET,

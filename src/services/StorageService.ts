@@ -14,14 +14,15 @@ export class StorageService {
 
   constructor(private _s3Service: S3Service = new S3Service()) {}
 
+  /** Tri-state; see S3Service.fileExists. null means "could not determine". */
   async fileExists(params: {
     key: string;
     origin?: StorageOrigin;
-  }): Promise<boolean> {
+  }): Promise<boolean | null> {
     try {
       const { key, origin } = params;
       const storageOrigin = origin || StorageOrigin.S3;
-      let exist = false;
+      let exist: boolean | null = false;
       switch (storageOrigin) {
         case StorageOrigin.S3:
           exist = await this._s3Service.fileExists(key);

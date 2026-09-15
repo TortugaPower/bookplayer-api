@@ -442,6 +442,73 @@ describe('LibraryService — path-mutating flows (move / rename / folder_in_out)
       expect(bookAfter.key).toBe('0_FINISHED/Phantom.m4b');
       expect(bookAfter.source_path).toBeNull();
     });
+
+    it('pins to the new key when the delete landed but its response was lost', async () => {
+      const trx = getTestTransaction();
+      const user = await createTestUser(trx);
+      const book = await createTestLibraryItem(trx, {
+        user_id: user.id_user,
+        key: 'Lost.m4b',
+        source_path: null,
+      });
+      await createTestLibraryItem(trx, {
+        user_id: user.id_user,
+        key: '0_FINISHED',
+        type: 0,
+      });
+      // moveFile is copy-then-delete: the copy landed and the delete actually
+      // ran on S3, but the SDK call threw, so the move reports failure while
+      // the bytes are already at the target and gone from the source.
+      moveFileMock.mockImplementation(async () => false);
+      fileExistsMock.mockImplementation(async (params: unknown) => {
+        const { key } = params as { key: string };
+        return key !== 'test-prefix/Lost.m4b';
+      });
+
+      await service.moveLibraryObject(user as any, {
+        origin: 'Lost.m4b',
+        destination: '0_FINISHED',
+      });
+
+      const bookAfter = await trx('library_items')
+        .where({ id_library_item: book.id_library_item })
+        .first();
+      // The move really did happen, so pin to the target, not the dead source.
+      expect(bookAfter.key).toBe('0_FINISHED/Lost.m4b');
+      expect(bookAfter.source_path).not.toBeNull();
+      expect(bookAfter.source_path).not.toBe('Lost.m4b');
+      expect(bookAfter.source_path).toMatch(/_Lost\.m4b$/);
+    });
+
+    it('still pins to the old key when the existence probe itself fails', async () => {
+      const trx = getTestTransaction();
+      const user = await createTestUser(trx);
+      const book = await createTestLibraryItem(trx, {
+        user_id: user.id_user,
+        key: 'Probe.m4b',
+        source_path: null,
+      });
+      await createTestLibraryItem(trx, {
+        user_id: user.id_user,
+        key: '0_FINISHED',
+        type: 0,
+      });
+      moveFileMock.mockImplementation(async () => false);
+      // null = could not determine. Must not be read as "absent", or the row
+      // would be left naming nothing — the bug this whole path guards against.
+      fileExistsMock.mockImplementation(async () => null);
+
+      await service.moveLibraryObject(user as any, {
+        origin: 'Probe.m4b',
+        destination: '0_FINISHED',
+      });
+
+      const bookAfter = await trx('library_items')
+        .where({ id_library_item: book.id_library_item })
+        .first();
+      expect(bookAfter.key).toBe('0_FINISHED/Probe.m4b');
+      expect(bookAfter.source_path).toBe('Probe.m4b');
+    });
   });
 
   describe('renameLibraryObject — /rename body { relativePath, newName, uuid }', () => {
