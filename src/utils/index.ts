@@ -28,6 +28,21 @@ export function isValidUUID(testUuid?: string): boolean {
   return UUID_REGEX.test(testUuid);
 }
 
+/**
+ * Drops the per-user storage prefix from an S3 key so the remainder is safe to
+ * log. The prefix is always a single segment — `users.external_id`, or, for
+ * legacy accounts, the account's email address (see StoragePrefixService) —
+ * and LoggerService redacts only password/token/secret/authorization, so a
+ * whole key logged verbatim would publish that address.
+ * @param storageKey - A prefixed key, e.g. `someone@example.com/root/1_a.mp3`
+ * @returns The key without its first segment, e.g. `root/1_a.mp3`
+ */
+export const stripStoragePrefix = (storageKey?: string): string => {
+  if (!storageKey) return '';
+  const separator = storageKey.indexOf('/');
+  return separator === -1 ? '' : storageKey.slice(separator + 1);
+};
+
 export const splitArrayGroups = (array: unknown[], chunkSize: number) => {
   const chunks = [];
   for (let i = 0; i < array.length; i += chunkSize) {

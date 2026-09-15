@@ -7,20 +7,22 @@ import {
 import { logger } from './LoggerService';
 import { S3Service } from './S3Service';
 import { Readable } from 'stream';
+import { stripStoragePrefix } from '../utils';
 
 export class StorageService {
   private readonly _logger = logger;
 
   constructor(private _s3Service: S3Service = new S3Service()) {}
 
+  /** Tri-state; see S3Service.fileExists. null means "could not determine". */
   async fileExists(params: {
     key: string;
     origin?: StorageOrigin;
-  }): Promise<boolean> {
+  }): Promise<boolean | null> {
     try {
       const { key, origin } = params;
       const storageOrigin = origin || StorageOrigin.S3;
-      let exist = false;
+      let exist: boolean | null = false;
       switch (storageOrigin) {
         case StorageOrigin.S3:
           exist = await this._s3Service.fileExists(key);
@@ -30,11 +32,17 @@ export class StorageService {
       }
       return exist;
     } catch (error) {
-      this._logger.log({
-        origin: 'Storage: fileExists',
-        message: error.message,
-        data: params,
-      });
+      // Prefix-stripped and at 'warn' for the same reasons as the moveFile
+      // catches: params.key carries the per-user prefix, which is the account
+      // email for legacy accounts, and this null drives the caller's pin.
+      this._logger.log(
+        {
+          origin: 'StorageService.fileExists',
+          message: error.message,
+          data: { key: stripStoragePrefix(params.key) },
+        },
+        'warn',
+      );
       return null;
     }
   }
@@ -118,12 +126,22 @@ export class StorageService {
       }
       return moved;
     } catch (error) {
-      this._logger.log({
-        origin: 'Storage: moveFile',
-        message: error.message,
-        data: params,
-      });
-      return null;
+      // See S3Service.moveFile: logged at 'error' so the desync is visible in
+      // production, where LOG_LEVEL is 'warn'. `params` is not logged whole —
+      // its keys carry the per-user storage prefix, which is the account's
+      // email for the legacy accounts this path serves.
+      this._logger.log(
+        {
+          origin: 'StorageService.moveFile',
+          message: error.message,
+          data: {
+            sourceKey: stripStoragePrefix(params.sourceKey),
+            targetKey: stripStoragePrefix(params.targetKey),
+          },
+        },
+        'error',
+      );
+      return false;
     }
   }
 
