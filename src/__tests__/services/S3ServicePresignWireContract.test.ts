@@ -16,7 +16,13 @@ import { mockLoggerService } from '../setup';
  * the signature, and every upload would fail with SignatureDoesNotMatch until
  * they did. S3ServiceStorageClass mocks the presigner, so it cannot see that.
  *
- * Signing is local — these tests make no network call.
+ * Signing is local — these tests make no network call, which is also the limit
+ * of what they prove: that the SDK builds the URL this way, not that S3 acts on
+ * it. The server half was verified live against the production bucket on
+ * 2026-09-15 — a presigned PUT through S3Service landed as INTELLIGENT_TIERING
+ * while a control PUT signed without the class landed as STANDARD, so S3 does
+ * honour the hoisted query parameter and no bucket policy rejects it. That
+ * needs a real PUT, so it is recorded here rather than asserted.
  */
 describe('S3Service.getPresignedUrl — presigned PUT wire contract', () => {
   let service: S3Service;
@@ -28,9 +34,12 @@ describe('S3Service.getPresignedUrl — presigned PUT wire contract', () => {
     // the assertions run against the URL the apps would actually receive.
     (service as any).clientObject = new S3Client({
       region: 'us-east-1',
+      // SigV4 signs with any non-empty strings. Deliberately not AWS's
+      // documented example access key: its prefix is what secret scanners match
+      // on, and a hit here would cost someone a triage cycle for nothing.
       credentials: {
-        accessKeyId: 'AKIAIOSFODNN7EXAMPLE',
-        secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+        accessKeyId: 'test-access-key-id',
+        secretAccessKey: 'test-secret-access-key',
       },
     });
     (service as any)._logger = mockLoggerService;
