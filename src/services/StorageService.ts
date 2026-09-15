@@ -32,11 +32,17 @@ export class StorageService {
       }
       return exist;
     } catch (error) {
-      this._logger.log({
-        origin: 'Storage: fileExists',
-        message: error.message,
-        data: params,
-      });
+      // Prefix-stripped and at 'warn' for the same reasons as the moveFile
+      // catches: params.key carries the per-user prefix, which is the account
+      // email for legacy accounts, and this null drives the caller's pin.
+      this._logger.log(
+        {
+          origin: 'StorageService.fileExists',
+          message: error.message,
+          data: { key: stripStoragePrefix(params.key) },
+        },
+        'warn',
+      );
       return null;
     }
   }

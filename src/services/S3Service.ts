@@ -59,11 +59,17 @@ export class S3Service {
         );
         return null;
       } else {
-        this._logger.log({
-          origin: 'S3Service.fileExists',
-          message: error.message,
-          data: { key: stripStoragePrefix(key) },
-        });
+        // Same level as the 403 branch: this is the wider indeterminate class
+        // (5xx, timeouts, SDK failures) and it drives the same caller
+        // decision, so it has to clear the production LOG_LEVEL of 'warn' too.
+        this._logger.log(
+          {
+            origin: 'S3Service.fileExists',
+            message: error.message,
+            data: { key: stripStoragePrefix(key), errorName: error.name },
+          },
+          'warn',
+        );
         return null;
       }
     }

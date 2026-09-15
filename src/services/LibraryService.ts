@@ -1320,6 +1320,12 @@ export class LibraryService {
                     newKey: fileMoved.key,
                     sourceStillThere,
                     targetLanded,
+                    // The decision itself, not just its inputs. A remediation
+                    // sweep can then separate a confirmed phantom (both
+                    // probes 404) from one where the target probe only came
+                    // back indeterminate.
+                    foundNothing,
+                    targetIndeterminate: targetLanded === null,
                     pinnedSourcePath: foundNothing ? null : pinnedSourcePath,
                   },
                 },
