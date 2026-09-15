@@ -10,6 +10,7 @@ import {
   GetBucketLifecycleConfigurationCommand,
   PutBucketLifecycleConfigurationCommand,
   LifecycleRule,
+  StorageClass,
   TransitionStorageClass,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -27,10 +28,13 @@ import { Readable } from 'stream';
  * fires at all for objects under 128 KB — which is why artwork accumulates in
  * STANDARD indefinitely.
  *
- * Intelligent-Tiering's Frequent Access tier is priced identically to STANDARD,
- * so this is cost-neutral on arrival and strictly cheaper once an object ages.
+ * Cost-neutral on arrival — Intelligent-Tiering's Frequent Access tier is
+ * priced identically to STANDARD — and cheaper once an object of 128 KB or more
+ * ages into Infrequent Access. Objects below 128 KB are never monitored or
+ * auto-tiered, so they stay in Frequent Access permanently: writing the class
+ * directly makes those consistent, not cheaper.
  */
-const UPLOAD_STORAGE_CLASS = 'INTELLIGENT_TIERING' as const;
+const UPLOAD_STORAGE_CLASS = StorageClass.INTELLIGENT_TIERING;
 
 export class S3Service {
   private readonly _logger = logger;
@@ -184,8 +188,10 @@ export class S3Service {
           Key: `deleted_${sourceKey}`,
           CopySource: `${process.env.S3_BUCKET}/${sourceKey}`,
           // Deliberately left in STANDARD: the `remove-deleted-items` lifecycle
-          // rule expires this prefix after a few days, far short of the time
-          // Intelligent-Tiering needs to earn back its monitoring charge.
+          // rule expires this prefix at 3 days, far short of the time
+          // Intelligent-Tiering needs to earn back its monitoring charge. That
+          // 3 days is also the observed rule, not the week promised above —
+          // one of the two is wrong, and which one is a product call.
         }),
       );
       await this.clientObject.send(
