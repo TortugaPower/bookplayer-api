@@ -139,12 +139,17 @@ export class S3Service {
       );
       return true;
     } catch (error) {
-      this._logger.log({
-        origin: 'S3: moveFile',
-        message: error.message,
-        data: { sourceKey, targetKey },
-      });
-      return null;
+      // 'error': a failed relocation desynchronizes the DB key from the object
+      // it names, so it has to survive the production LOG_LEVEL of 'warn'.
+      this._logger.log(
+        {
+          origin: 'S3: moveFile',
+          message: error.message,
+          data: { sourceKey, targetKey },
+        },
+        'error',
+      );
+      return false;
     }
   }
 

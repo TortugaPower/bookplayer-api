@@ -1253,11 +1253,7 @@ export class LibraryService {
             !fileMoved.source_path &&
             parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
           ) {
-            const suffix =
-              parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
-                ? ''
-                : '/';
-            const sourceKey = `${storagePrefix}/${fileMoved.old_key}${suffix}`;
+            const sourceKey = `${storagePrefix}/${fileMoved.old_key}`;
             const original_filename = `${
               process.env.ROOT_FOLDER
             }/${moment().format('YYYYMMDDHHmmss')}_${
@@ -1268,16 +1264,41 @@ export class LibraryService {
               sourceKey,
               targetKey,
             });
-            if (isMoved) {
-              await this._libraryDB.updateBySourcePath(
+            // Either way the row must end up naming the object that actually
+            // exists. A legacy item (source_path IS NULL) is read back at
+            // `${prefix}/${key}`, so once the key rewrite commits, an object
+            // still sitting at old_key is unreachable — the row would point at
+            // nothing while the bytes are orphaned under the pre-move path.
+            //
+            // Throwing to roll the rewrite back is not an option: the items
+            // relocated earlier in this batch are already at their new keys,
+            // and the rollback would strip the source_path that names them,
+            // orphaning those instead. So on failure we record where the file
+            // really is. The move itself still succeeds — it is a display-path
+            // change — and the item stays playable from its legacy key.
+            if (!isMoved) {
+              this._logger.log(
                 {
-                  user_id: user.id_user,
-                  key: fileMoved.key,
-                  source_path: original_filename,
+                  origin: 'LibraryService.processMovedFiles',
+                  message:
+                    'Storage relocation failed; pinning source_path to the pre-move key',
+                  data: {
+                    id_user: user.id_user,
+                    oldKey: fileMoved.old_key,
+                    newKey: fileMoved.key,
+                  },
                 },
-                trx,
+                'error',
               );
             }
+            await this._libraryDB.updateBySourcePath(
+              {
+                user_id: user.id_user,
+                key: fileMoved.key,
+                source_path: isMoved ? original_filename : fileMoved.old_key,
+              },
+              trx,
+            );
           }
         }
       }),

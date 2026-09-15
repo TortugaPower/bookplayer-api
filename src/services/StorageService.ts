@@ -118,12 +118,17 @@ export class StorageService {
       }
       return moved;
     } catch (error) {
-      this._logger.log({
-        origin: 'Storage: moveFile',
-        message: error.message,
-        data: params,
-      });
-      return null;
+      // See S3Service.moveFile: logged at 'error' so the desync is visible in
+      // production, where LOG_LEVEL is 'warn'.
+      this._logger.log(
+        {
+          origin: 'Storage: moveFile',
+          message: error.message,
+          data: params,
+        },
+        'error',
+      );
+      return false;
     }
   }
 
