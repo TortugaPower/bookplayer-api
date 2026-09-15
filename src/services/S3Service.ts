@@ -10,6 +10,7 @@ import {
   GetBucketLifecycleConfigurationCommand,
   PutBucketLifecycleConfigurationCommand,
   LifecycleRule,
+  StorageClass,
   TransitionStorageClass,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -17,6 +18,23 @@ import { S3ClientHeaders, StorageAction, StorageItem } from '../types/user';
 import moment from 'moment';
 import { logger } from './LoggerService';
 import { Readable } from 'stream';
+
+/**
+ * Objects are written straight into Intelligent-Tiering instead of landing in
+ * STANDARD and waiting for the bucket's `all-intelligent-tiering` rule to move
+ * them. That rule stays as a backstop, but it is a poor primary mechanism: it
+ * bills a transition request per object, leaves a ~3 day window where an
+ * object's storage class is not what the rest of the system assumes, and never
+ * fires at all for objects under 128 KB — which is why artwork accumulates in
+ * STANDARD indefinitely.
+ *
+ * Cost-neutral on arrival — Intelligent-Tiering's Frequent Access tier is
+ * priced identically to STANDARD — and cheaper once an object of 128 KB or more
+ * ages into Infrequent Access. Objects below 128 KB are never monitored or
+ * auto-tiered, so they stay in Frequent Access permanently: writing the class
+ * directly makes those consistent, not cheaper.
+ */
+const WRITE_STORAGE_CLASS = StorageClass.INTELLIGENT_TIERING;
 
 export class S3Service {
   private readonly _logger = logger;
@@ -101,7 +119,14 @@ export class S3Service {
           command = new GetObjectCommand(obj);
           break;
         case StorageAction.PUT:
-          command = new PutObjectCommand(obj);
+          // The SDK hoists StorageClass into the presigned URL's query string
+          // rather than into SignedHeaders (which stays `host`), so clients keep
+          // PUTting the URL exactly as before: no app release is required and
+          // URLs already handed out stay valid.
+          command = new PutObjectCommand({
+            ...obj,
+            StorageClass: WRITE_STORAGE_CLASS,
+          });
           break;
       }
       const seconds = 3600 * 24 * 7; // 1 hour * 24 * 365 * 30 = 30 years
@@ -129,6 +154,12 @@ export class S3Service {
           CopySource: `${process.env.S3_BUCKET}/${encodeURIComponent(
             sourceKey,
           )}`,
+          // A copy does not inherit the source object's storage class, so
+          // without this every move silently demotes an Intelligent-Tiering
+          // object back to STANDARD. The tiering clock restarts either way —
+          // S3 has no true rename — so this caps the cost rather than avoiding
+          // it.
+          StorageClass: WRITE_STORAGE_CLASS,
         }),
       );
       await this.clientObject.send(
@@ -150,12 +181,16 @@ export class S3Service {
 
   async deleteFile(sourceKey: string): Promise<boolean> {
     try {
-      /// Keep a copy for a week just in case for support purposes
+      /// Keep a copy for support purposes; `remove-deleted-items` expires the
+      /// `deleted_` prefix after 3 days. A week was the original intent — which
+      /// retention is right is still an open product question.
       await this.clientObject.send(
         new CopyObjectCommand({
           Bucket: process.env.S3_BUCKET,
           Key: `deleted_${sourceKey}`,
           CopySource: `${process.env.S3_BUCKET}/${sourceKey}`,
+          // Deliberately left in STANDARD: at 3 days this copy is gone well
+          // before Intelligent-Tiering could earn back its monitoring charge.
         }),
       );
       await this.clientObject.send(
