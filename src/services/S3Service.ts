@@ -34,7 +34,7 @@ import { Readable } from 'stream';
  * auto-tiered, so they stay in Frequent Access permanently: writing the class
  * directly makes those consistent, not cheaper.
  */
-const UPLOAD_STORAGE_CLASS = StorageClass.INTELLIGENT_TIERING;
+const WRITE_STORAGE_CLASS = StorageClass.INTELLIGENT_TIERING;
 
 export class S3Service {
   private readonly _logger = logger;
@@ -125,7 +125,7 @@ export class S3Service {
           // URLs already handed out stay valid.
           command = new PutObjectCommand({
             ...obj,
-            StorageClass: UPLOAD_STORAGE_CLASS,
+            StorageClass: WRITE_STORAGE_CLASS,
           });
           break;
       }
@@ -159,7 +159,7 @@ export class S3Service {
           // object back to STANDARD. The tiering clock restarts either way —
           // S3 has no true rename — so this caps the cost rather than avoiding
           // it.
-          StorageClass: UPLOAD_STORAGE_CLASS,
+          StorageClass: WRITE_STORAGE_CLASS,
         }),
       );
       await this.clientObject.send(
@@ -181,17 +181,16 @@ export class S3Service {
 
   async deleteFile(sourceKey: string): Promise<boolean> {
     try {
-      /// Keep a copy for a week just in case for support purposes
+      /// Keep a copy for support purposes; `remove-deleted-items` expires the
+      /// `deleted_` prefix after 3 days. A week was the original intent — which
+      /// retention is right is still an open product question.
       await this.clientObject.send(
         new CopyObjectCommand({
           Bucket: process.env.S3_BUCKET,
           Key: `deleted_${sourceKey}`,
           CopySource: `${process.env.S3_BUCKET}/${sourceKey}`,
-          // Deliberately left in STANDARD: the `remove-deleted-items` lifecycle
-          // rule expires this prefix at 3 days, far short of the time
-          // Intelligent-Tiering needs to earn back its monitoring charge. That
-          // 3 days is also the observed rule, not the week promised above —
-          // one of the two is wrong, and which one is a product call.
+          // Deliberately left in STANDARD: at 3 days this copy is gone well
+          // before Intelligent-Tiering could earn back its monitoring charge.
         }),
       );
       await this.clientObject.send(
