@@ -1277,19 +1277,34 @@ export class LibraryService {
             // really is. The move itself still succeeds — it is a display-path
             // change — and the item stays playable from its legacy key.
             if (!isMoved) {
+              // Two different failures hide behind `false`: the object is
+              // still at old_key and the copy failed, or there was never an
+              // object to copy. Only the first is worth pinning — recording a
+              // path that holds nothing would also freeze the item, since the
+              // guard above skips anything that already has a source_path, so
+              // no later move would retry the relocation.
+              //
+              // fileExists returns null when the probe itself fails, so only a
+              // definitive false counts as "nothing there"; anything else
+              // falls through to pinning, which is right for the common case.
+              const sourceStillThere = await this._storage.fileExists({
+                key: sourceKey,
+              });
               this._logger.log(
                 {
                   origin: 'LibraryService.processMovedFiles',
-                  message:
-                    'Storage relocation failed; pinning source_path to the pre-move key',
+                  message: 'Storage relocation failed',
                   data: {
                     id_user: user.id_user,
                     oldKey: fileMoved.old_key,
                     newKey: fileMoved.key,
+                    sourceStillThere,
+                    pinned: sourceStillThere !== false,
                   },
                 },
                 'error',
               );
+              if (sourceStillThere === false) continue;
             }
             await this._libraryDB.updateBySourcePath(
               {

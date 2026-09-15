@@ -343,6 +343,8 @@ describe('LibraryService — path-mutating flows (move / rename / folder_in_out)
         type: 0,
       });
       moveFileMock.mockImplementation(async () => false);
+      // The copy failed, but the object is still sitting at its old key.
+      fileExistsMock.mockImplementation(async () => true);
 
       await service.moveLibraryObject(user as any, {
         origin: 'Legacy.m4b',
@@ -386,6 +388,7 @@ describe('LibraryService — path-mutating flows (move / rename / folder_in_out)
         const { sourceKey } = params as { sourceKey: string };
         return !sourceKey.endsWith('b.m4b');
       });
+      fileExistsMock.mockImplementation(async () => true);
 
       await service.moveLibraryObject(user as any, {
         origin: 'Series',
@@ -407,6 +410,37 @@ describe('LibraryService — path-mutating flows (move / rename / folder_in_out)
       // ...while the one that did not is pinned to where its bytes still are.
       expect(strandedAfter.key).toBe('0_FINISHED/Series/b.m4b');
       expect(strandedAfter.source_path).toBe('Series/b.m4b');
+    });
+
+    it('leaves source_path null when the relocation failed because nothing was at the old key', async () => {
+      const trx = getTestTransaction();
+      const user = await createTestUser(trx);
+      const book = await createTestLibraryItem(trx, {
+        user_id: user.id_user,
+        key: 'Phantom.m4b',
+        source_path: null,
+      });
+      await createTestLibraryItem(trx, {
+        user_id: user.id_user,
+        key: '0_FINISHED',
+        type: 0,
+      });
+      moveFileMock.mockImplementation(async () => false);
+      fileExistsMock.mockImplementation(async () => false);
+
+      await service.moveLibraryObject(user as any, {
+        origin: 'Phantom.m4b',
+        destination: '0_FINISHED',
+      });
+
+      const bookAfter = await trx('library_items')
+        .where({ id_library_item: book.id_library_item })
+        .first();
+      // There are no bytes at either key, so pinning would only record a path
+      // that holds nothing — and freeze the item, since a set source_path
+      // skips the relocation on every later move.
+      expect(bookAfter.key).toBe('0_FINISHED/Phantom.m4b');
+      expect(bookAfter.source_path).toBeNull();
     });
   });
 

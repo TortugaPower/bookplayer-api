@@ -7,6 +7,7 @@ import {
 import { logger } from './LoggerService';
 import { S3Service } from './S3Service';
 import { Readable } from 'stream';
+import { stripStoragePrefix } from '../utils';
 
 export class StorageService {
   private readonly _logger = logger;
@@ -119,12 +120,17 @@ export class StorageService {
       return moved;
     } catch (error) {
       // See S3Service.moveFile: logged at 'error' so the desync is visible in
-      // production, where LOG_LEVEL is 'warn'.
+      // production, where LOG_LEVEL is 'warn'. `params` is not logged whole —
+      // its keys carry the per-user storage prefix, which is the account's
+      // email for the legacy accounts this path serves.
       this._logger.log(
         {
-          origin: 'Storage: moveFile',
+          origin: 'StorageService.moveFile',
           message: error.message,
-          data: params,
+          data: {
+            sourceKey: stripStoragePrefix(params.sourceKey),
+            targetKey: stripStoragePrefix(params.targetKey),
+          },
         },
         'error',
       );

@@ -17,6 +17,7 @@ import { S3ClientHeaders, StorageAction, StorageItem } from '../types/user';
 import moment from 'moment';
 import { logger } from './LoggerService';
 import { Readable } from 'stream';
+import { stripStoragePrefix } from '../utils';
 
 export class S3Service {
   private readonly _logger = logger;
@@ -121,6 +122,11 @@ export class S3Service {
   }
 
   async moveFile(sourceKey: string, targetKey: string): Promise<boolean> {
+    // Copy-then-delete, so a failure has two very different shapes: the copy
+    // never landed (bytes only at sourceKey) or the copy landed and the delete
+    // did not (bytes at both). `copied` tells them apart in the log — the
+    // caller only sees false either way.
+    let copied = false;
     try {
       await this.clientObject.send(
         new CopyObjectCommand({
@@ -131,6 +137,7 @@ export class S3Service {
           )}`,
         }),
       );
+      copied = true;
       await this.clientObject.send(
         new DeleteObjectCommand({
           Bucket: process.env.S3_BUCKET,
@@ -141,11 +148,18 @@ export class S3Service {
     } catch (error) {
       // 'error': a failed relocation desynchronizes the DB key from the object
       // it names, so it has to survive the production LOG_LEVEL of 'warn'.
+      // Keys are prefix-stripped: for legacy accounts that prefix is the user's
+      // email, and this path serves exactly those accounts.
       this._logger.log(
         {
-          origin: 'S3: moveFile',
+          origin: 'S3Service.moveFile',
           message: error.message,
-          data: { sourceKey, targetKey },
+          data: {
+            sourceKey: stripStoragePrefix(sourceKey),
+            targetKey: stripStoragePrefix(targetKey),
+            copied,
+            errorName: error.name,
+          },
         },
         'error',
       );
