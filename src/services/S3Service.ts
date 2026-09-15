@@ -26,9 +26,12 @@ export class S3Service {
 
   /**
    * Tri-state on purpose: true/false are definitive, null means the probe
-   * itself failed and the caller must not read that as "absent". Note a 403
-   * also yields false — on a bucket without s3:ListBucket that is how a
-   * permission problem surfaces, not proof the key is missing.
+   * could not determine it and the caller must not read that as "absent".
+   *
+   * A 403 is indeterminate, not absent. S3 masks a missing key as 403 only
+   * when the caller lacks s3:ListBucket, and this role holds it (see
+   * getDirectoryContent / calculateFolderSize, which call ListObjectsV2), so
+   * a 403 here means a permission or KMS problem rather than a missing key.
    */
   async fileExists(key: string): Promise<boolean | null> {
     try {
@@ -42,12 +45,24 @@ export class S3Service {
       if (error.$metadata?.httpStatusCode === 404) {
         return false;
       } else if (error.$metadata?.httpStatusCode === 403) {
-        return false;
+        // Indeterminate, not absent — see the tri-state note above. Returning
+        // false here would let a permission failure read as "the object is
+        // nowhere", which is how a caller ends up recording that nothing
+        // exists when in fact it could not look.
+        this._logger.log(
+          {
+            origin: 'S3Service.fileExists',
+            message: 'Existence probe denied (403); treating as indeterminate',
+            data: { key: stripStoragePrefix(key) },
+          },
+          'warn',
+        );
+        return null;
       } else {
         this._logger.log({
-          origin: 'S3: fileExists',
+          origin: 'S3Service.fileExists',
           message: error.message,
-          data: { key },
+          data: { key: stripStoragePrefix(key) },
         });
         return null;
       }
