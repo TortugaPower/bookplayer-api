@@ -283,17 +283,21 @@ export class LibraryService {
       }
       return library;
     } catch (err) {
-      // Identifiers only — the user object carries the email and subscription
-      // state, and the raw `path` is prefixed with the email; neither belongs
-      // in the log stream.
-      this._logger.log(
-        {
-          origin: 'LibraryService.getLibrary',
-          message: err.message,
-          data: { user_id: user?.id_user, relativePath: cleanPath },
-        },
-        'error',
-      );
+      // A lookup failure was already logged with its cause by the DB layer and
+      // is logged with the request by the controller; a third line here would
+      // only add volume. Anything else is logged once, with identifiers only —
+      // the user object carries the email and subscription state, and the raw
+      // `path` is prefixed with the email; neither belongs in the log stream.
+      if (!(err instanceof LibraryLookupError)) {
+        this._logger.log(
+          {
+            origin: 'LibraryService.getLibrary',
+            message: err.message,
+            data: { user_id: user?.id_user, relativePath: cleanPath },
+          },
+          'error',
+        );
+      }
       // Re-raised on purpose: the controller answers every thrown failure with
       // a 500 (retryable). Swallowing it here would send clients a 200 with
       // `content: null` / an empty library instead.

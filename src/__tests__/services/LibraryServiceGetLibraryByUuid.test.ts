@@ -215,11 +215,24 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
     expect(warns).toHaveLength(1);
   });
 
-  it('a failed lookup logs identifiers only, never the user object', async () => {
+  it('a failed lookup is not re-logged by the service (DB layer and controller already do)', async () => {
     const user = await createTestUser(getTestTransaction());
     (service as any)._libraryDB.getLibrary = jest.fn(async () => null);
 
     await expect(get(user, 'New Name/')).rejects.toBeInstanceOf(LibraryLookupError);
+
+    const errors = (mockLoggerService.log.mock.calls as any[][]).filter((c) => c[1] === 'error');
+    expect(errors).toHaveLength(0);
+  });
+
+  it('any other failure is logged once with identifiers only, never the user object or email', async () => {
+    const user = await createTestUser(getTestTransaction());
+    await seedLibrary(user.id_user);
+    (service as any)._libraryDB.getExternalResources = jest.fn(async () => {
+      throw new Error('boom');
+    });
+
+    await expect(get(user, 'New Name/')).rejects.toThrow('boom');
 
     const errors = (mockLoggerService.log.mock.calls as any[][]).filter((c) => c[1] === 'error');
     expect(errors).toHaveLength(1);
