@@ -163,7 +163,7 @@ export class LibraryDB {
       const objectsDeleted = await db('library_items as li')
         .update({ active: false })
         .where({ user_id, active: active === false ? active : true })
-        .whereRaw('key like ?', [`${path}${exactly ? '' : '%'}`])
+        .whereRaw(...LibraryDB.selfAndChildrenMatch(path, exactly))
         .returning('*');
       return objectsDeleted;
     } catch (err) {
@@ -199,7 +199,7 @@ export class LibraryDB {
       const objectsDeleted = await db('library_items as li')
         .update({ active: false })
         .where({ user_id, active: active === false ? active : true })
-        .whereRaw('key like ?', [`${targetItem.key}${exactly ? '' : '%'}`])
+        .whereRaw(...LibraryDB.selfAndChildrenMatch(targetItem.key, exactly))
         .returning('*');
       return objectsDeleted;
     } catch (err) {
@@ -226,7 +226,7 @@ export class LibraryDB {
           from library_items
           where user_id=? and active=true and key like ?
       `,
-          [user_id, `${folderPath}/%`],
+          [user_id, `${LibraryDB.escapeLikePrefix(folderPath)}/%`],
         )
         .then((result) => result.rows);
       return nestedObjects;
@@ -251,8 +251,30 @@ export class LibraryDB {
   /// `newKeyParams` carries any `?` placeholders the expression uses, in order.
   private static escapeLikePrefix(prefix: string): string {
     // Keys routinely contain `_` (a LIKE wildcard); escape so a folder named
-    // "My_Books" can't match a sibling "MyXBooks" subtree.
+    // "My_Books" can't match a sibling "MyXBooks" subtree. Every `key like`
+    // in this class builds its pattern through here — a key is a literal, never
+    // a pattern. Backslash is PostgreSQL's default LIKE escape character.
     return prefix.replace(/[\\%_]/g, (m) => `\\${m}`);
+  }
+
+  /**
+   * SQL + bindings matching the row whose key IS `prefix` and, unless
+   * `exactly`, its true descendants (`prefix/...`). Both halves are literal:
+   * a `/`-less prefix must not take a sibling (`Dune` vs `Dune-1/…`, the
+   * app's own de-duplication suffix; `The Life` vs `The Life with….mp3`) and
+   * wildcards must not widen it (`A_B` vs `AxB/…`). The destructive queries
+   * key on this — an over-match here soft-deletes rows AND removes their S3
+   * objects.
+   */
+  private static selfAndChildrenMatch(
+    prefix: string,
+    exactly?: boolean,
+  ): [string, string[]] {
+    if (exactly) return ['key = ?', [prefix]];
+    return [
+      '(key = ? or key like ?)',
+      [prefix, `${LibraryDB.escapeLikePrefix(prefix)}/%`],
+    ];
   }
 
   /**
@@ -736,7 +758,7 @@ export class LibraryDB {
       .update({ order_rank: trx.raw(`order_rank ${op} 1`) })
       .where({ user_id, active: true })
       .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [pathDepth])
-      .whereRaw('key like ?', [`${path}%`])
+      .whereRaw('key like ?', [`${LibraryDB.escapeLikePrefix(path)}%`])
       .whereBetween('order_rank', orderRange);
   }
 

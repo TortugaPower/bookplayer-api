@@ -241,6 +241,41 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
     expect(JSON.stringify(errors[0][0])).not.toContain('@');
   });
 
+  describe('external resources (server links) are never silently dropped', () => {
+    // Both apps reconcile each item's local Jellyfin/Audiobookshelf links
+    // against this list and delete the ones the server did not mention, so a
+    // failed links query must be an error, not an empty list.
+    it('a failed links lookup fails the listing', async () => {
+      const user = await createTestUser(getTestTransaction());
+      await seedLibrary(user.id_user);
+      (service as any)._libraryDB.getExternalResources = jest.fn(async () => null);
+
+      await expect(get(user, 'New Name/')).rejects.toBeInstanceOf(LibraryLookupError);
+    });
+
+    it('a failed links lookup fails the last-played item instead of returning null', async () => {
+      const trx = getTestTransaction();
+      const user = await createTestUser(trx);
+      const { book } = await seedLibrary(user.id_user);
+      await trx('library_items').where({ uuid: book.uuid }).update({ last_play_date: 1700000000 });
+      (service as any)._libraryDB.getExternalResources = jest.fn(async () => null);
+
+      await expect(
+        service.getLastItemPlayed(user as any, { appVersion: APP_VERSION }),
+      ).rejects.toBeInstanceOf(LibraryLookupError);
+    });
+
+    it('a library with no links still lists externalResources as an empty array', async () => {
+      const user = await createTestUser(getTestTransaction());
+      await seedLibrary(user.id_user);
+
+      const items = await get(user, 'New Name/');
+
+      expect(items.length).toBeGreaterThan(0);
+      expect(items.every((i) => Array.isArray(i.externalResources) && i.externalResources.length === 0)).toBe(true);
+    });
+  });
+
   it('a well-formed or absent uuid produces no malformed-uuid warning', async () => {
     const user = await createTestUser(getTestTransaction());
     const { book } = await seedLibrary(user.id_user);

@@ -204,8 +204,15 @@ export class LibraryService {
 
       if (!objectDB || objectDB.length <= 0) return []
 
-      const externals = await this._libraryDB.getExternalResources(objectDB.map( ob => ob.id_library_item))
-      const externalsMp = (externals ?? []).reduce((acc, source) => {
+      // Same rule as the item lookups: a failed links query must not read as
+      // "no links". Both apps reconcile each item's local server links against
+      // this list and delete the ones missing from it.
+      const externals = this.requireLookup(
+        await this._libraryDB.getExternalResources(
+          objectDB.map((ob) => ob.id_library_item),
+        ),
+      );
+      const externalsMp = externals.reduce((acc, source) => {
         const libId = source.library_item_id;
         
         if (!acc[libId]) {
@@ -307,7 +314,7 @@ export class LibraryService {
 
   // `null` is the DB layer's "the query failed" (it logs and swallows the
   // driver error); `[]` is "nothing matched". Only the second one is a result.
-  private requireLookup(rows: LibraryItemDB[] | null): LibraryItemDB[] {
+  private requireLookup<T>(rows: T[] | null): T[] {
     if (rows === null) {
       throw new LibraryLookupError();
     }
@@ -1002,8 +1009,12 @@ export class LibraryService {
         itemDb,
         LibraryItemOutput.API,
       )) as LibraryItem;
-      const externals = await this._libraryDB.getExternalResources([(itemDb as LibraryItemDB).id_library_item]);
-      item.externalResources = (externals ?? []).map(externalResourceRowToApi);
+      const externals = this.requireLookup(
+        await this._libraryDB.getExternalResources([
+          (itemDb as LibraryItemDB).id_library_item,
+        ]),
+      );
+      item.externalResources = externals.map(externalResourceRowToApi);
       switch (options.appVersion) {
         case '2023-10-29':
         case 'latest':
@@ -1042,10 +1053,14 @@ export class LibraryService {
       }
       return item;
     } catch (err) {
+      // `null` here means "nothing played yet" to the controller; a failed
+      // lookup must not be mistaken for that, so it propagates and the
+      // listing answers with a retryable error instead.
+      if (err instanceof LibraryLookupError) throw err;
       this._logger.log({
         origin: 'LibraryService.getLastItemPlayed',
         message: err.message,
-        data: { user },
+        data: { user_id: user?.id_user },
       });
       return null;
     }
