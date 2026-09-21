@@ -17,7 +17,6 @@ const JOB_TYPE_BY_ROUTE: Record<string, SyncOperationJobType> = {
   'POST /rename': SyncOperationJobType.RENAME,
   'DELETE /': SyncOperationJobType.DELETE,
   'DELETE /folder_in_out': SyncOperationJobType.DELETE_FOLDER_MOVING,
-  'POST /reorder': SyncOperationJobType.REORDER,
   'PUT /bookmark': SyncOperationJobType.SET_BOOKMARK,
   'POST /uuids': SyncOperationJobType.MATCH_UUIDS,
   'PUT /external': SyncOperationJobType.EXTERNAL_RESOURCE_PUT,

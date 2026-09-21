@@ -10,7 +10,6 @@ export enum SyncOperationJobType {
   RENAME = 'rename',
   DELETE = 'delete',
   DELETE_FOLDER_MOVING = 'delete_folder_moving',
-  REORDER = 'reorder',
   SET_BOOKMARK = 'set_bookmark',
   MATCH_UUIDS = 'match_uuids',
   EXTERNAL_RESOURCE_PUT = 'external_resource_put',

@@ -632,62 +632,6 @@ export class LibraryService {
     }
   }
 
-  async reOrderObject(user: User, params: LibraryItem): Promise<boolean> {
-    let trx: Knex.Transaction;
-    try {
-      const { relativePath, orderRank } = params;
-      const cleanPath = relativePath.replace(`${user.email}/`, '');
-      const objectDB = await this._libraryDB.getLibrary(user.id_user, cleanPath);
-
-      if (objectDB.length !== 1) {
-        throw Error('Item not found');
-      }
-      const prevOrder = objectDB[0].order_rank || 0;
-
-      if (prevOrder === orderRank) {
-        throw Error('The order is the same');
-      }
-      const isGreater = prevOrder < orderRank;
-      const orderFilter: [number, number] = isGreater
-        ? [prevOrder + 1, orderRank]
-        : [orderRank, prevOrder - 1];
-
-      const pathArray = relativePath.split('/');
-      pathArray.pop();
-      const path = pathArray.join('/');
-      trx = await this.db.transaction();
-      await this._libraryDB.shiftOrderRanks(
-        {
-          user_id: user.id_user,
-          path,
-          pathDepth: pathArray.length || 1,
-          orderRange: orderFilter,
-          direction: isGreater ? 'decrement' : 'increment',
-        },
-        trx,
-      );
-
-      await this._libraryDB.updateLibraryItem(
-        user.id_user,
-        cleanPath,
-        { ...objectDB[0], order_rank: orderRank },
-        null,
-        trx,
-      );
-      await trx.commit();
-
-      return true;
-    } catch (err) {
-      await trx?.rollback();
-      this._logger.log({
-        origin: 'LibraryService.reOrderObject',
-        message: err.message,
-        data: { user, params },
-      });
-      throw Error(err);
-    }
-  }
-
   async moveLibraryObject(
     user: User,
     params: { origin: string; destination: string },

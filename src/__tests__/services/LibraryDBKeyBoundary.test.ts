@@ -111,44 +111,6 @@ describe('LibraryDB — key patterns match the row and its true children only', 
     expect(nested.map((r) => r.key).sort()).toEqual(['A_B/Sub', 'A_B/Sub/deep.m4b', 'A_B/one.m4b']);
   });
 
-  // shiftOrderRanks is called by reOrderObject with the PARENT path (no
-  // trailing slash, '' for the root) and a depth. Only the parent's children
-  // may move: `A_B%` used to re-rank the unrelated root rows `A_B` itself,
-  // `AxB`… whenever an item inside A_B was reordered.
-  it('shiftOrderRanks (called as reOrderObject calls it) moves only the children of the parent path', async () => {
-    const trx = getTestTransaction();
-    const user = await createTestUser(trx);
-    await seed(user.id_user);
-
-    await db.shiftOrderRanks(
-      { user_id: user.id_user, path: 'A_B', pathDepth: 2, orderRange: [0, 10], direction: 'increment' },
-      trx,
-    );
-
-    const rows = await trx('library_items')
-      .where({ user_id: user.id_user })
-      .whereIn('key', ['A_B', 'A_B/one.m4b', 'A_B/Sub', 'AxB', 'AxB/two.m4b', 'Dune'])
-      .select('key', 'order_rank');
-    const byKey = Object.fromEntries(rows.map((r: { key: string; order_rank: number }) => [r.key, r.order_rank]));
-    expect(byKey).toEqual({ A_B: 0, 'A_B/one.m4b': 1, 'A_B/Sub': 1, AxB: 0, 'AxB/two.m4b': 0, Dune: 0 });
-  });
-
-  it('shiftOrderRanks with the root path moves only root-level rows', async () => {
-    const trx = getTestTransaction();
-    const user = await createTestUser(trx);
-    await seed(user.id_user);
-
-    await db.shiftOrderRanks(
-      { user_id: user.id_user, path: '', pathDepth: 1, orderRange: [0, 10], direction: 'increment' },
-      trx,
-    );
-
-    const rows = await trx('library_items').where({ user_id: user.id_user }).select('key', 'order_rank');
-    for (const r of rows as Array<{ key: string; order_rank: number }>) {
-      expect(r.order_rank).toBe(r.key.includes('/') ? 0 : 1);
-    }
-  });
-
   it('getLibrary exact match tolerates a trailing slash on a folder path', async () => {
     const user = await createTestUser(getTestTransaction());
     await seed(user.id_user);

@@ -750,32 +750,6 @@ export class LibraryDB {
 
   // Queries for orchestrated (transactional) service methods
 
-  async shiftOrderRanks(
-    params: {
-      user_id: number;
-      path: string;
-      pathDepth: number;
-      orderRange: [number, number];
-      direction: 'increment' | 'decrement';
-    },
-    trx: Knex.Transaction,
-  ): Promise<void> {
-    const { user_id, path, pathDepth, orderRange, direction } = params;
-    const op = direction === 'increment' ? '+' : '-';
-    // `path` is the parent folder ('' for the root). Only its children may
-    // shift: `Folder%` also caught the root-level rows `Folder 2` and
-    // `Folder.m4b`, so reordering inside a folder was silently re-ranking
-    // unrelated items at the top level.
-    const parent = path.replace(/\/+$/, '');
-    const pattern = parent === '' ? '%' : `${LibraryDB.escapeLikePrefix(parent)}/%`;
-    await trx('library_items as li')
-      .update({ order_rank: trx.raw(`order_rank ${op} 1`) })
-      .where({ user_id, active: true })
-      .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [pathDepth])
-      .whereRaw('key like ?', [pattern])
-      .whereBetween('order_rank', orderRange);
-  }
-
   async updateBySourcePath(
     params: { user_id: number; key: string; source_path: string },
     trx: Knex.Transaction,

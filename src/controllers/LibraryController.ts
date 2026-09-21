@@ -218,22 +218,6 @@ export class LibraryController {
     }
   }
 
-  public async reorderLibraryObject(
-    req: IRequest,
-    res: IResponse,
-  ): Promise<IResponse> {
-    try {
-      const params = req.body;
-      const user = req.user;
-      const content = await this._libraryService.reOrderObject(user, params);
-      return res.json({ content });
-    } catch (err) {
-      this._logger.log({ origin: 'LibraryController.reorderLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
-      res.status(400).json({ message: err.message });
-      return;
-    }
-  }
-
   public async moveLibraryObject(
     req: IRequest,
     res: IResponse,

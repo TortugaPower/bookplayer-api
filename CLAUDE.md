@@ -370,7 +370,7 @@ All routes require auth + an active subscription (`checkSubscription`); most als
 | GET | `/last_played` | Resume item, or `null` when nothing has been played; 500 on a failed read |
 | PUT / DELETE | `/external` | Link / unlink an external resource (Jellyfin, Audiobookshelf, …) |
 | POST | `/external_set` | Mark an external resource's file uploaded (S3 PRO gate) |
-| POST | `/reorder`, `/move`, `/rename` | Ordering and key rewrites |
+| POST | `/move`, `/rename` | Key rewrites (order changes arrive as per-item metadata updates; there is no reorder endpoint) |
 | DELETE | `/folder_in_out` | Merge a folder's children out and remove it |
 | GET / POST | `/bookmarks`, `/bookmark` | Bookmarks |
 | POST | `/thumbnail_set` | Presign a thumbnail upload |

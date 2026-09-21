@@ -50,9 +50,6 @@ LibraryRouter.delete('/external', checkSubscription, validateBody(deleteExternal
 LibraryRouter.delete('/', checkSubscription, requireCloudData, (req, res, next) =>
   controller.deleteLibraryObject(req, res).catch(next),
 );
-LibraryRouter.post('/reorder', checkSubscription, requireCloudData, (req, res, next) =>
-  controller.reorderLibraryObject(req, res).catch(next),
-);
 LibraryRouter.post('/move', checkSubscription, requireCloudData, (req, res, next) =>
   controller.moveLibraryObject(req, res).catch(next),
 );
