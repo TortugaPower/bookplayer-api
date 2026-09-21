@@ -27,6 +27,18 @@ import {
 import { LibraryDB, externalResourceRowToApi } from './db/LibraryDB';
 import { StoragePrefixService } from './StoragePrefixService';
 
+/**
+ * A library read that could not be answered because the DB layer failed (it
+ * logs and returns `null`). Distinct from "nothing matched" (`[]`) so the
+ * controller can report a retryable server error instead of an empty library.
+ */
+export class LibraryLookupError extends Error {
+  constructor(message = 'Library lookup failed') {
+    super(message);
+    this.name = 'LibraryLookupError';
+  }
+}
+
 export class LibraryService {
   private readonly _logger = logger;
   private db = database;
@@ -242,9 +254,9 @@ export class LibraryService {
         message: err.message,
         data: { user, path },
       });
-      // Re-raised on purpose: the controller answers a thrown error with a
-      // 400, which clients retry. Swallowing it here would send them a 200
-      // with `content: null` / an empty library instead.
+      // Re-raised on purpose: the controller maps a LibraryLookupError to a
+      // 500 (retryable) and anything else to a 400. Swallowing it here would
+      // send clients a 200 with `content: null` / an empty library instead.
       throw err;
     }
   }
@@ -253,7 +265,7 @@ export class LibraryService {
   // driver error); `[]` is "nothing matched". Only the second one is a result.
   private requireLookup(rows: LibraryItemDB[] | null): LibraryItemDB[] {
     if (rows === null) {
-      throw new Error('Library lookup failed');
+      throw new LibraryLookupError();
     }
     return rows;
   }

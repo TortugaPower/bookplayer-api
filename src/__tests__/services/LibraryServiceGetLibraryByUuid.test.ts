@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import { LibraryService } from '../../services/LibraryService';
+import { LibraryService, LibraryLookupError } from '../../services/LibraryService';
 import { LibraryItem, StorageAction, SubscriptionTierEnum } from '../../types/user';
 import {
   getTestTransaction,
@@ -227,7 +227,7 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
       const { folder } = await seedLibrary(user.id_user);
       (service as any)._libraryDB.getLibraryByUuid = jest.fn(async () => null);
 
-      await expect(get(user, 'New Name/', folder.uuid)).rejects.toThrow('Library lookup failed');
+      await expect(get(user, 'New Name/', folder.uuid)).rejects.toBeInstanceOf(LibraryLookupError);
     });
 
     it('when the children lookup fails', async () => {
@@ -235,7 +235,7 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
       const { folder } = await seedLibrary(user.id_user);
       (service as any)._libraryDB.getLibrary = jest.fn(async () => null);
 
-      await expect(get(user, 'New Name/', folder.uuid)).rejects.toThrow('Library lookup failed');
+      await expect(get(user, 'New Name/', folder.uuid)).rejects.toBeInstanceOf(LibraryLookupError);
     });
 
     it('when the path lookup fails', async () => {
@@ -243,7 +243,7 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
       await seedLibrary(user.id_user);
       (service as any)._libraryDB.getLibrary = jest.fn(async () => null);
 
-      await expect(get(user, 'New Name/')).rejects.toThrow('Library lookup failed');
+      await expect(get(user, 'New Name/')).rejects.toBeInstanceOf(LibraryLookupError);
     });
   });
 });

@@ -73,8 +73,10 @@ export class LibraryDB {
         .where({ user_id, active: true })
         .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [pathNumber])
         // The prefix is a literal key, not a pattern: a folder named `A_B` or
-        // `100%` must not also match `AxB/…` or `100 percent/…` at the same depth.
-        .whereRaw("key like ? escape '\\'", [
+        // `100%` must not also match `AxB/…` or `100 percent/…` at the same
+        // depth. Backslash is PostgreSQL's default LIKE escape character, so no
+        // ESCAPE clause (and no dependency on standard_conforming_strings).
+        .whereRaw('key like ?', [
           `${LibraryDB.escapeLikePrefix(path)}${filter?.exactly ? '' : '%'}`,
         ])
         .andWhere((builder) => {

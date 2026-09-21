@@ -1,5 +1,5 @@
 import { IRequest, IResponse } from '../types/http';
-import { LibraryService } from '../services/LibraryService';
+import { LibraryService, LibraryLookupError } from '../services/LibraryService';
 import { logger } from '../services/LoggerService';
 import { LibraryDB } from '../services/db/LibraryDB';
 import { Bookmark, LibraryItem } from '../types/user';
@@ -60,6 +60,12 @@ export class LibraryController {
       return res.json({ content, lastItemPlayed });
     } catch (err) {
       this._logger.log({ origin: 'LibraryController.getLibraryContentPath', message: err.message, data: { user: req.user, query: req.query } }, 'error');
+      // A failed DB read is a server problem, not a bad request: answer 5xx so
+      // clients treat it as retryable instead of a permanent 4xx.
+      if (err instanceof LibraryLookupError) {
+        res.status(500).json({ message: 'Library unavailable' });
+        return;
+      }
       res.status(400).json({ message: err.message });
       return;
     }
