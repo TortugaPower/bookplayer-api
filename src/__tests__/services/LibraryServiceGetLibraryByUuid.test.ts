@@ -203,6 +203,16 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
     );
   });
 
+  it('the malformed-uuid warning logs at most 64 characters of the client value', async () => {
+    const user = await createTestUser(getTestTransaction());
+    await seedLibrary(user.id_user);
+
+    await get(user, 'New Name/', 'Optional("' + 'x'.repeat(300) + '")');
+
+    const warn = (mockLoggerService.log.mock.calls as any[][]).find((c) => c[1] === 'warn');
+    expect(warn[0].data.uuid).toHaveLength(64);
+  });
+
   it('the malformed-uuid warning is throttled: one line per service instance per window', async () => {
     const user = await createTestUser(getTestTransaction());
     await seedLibrary(user.id_user);
@@ -263,6 +273,19 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
       await expect(
         service.getLastItemPlayed(user as any, { appVersion: APP_VERSION }),
       ).rejects.toBeInstanceOf(LibraryLookupError);
+    });
+
+    it('a failed resume-item read is an error; nothing-played-yet is null', async () => {
+      const user = await createTestUser(getTestTransaction());
+      (service as any)._libraryDB.getLastItemPlayed = jest.fn(async () => null);
+      await expect(
+        service.getLastItemPlayed(user as any, { appVersion: APP_VERSION }),
+      ).rejects.toBeInstanceOf(LibraryLookupError);
+
+      (service as any)._libraryDB.getLastItemPlayed = jest.fn(async () => undefined);
+      await expect(
+        service.getLastItemPlayed(user as any, { appVersion: APP_VERSION }),
+      ).resolves.toBeNull();
     });
 
     it('a library with no links still lists externalResources as an empty array', async () => {

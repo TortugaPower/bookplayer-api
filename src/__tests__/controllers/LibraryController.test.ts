@@ -84,6 +84,29 @@ describe('LibraryController.getLibraryContentPath — error mapping', () => {
     expect(libraryService.getLibrary).not.toHaveBeenCalled();
   });
 
+  it('parses the sign flag as a boolean: "false" and "0" do not presign', async () => {
+    libraryService.getLibrary.mockResolvedValue([]);
+    for (const [sign, expected] of [['true', true], ['1', true], ['false', false], ['0', false], [undefined, false]] as const) {
+      libraryService.getLibrary.mockClear();
+      const req = request();
+      req.query = { relativePath: 'Folder/', ...(sign === undefined ? {} : { sign }) };
+
+      await controller.getLibraryContentPath(req, makeRes());
+
+      expect(libraryService.getLibrary.mock.calls[0][2].withPresign).toBe(expected);
+    }
+  });
+
+  it('noLastItemPlayed=true skips the resume item on the root listing', async () => {
+    libraryService.getLibrary.mockResolvedValue([]);
+    const req = request();
+    req.query = { relativePath: '', sign: 'true', noLastItemPlayed: 'true' };
+
+    await controller.getLibraryContentPath(req, makeRes());
+
+    expect(libraryService.getLastItemPlayed).not.toHaveBeenCalled();
+  });
+
   it('returns the listing on success without touching the status', async () => {
     libraryService.getLibrary.mockResolvedValue([{ relativePath: 'Folder/a.m4b' }]);
     const res = makeRes();

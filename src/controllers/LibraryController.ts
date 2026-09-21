@@ -10,6 +10,10 @@ import {
   ItemPutRequestBody,
 } from '../validation/externalResource';
 
+// Query-string flags arrive as strings; `?sign=false` must not read as true.
+const isTrue = (value: unknown): boolean =>
+  value === true || value === 'true' || value === '1';
+
 export class LibraryController {
   private readonly _logger = logger;
 
@@ -56,15 +60,15 @@ export class LibraryController {
       const path = `${user.email}/${relativePath ? relativePath : ''}`;
 
       const options = {
-        withPresign: sign,
+        withPresign: isTrue(sign),
         appVersion: req.app_version,
       };
       const content = await this._libraryService.getLibrary(user, path, options, uuid);
       let lastItemPlayed;
       if (
         ((!relativePath || relativePath === '/' || relativePath === '') &&
-          !noLastItemPlayed) ||
-        forceLastItem
+          !isTrue(noLastItemPlayed)) ||
+        isTrue(forceLastItem)
       ) {
         lastItemPlayed = await this._libraryService.getLastItemPlayed(user, options);
       }
@@ -93,7 +97,7 @@ export class LibraryController {
       const { sign } = req.query;
       const user = req.user;
       const lastItemPlayed = await this._libraryService.getLastItemPlayed(user, {
-        withPresign: sign,
+        withPresign: isTrue(sign),
         appVersion: req.app_version,
       });
       return res.json({ lastItemPlayed });

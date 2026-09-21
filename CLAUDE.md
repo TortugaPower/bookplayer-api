@@ -361,12 +361,21 @@ npx knex migrate:rollback
 
 ### Library Routes (`/v1/library`)
 
-| Method | Path | Description | Auth |
-|--------|------|-------------|------|
-| GET | `/all` | Get full library | Yes |
-| GET | `/history/:id` | Get library item | Yes |
-| POST | `/sync` | Sync library items | Yes |
-| POST | `/sync-legacy` | Legacy sync | Yes |
+All routes require auth + an active subscription (`checkSubscription`); most also require `requireCloudData`.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/` | List / resolve items. **`uuid` names the item; a trailing `/` on `relativePath` asks for its contents.** A valid uuid is authoritative (not found → `[]`, no path fallback); a folder or bound book resolved by uuid with a trailing slash lists its children by the *server-side* key. No uuid → path lookup. `sign=true` presigns URLs (PRO only). A failed DB read is a 500, never an empty library. |
+| POST / PUT / DELETE | `/` | Update metadata / upload metadata / soft-delete an item and its true children (bounded, escaped key match) |
+| GET | `/last_played` | Resume item, or `null` when nothing has been played; 500 on a failed read |
+| PUT / DELETE | `/external` | Link / unlink an external resource (Jellyfin, Audiobookshelf, …) |
+| POST | `/external_set` | Mark an external resource's file uploaded (S3 PRO gate) |
+| POST | `/reorder`, `/move`, `/rename` | Ordering and key rewrites |
+| DELETE | `/folder_in_out` | Merge a folder's children out and remove it |
+| GET / POST | `/bookmarks`, `/bookmark` | Bookmarks |
+| POST | `/thumbnail_set` | Presign a thumbnail upload |
+| GET | `/keys` | Synced identifiers |
+| POST | `/uuids` | Match client uuids to rows |
 
 ### Storage Routes (`/v1/storage`)
 

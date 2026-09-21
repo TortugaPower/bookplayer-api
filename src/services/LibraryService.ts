@@ -180,7 +180,9 @@ export class LibraryService {
             {
               origin: 'LibraryService.getLibrary',
               message: 'Ignoring malformed uuid; falling back to the path lookup',
-              data: { uuid },
+              // Client-controlled and by definition not a uuid: keep the
+              // shape (`Optional("…")`), not an unbounded string.
+              data: { uuid: String(uuid).slice(0, 64) },
             },
             'warn',
           );
@@ -1015,7 +1017,11 @@ export class LibraryService {
     trx?: Knex.Transaction,
   ): Promise<LibraryItem | null> {
     try {
+      // The DB class returns `null` when the query failed and `undefined`
+      // (knex `.first()`) when nothing has been played yet. Only the second
+      // one is the "no resume item" answer.
       const itemDb = await this._libraryDB.getLastItemPlayed(user.id_user, trx);
+      if (itemDb === null) throw new LibraryLookupError();
       if (!itemDb) return null;
       const item = (await this.parseLibraryItemDb(
         itemDb,
