@@ -1008,8 +1008,10 @@ export class LibraryService {
   }
 
   /**
-   * @returns `null` when nothing has been played yet.
-   * @throws {LibraryLookupError} when a DB read fails — see getLibrary.
+   * @returns `null` only when nothing has been played yet.
+   * @throws {LibraryLookupError} when a DB read fails — see getLibrary. Any
+   * other failure (presign, prefix resolution) propagates too; the controller
+   * maps everything thrown to a 500.
    */
   async getLastItemPlayed(
     user: User,
@@ -1071,16 +1073,21 @@ export class LibraryService {
       }
       return item;
     } catch (err) {
-      // `null` here means "nothing played yet" to the controller; a failed
-      // lookup must not be mistaken for that, so it propagates and the
-      // listing answers with a retryable error instead.
-      if (err instanceof LibraryLookupError) throw err;
-      this._logger.log({
-        origin: 'LibraryService.getLastItemPlayed',
-        message: err.message,
-        data: { user_id: user?.id_user },
-      });
-      return null;
+      // `null` means "nothing played yet" to the controller. No failure may be
+      // mistaken for that — not a failed read (already logged by the DB layer
+      // and the controller) and not a presign or prefix failure either — so
+      // everything propagates and the controller answers with a 500.
+      if (!(err instanceof LibraryLookupError)) {
+        this._logger.log(
+          {
+            origin: 'LibraryService.getLastItemPlayed',
+            message: err.message,
+            data: { user_id: user?.id_user },
+          },
+          'error',
+        );
+      }
+      throw err;
     }
   }
 

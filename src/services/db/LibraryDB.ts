@@ -68,7 +68,11 @@ export class LibraryDB {
   ): Promise<LibraryItemDB[]> {
     try {
       const db = trx || this.db;
-      const pathNumber = path.split('/').length;
+      // An exact match is a key, and keys never end in '/': a client may still
+      // send a folder as `Folder/`. Without `exactly` the trailing slash is
+      // meaningful (it selects the children), so leave it alone there.
+      const target = filter?.exactly ? path.replace(/\/+$/, '') : path;
+      const pathNumber = target.split('/').length;
       const objects = await db('library_items as li')
         .where({ user_id, active: true })
         .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [pathNumber])
@@ -77,7 +81,7 @@ export class LibraryDB {
         // depth. Backslash is PostgreSQL's default LIKE escape character, so no
         // ESCAPE clause (and no dependency on standard_conforming_strings).
         .whereRaw('key like ?', [
-          `${LibraryDB.escapeLikePrefix(path)}${filter?.exactly ? '' : '%'}`,
+          `${LibraryDB.escapeLikePrefix(target)}${filter?.exactly ? '' : '%'}`,
         ])
         .andWhere((builder) => {
           if (!!filter?.rawFilter) {
@@ -758,11 +762,17 @@ export class LibraryDB {
   ): Promise<void> {
     const { user_id, path, pathDepth, orderRange, direction } = params;
     const op = direction === 'increment' ? '+' : '-';
+    // `path` is the parent folder ('' for the root). Only its children may
+    // shift: `Folder%` also caught the root-level rows `Folder 2` and
+    // `Folder.m4b`, so reordering inside a folder was silently re-ranking
+    // unrelated items at the top level.
+    const parent = path.replace(/\/+$/, '');
+    const pattern = parent === '' ? '%' : `${LibraryDB.escapeLikePrefix(parent)}/%`;
     await trx('library_items as li')
       .update({ order_rank: trx.raw(`order_rank ${op} 1`) })
       .where({ user_id, active: true })
       .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [pathDepth])
-      .whereRaw('key like ?', [`${LibraryDB.escapeLikePrefix(path)}%`])
+      .whereRaw('key like ?', [pattern])
       .whereBetween('order_rank', orderRange);
   }
 

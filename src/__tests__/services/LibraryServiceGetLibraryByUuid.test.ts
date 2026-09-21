@@ -288,6 +288,20 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
       ).resolves.toBeNull();
     });
 
+    it('any other failure while building the resume item propagates instead of reading as "nothing played"', async () => {
+      const trx = getTestTransaction();
+      const user = await createTestUser(trx);
+      const { book } = await seedLibrary(user.id_user);
+      await trx('library_items').where({ uuid: book.uuid }).update({ last_play_date: 1700000000 });
+      (service as any).parseLibraryItemDb = jest.fn(async () => {
+        throw new Error('boom');
+      });
+
+      await expect(
+        service.getLastItemPlayed(user as any, { appVersion: APP_VERSION }),
+      ).rejects.toThrow('boom');
+    });
+
     it('a library with no links still lists externalResources as an empty array', async () => {
       const user = await createTestUser(getTestTransaction());
       await seedLibrary(user.id_user);
