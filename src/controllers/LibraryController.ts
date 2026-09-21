@@ -59,7 +59,8 @@ export class LibraryController {
       }
       return res.json({ content, lastItemPlayed });
     } catch (err) {
-      this._logger.log({ origin: 'LibraryController.getLibraryContentPath', message: err.message, data: { user: req.user, query: req.query } }, 'error');
+      // Identifiers only: `req.user` carries the email and subscription state.
+      this._logger.log({ origin: 'LibraryController.getLibraryContentPath', message: err.message, data: { user_id: req.user?.id_user, query: req.query } }, 'error');
       // Anything thrown here is a server-side failure (DB read, presign,
       // prefix resolution) — there is no request validation on this path that
       // throws. Answer 5xx so clients treat it as retryable rather than as a

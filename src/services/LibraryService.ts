@@ -136,8 +136,11 @@ export class LibraryService {
     },
     uuid?: string,
   ): Promise<LibraryItem[]> {
+    // The controller prefixes the client's relativePath with the account email
+    // (legacy key layout); strip it once here so nothing below — including the
+    // failure log — has to carry the email around.
+    const cleanPath = path.replace(`${user.email}/`, '');
     try {
-      const cleanPath = path.replace(`${user.email}/`, '');
       // Resolution contract: `uuid` identifies the item; a trailing slash on
       // `relativePath` asks for its contents. A valid uuid is authoritative —
       // it is looked up on its own and never falls back to the path, because
@@ -275,12 +278,13 @@ export class LibraryService {
       return library;
     } catch (err) {
       // Identifiers only — the user object carries the email and subscription
-      // state, which do not belong in the log stream.
+      // state, and the raw `path` is prefixed with the email; neither belongs
+      // in the log stream.
       this._logger.log(
         {
           origin: 'LibraryService.getLibrary',
           message: err.message,
-          data: { user_id: user?.id_user, path },
+          data: { user_id: user?.id_user, relativePath: cleanPath },
         },
         'error',
       );

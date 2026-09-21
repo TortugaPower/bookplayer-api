@@ -192,8 +192,9 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
 
     const errors = (mockLoggerService.log.mock.calls as any[][]).filter((c) => c[1] === 'error');
     expect(errors).toHaveLength(1);
-    expect(errors[0][0].data).toEqual({ user_id: user.id_user, path: `${user.email}/New Name/` });
-    expect(JSON.stringify(errors[0][0])).not.toContain(user.email.split('@')[0] + '@');
+    expect(errors[0][0].data).toEqual({ user_id: user.id_user, relativePath: 'New Name/' });
+    // The controller hands the service an email-prefixed path; it must not leak.
+    expect(JSON.stringify(errors[0][0])).not.toContain('@');
   });
 
   it('a well-formed or absent uuid produces no malformed-uuid warning', async () => {

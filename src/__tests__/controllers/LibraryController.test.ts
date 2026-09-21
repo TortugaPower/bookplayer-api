@@ -42,6 +42,14 @@ describe('LibraryController.getLibraryContentPath — error mapping', () => {
 
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith({ message: 'Library unavailable' });
+    // Logged with identifiers only — never the user object (email, subscriptions).
+    expect(mockLoggerService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { user_id: 1, query: { relativePath: 'Folder/', sign: 'true' } },
+      }),
+      'error',
+    );
+    expect(JSON.stringify(mockLoggerService.log.mock.calls)).not.toContain('user@example.com');
   });
 
   it('answers 500 "Internal error" for any other thrown failure (presign, prefix, driver)', async () => {
