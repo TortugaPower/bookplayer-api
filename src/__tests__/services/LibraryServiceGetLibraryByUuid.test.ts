@@ -172,6 +172,30 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
     );
   });
 
+  it('the malformed-uuid warning is throttled: one line per process per window', async () => {
+    const user = await createTestUser(getTestTransaction());
+    await seedLibrary(user.id_user);
+
+    await get(user, 'New Name/', NOT_A_UUID);
+    await get(user, 'New Name/', NOT_A_UUID);
+    await get(user, 'Renamed/Book.m4b', 'Optional("another-bad-one")');
+
+    const warns = (mockLoggerService.log.mock.calls as any[][]).filter((c) => c[1] === 'warn');
+    expect(warns).toHaveLength(1);
+  });
+
+  it('a failed lookup logs identifiers only, never the user object', async () => {
+    const user = await createTestUser(getTestTransaction());
+    (service as any)._libraryDB.getLibrary = jest.fn(async () => null);
+
+    await expect(get(user, 'New Name/')).rejects.toBeInstanceOf(LibraryLookupError);
+
+    const errors = (mockLoggerService.log.mock.calls as any[][]).filter((c) => c[1] === 'error');
+    expect(errors).toHaveLength(1);
+    expect(errors[0][0].data).toEqual({ user_id: user.id_user, path: `${user.email}/New Name/` });
+    expect(JSON.stringify(errors[0][0])).not.toContain(user.email.split('@')[0] + '@');
+  });
+
   it('a well-formed or absent uuid produces no malformed-uuid warning', async () => {
     const user = await createTestUser(getTestTransaction());
     const { book } = await seedLibrary(user.id_user);

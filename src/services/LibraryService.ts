@@ -39,7 +39,14 @@ export class LibraryLookupError extends Error {
   }
 }
 
+// Every iOS build before 2026-09 sends `Optional("…")` as the uuid on its
+// single-item URL requests, so until that rollout completes a per-request
+// warning would be the bulk of this endpoint's log volume. One line per
+// process per window keeps the signal without the cost.
+const MALFORMED_UUID_WARN_INTERVAL_MS = 10 * 60 * 1000;
+
 export class LibraryService {
+  private lastMalformedUuidWarnAt = 0;
   private readonly _logger = logger;
   private db = database;
 
@@ -149,17 +156,22 @@ export class LibraryService {
       // the controller's error path rather than a 200 with an empty library.
       const wantsContents = cleanPath.endsWith('/');
       if (uuid && !isValidUUID(uuid)) {
-        // Deliberately loud: iOS sent `Optional("…")` here for years and the
-        // silent fallback hid it. `warn` is the lowest level prod ships.
-        // Only the uuid is logged — no user identifiers.
-        this._logger.log(
-          {
-            origin: 'LibraryService.getLibrary',
-            message: 'Ignoring malformed uuid; falling back to the path lookup',
-            data: { uuid },
-          },
-          'warn',
-        );
+        // Observable on purpose: iOS sent `Optional("…")` here for years and
+        // the silent fallback hid it. `warn` is the lowest level prod ships.
+        // Throttled per process so today's shipped clients cannot flood the
+        // stream; only the uuid is logged — no user identifiers.
+        const now = Date.now();
+        if (now - this.lastMalformedUuidWarnAt > MALFORMED_UUID_WARN_INTERVAL_MS) {
+          this.lastMalformedUuidWarnAt = now;
+          this._logger.log(
+            {
+              origin: 'LibraryService.getLibrary',
+              message: 'Ignoring malformed uuid; falling back to the path lookup',
+              data: { uuid },
+            },
+            'warn',
+          );
+        }
       }
       let objectDB: LibraryItemDB[];
       if (isValidUUID(uuid)) {
@@ -262,14 +274,19 @@ export class LibraryService {
       }
       return library;
     } catch (err) {
-      this._logger.log({
-        origin: 'LibraryService.getLibrary',
-        message: err.message,
-        data: { user, path },
-      });
-      // Re-raised on purpose: the controller maps a LibraryLookupError to a
-      // 500 (retryable) and anything else to a 400. Swallowing it here would
-      // send clients a 200 with `content: null` / an empty library instead.
+      // Identifiers only — the user object carries the email and subscription
+      // state, which do not belong in the log stream.
+      this._logger.log(
+        {
+          origin: 'LibraryService.getLibrary',
+          message: err.message,
+          data: { user_id: user?.id_user, path },
+        },
+        'error',
+      );
+      // Re-raised on purpose: the controller answers every thrown failure with
+      // a 500 (retryable). Swallowing it here would send clients a 200 with
+      // `content: null` / an empty library instead.
       throw err;
     }
   }
