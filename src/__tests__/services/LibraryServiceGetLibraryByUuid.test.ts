@@ -172,7 +172,7 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
     );
   });
 
-  it('the malformed-uuid warning is throttled: one line per process per window', async () => {
+  it('the malformed-uuid warning is throttled: one line per service instance per window', async () => {
     const user = await createTestUser(getTestTransaction());
     await seedLibrary(user.id_user);
 

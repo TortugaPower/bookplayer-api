@@ -42,11 +42,13 @@ export class LibraryLookupError extends Error {
 // Every iOS build before 2026-09 sends `Optional("…")` as the uuid on its
 // single-item URL requests, so until that rollout completes a per-request
 // warning would be the bulk of this endpoint's log volume. One line per
-// process per window keeps the signal without the cost.
+// service instance per window keeps the signal without the cost — and the
+// controller builds a single instance at module scope, so in practice that
+// is one line per process.
 const MALFORMED_UUID_WARN_INTERVAL_MS = 10 * 60 * 1000;
 
 export class LibraryService {
-  private lastMalformedUuidWarnAt = 0;
+  private _lastMalformedUuidWarnAt = 0;
   private readonly _logger = logger;
   private db = database;
 
@@ -161,11 +163,11 @@ export class LibraryService {
       if (uuid && !isValidUUID(uuid)) {
         // Observable on purpose: iOS sent `Optional("…")` here for years and
         // the silent fallback hid it. `warn` is the lowest level prod ships.
-        // Throttled per process so today's shipped clients cannot flood the
-        // stream; only the uuid is logged — no user identifiers.
+        // Throttled so today's shipped clients cannot flood the stream; only
+        // the uuid is logged — no user identifiers.
         const now = Date.now();
-        if (now - this.lastMalformedUuidWarnAt > MALFORMED_UUID_WARN_INTERVAL_MS) {
-          this.lastMalformedUuidWarnAt = now;
+        if (now - this._lastMalformedUuidWarnAt > MALFORMED_UUID_WARN_INTERVAL_MS) {
+          this._lastMalformedUuidWarnAt = now;
           this._logger.log(
             {
               origin: 'LibraryService.getLibrary',
