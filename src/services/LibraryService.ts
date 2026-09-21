@@ -127,22 +127,33 @@ export class LibraryService {
       // caller asked for contents, the children are listed by the container's
       // *server-side* key, so a client still holding the pre-rename path gets
       // the right listing. Without a uuid (or with a malformed one, as every
-      // iOS build before 2026-09 sent) the path lookup behaves as it always has.
-      const wantsContents = cleanPath === '' || cleanPath.endsWith('/');
+      // iOS build before 2026-09 sent) the path lookup behaves as it always has;
+      // the empty path (library root) is only meaningful there.
+      //
+      // The DB layer returns `null` when a query fails and `[]` when nothing
+      // matches. Those must not collapse into the same response: an empty
+      // listing is authoritative to sync clients (it is what they reconcile
+      // deletions against), so a lookup failure is raised instead and reaches
+      // the controller's error path rather than a 200 with an empty library.
+      const wantsContents = cleanPath.endsWith('/');
       let objectDB: LibraryItemDB[];
       if (isValidUUID(uuid)) {
-        const owner = (
-          await this._libraryDB.getLibraryByUuid(user.id_user, uuid)
-        )?.[0];
+        const owner = this.requireLookup(
+          await this._libraryDB.getLibraryByUuid(user.id_user, uuid),
+        )[0];
         if (!owner) return [];
         const isContainer =
           parseInt(`${owner.type}`) !== parseInt(LibraryItemType.BOOK);
         objectDB =
           wantsContents && isContainer
-            ? await this._libraryDB.getLibrary(user.id_user, `${owner.key}/`)
+            ? this.requireLookup(
+                await this._libraryDB.getLibrary(user.id_user, `${owner.key}/`),
+              )
             : [owner];
       } else {
-        objectDB = await this._libraryDB.getLibrary(user.id_user, cleanPath);
+        objectDB = this.requireLookup(
+          await this._libraryDB.getLibrary(user.id_user, cleanPath),
+        );
       }
 
       if (!objectDB || objectDB.length <= 0) return []
@@ -231,8 +242,20 @@ export class LibraryService {
         message: err.message,
         data: { user, path },
       });
-      return null;
+      // Re-raised on purpose: the controller answers a thrown error with a
+      // 400, which clients retry. Swallowing it here would send them a 200
+      // with `content: null` / an empty library instead.
+      throw err;
     }
+  }
+
+  // `null` is the DB layer's "the query failed" (it logs and swallows the
+  // driver error); `[]` is "nothing matched". Only the second one is a result.
+  private requireLookup(rows: LibraryItemDB[] | null): LibraryItemDB[] {
+    if (rows === null) {
+      throw new Error('Library lookup failed');
+    }
+    return rows;
   }
 
   async getObject(

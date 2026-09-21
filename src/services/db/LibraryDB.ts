@@ -72,7 +72,11 @@ export class LibraryDB {
       const objects = await db('library_items as li')
         .where({ user_id, active: true })
         .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [pathNumber])
-        .whereRaw('key like ?', [`${path}${filter?.exactly ? '' : '%'}`])
+        // The prefix is a literal key, not a pattern: a folder named `A_B` or
+        // `100%` must not also match `AxB/…` or `100 percent/…` at the same depth.
+        .whereRaw("key like ? escape '\\'", [
+          `${LibraryDB.escapeLikePrefix(path)}${filter?.exactly ? '' : '%'}`,
+        ])
         .andWhere((builder) => {
           if (!!filter?.rawFilter) {
             builder.whereRaw(filter?.rawFilter);

@@ -119,8 +119,9 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
     const user = await createTestUser(getTestTransaction());
     const { folder } = await seedLibrary(user.id_user);
 
-    const items = await get(user, 'whatever', folder.uuid);
-
+    expect(paths(await get(user, 'whatever', folder.uuid))).toEqual(['New Name']);
+    // An empty relativePath is not a contents request either: only the slash is.
+    const items = await get(user, '', folder.uuid);
     expect(paths(items)).toEqual(['New Name']);
     expect(Number(items[0].type)).toBe(0);
   });
@@ -196,5 +197,53 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
       expect(call[0].type).toBe(StorageAction.GET);
       expect(call[0].key).not.toContain('Old Series Name');
     }
+  });
+
+  it('LIKE wildcards in a key are literal: `A_B/` and `100%/` list only their own children', async () => {
+    const trx = getTestTransaction();
+    const user = await createTestUser(trx);
+    const underscore = await createTestLibraryItem(trx, { user_id: user.id_user, key: 'A_B', type: 0 });
+    await createTestLibraryItem(trx, { user_id: user.id_user, key: 'A_B/one.m4b' });
+    await createTestLibraryItem(trx, { user_id: user.id_user, key: 'AxB', type: 0 });
+    await createTestLibraryItem(trx, { user_id: user.id_user, key: 'AxB/two.m4b' });
+    const percent = await createTestLibraryItem(trx, { user_id: user.id_user, key: '100%', type: 0 });
+    await createTestLibraryItem(trx, { user_id: user.id_user, key: '100%/three.m4b' });
+    await createTestLibraryItem(trx, { user_id: user.id_user, key: '100 percent', type: 0 });
+    await createTestLibraryItem(trx, { user_id: user.id_user, key: '100 percent/four.m4b' });
+
+    // Through the uuid branch (server key) and through the historical path branch.
+    expect(paths(await get(user, 'stale/', underscore.uuid))).toEqual(['A_B/one.m4b']);
+    expect(paths(await get(user, 'A_B/'))).toEqual(['A_B/one.m4b']);
+    expect(paths(await get(user, 'stale/', percent.uuid))).toEqual(['100%/three.m4b']);
+    expect(paths(await get(user, '100%/'))).toEqual(['100%/three.m4b']);
+  });
+
+  describe('a failed lookup is an error, never an empty library', () => {
+    // The DB layer logs and returns null when a query fails. A sync client
+    // treats an empty contents listing as authoritative, so null must not
+    // become `[]`.
+    it('when the uuid lookup fails', async () => {
+      const user = await createTestUser(getTestTransaction());
+      const { folder } = await seedLibrary(user.id_user);
+      (service as any)._libraryDB.getLibraryByUuid = jest.fn(async () => null);
+
+      await expect(get(user, 'New Name/', folder.uuid)).rejects.toThrow('Library lookup failed');
+    });
+
+    it('when the children lookup fails', async () => {
+      const user = await createTestUser(getTestTransaction());
+      const { folder } = await seedLibrary(user.id_user);
+      (service as any)._libraryDB.getLibrary = jest.fn(async () => null);
+
+      await expect(get(user, 'New Name/', folder.uuid)).rejects.toThrow('Library lookup failed');
+    });
+
+    it('when the path lookup fails', async () => {
+      const user = await createTestUser(getTestTransaction());
+      await seedLibrary(user.id_user);
+      (service as any)._libraryDB.getLibrary = jest.fn(async () => null);
+
+      await expect(get(user, 'New Name/')).rejects.toThrow('Library lookup failed');
+    });
   });
 });
