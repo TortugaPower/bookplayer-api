@@ -270,10 +270,14 @@ export class LibraryDB {
     prefix: string,
     exactly?: boolean,
   ): [string, string[]] {
-    if (exactly) return ['key = ?', [prefix]];
+    // Callers pass client paths as-is; a folder may arrive as `Folder/`. Keys
+    // never end in `/`, so without this the pattern would match nothing and a
+    // delete would be reported as done while the rows stayed active.
+    const key = prefix.replace(/\/+$/, '');
+    if (exactly) return ['key = ?', [key]];
     return [
       '(key = ? or key like ?)',
-      [prefix, `${LibraryDB.escapeLikePrefix(prefix)}/%`],
+      [key, `${LibraryDB.escapeLikePrefix(key)}/%`],
     ];
   }
 

@@ -98,8 +98,14 @@ export class LibraryController {
       });
       return res.json({ lastItemPlayed });
     } catch (err) {
-      this._logger.log({ origin: 'LibraryController.getLastPlayedItem', message: err.message, data: { user: req.user, query: req.query } }, 'error');
-      res.status(400).json({ message: err.message });
+      // Same mapping as getLibraryContentPath: nothing thrown here is a client
+      // mistake, so answer 5xx and keep identifiers only in the log.
+      this._logger.log({ origin: 'LibraryController.getLastPlayedItem', message: err.message, data: { user_id: req.user?.id_user, query: req.query } }, 'error');
+      if (err instanceof LibraryLookupError) {
+        res.status(500).json({ message: 'Library unavailable' });
+        return;
+      }
+      res.status(500).json({ message: 'Internal error' });
       return;
     }
   }

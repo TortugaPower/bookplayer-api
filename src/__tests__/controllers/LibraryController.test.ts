@@ -97,3 +97,49 @@ describe('LibraryController.getLibraryContentPath — error mapping', () => {
     });
   });
 });
+
+describe('LibraryController.getLastPlayedItem — error mapping mirrors the listing', () => {
+  let libraryService: any;
+  let controller: LibraryController;
+
+  beforeEach(() => {
+    libraryService = { getLastItemPlayed: jest.fn() };
+    controller = new LibraryController(libraryService, {} as any);
+    (controller as any)._logger = mockLoggerService;
+    mockLoggerService.log.mockClear();
+  });
+
+  const request = () =>
+    ({ query: { sign: 'true' }, user: { id_user: 1, email: 'user@example.com' }, app_version: '2022-12-12' }) as any;
+
+  it('answers 500 "Library unavailable" when the lookup failed', async () => {
+    libraryService.getLastItemPlayed.mockRejectedValue(new LibraryLookupError());
+    const res = makeRes();
+
+    await controller.getLastPlayedItem(request(), res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ message: 'Library unavailable' });
+    expect(JSON.stringify(mockLoggerService.log.mock.calls)).not.toContain('user@example.com');
+  });
+
+  it('answers 500 "Internal error" for any other thrown failure', async () => {
+    libraryService.getLastItemPlayed.mockRejectedValue(new Error('boom'));
+    const res = makeRes();
+
+    await controller.getLastPlayedItem(request(), res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ message: 'Internal error' });
+  });
+
+  it('returns null with a 200 when nothing has been played yet', async () => {
+    libraryService.getLastItemPlayed.mockResolvedValue(null);
+    const res = makeRes();
+
+    await controller.getLastPlayedItem(request(), res);
+
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith({ lastItemPlayed: null });
+  });
+});

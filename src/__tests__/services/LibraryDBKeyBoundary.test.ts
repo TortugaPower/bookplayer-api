@@ -62,6 +62,16 @@ describe('LibraryDB — key patterns match the row and its true children only', 
     );
   });
 
+  it('deleteLibrary tolerates a trailing slash on the path (clients send folders as "Folder/")', async () => {
+    const user = await createTestUser(getTestTransaction());
+    await seed(user.id_user);
+
+    const deleted = await db.deleteLibrary({ user_id: user.id_user, path: 'Dune/' });
+
+    expect(deleted.map((r) => r.key).sort()).toEqual(['Dune', 'Dune/Book 1.m4b']);
+    expect(await activeKeys(user.id_user)).toEqual(expect.arrayContaining(['Dune-1', 'Dune-1/Book 2.m4b']));
+  });
+
   it('deleteLibrary with exactly=true takes the row alone', async () => {
     const user = await createTestUser(getTestTransaction());
     await seed(user.id_user);

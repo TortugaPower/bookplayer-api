@@ -129,6 +129,14 @@ export class LibraryService {
     return parsed;
   }
 
+  /**
+   * Resolves `GET /v1/library`. See the resolution contract inside.
+   *
+   * @throws {LibraryLookupError} when a DB read fails. Deliberate departure
+   * from the "return null on error" service convention: an empty result is
+   * authoritative to sync clients, so a failed read must never look like one.
+   * Controllers map it to 500.
+   */
   async getLibrary(
     user: User,
     path: string,
@@ -997,6 +1005,10 @@ export class LibraryService {
     }
   }
 
+  /**
+   * @returns `null` when nothing has been played yet.
+   * @throws {LibraryLookupError} when a DB read fails — see getLibrary.
+   */
   async getLastItemPlayed(
     user: User,
     options: { withPresign?: boolean; appVersion: string },
