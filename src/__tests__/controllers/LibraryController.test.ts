@@ -44,14 +44,19 @@ describe('LibraryController.getLibraryContentPath — error mapping', () => {
     expect(res.json).toHaveBeenCalledWith({ message: 'Library unavailable' });
   });
 
-  it('keeps 400 for every other error', async () => {
+  it('answers 500 "Internal error" for any other thrown failure (presign, prefix, driver)', async () => {
     libraryService.getLibrary.mockRejectedValue(new Error('boom'));
     const res = makeRes();
 
     await controller.getLibraryContentPath(request(), res);
 
-    expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith({ message: 'boom' });
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ message: 'Internal error' });
+    // The raw message is logged, not sent to the client.
+    expect(mockLoggerService.log).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'boom' }),
+      'error',
+    );
   });
 
   it('returns the listing on success without touching the status', async () => {

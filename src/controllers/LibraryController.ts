@@ -60,13 +60,15 @@ export class LibraryController {
       return res.json({ content, lastItemPlayed });
     } catch (err) {
       this._logger.log({ origin: 'LibraryController.getLibraryContentPath', message: err.message, data: { user: req.user, query: req.query } }, 'error');
-      // A failed DB read is a server problem, not a bad request: answer 5xx so
-      // clients treat it as retryable instead of a permanent 4xx.
+      // Anything thrown here is a server-side failure (DB read, presign,
+      // prefix resolution) — there is no request validation on this path that
+      // throws. Answer 5xx so clients treat it as retryable rather than as a
+      // permanent client error, per the controller pattern in CLAUDE.md.
       if (err instanceof LibraryLookupError) {
         res.status(500).json({ message: 'Library unavailable' });
         return;
       }
-      res.status(400).json({ message: err.message });
+      res.status(500).json({ message: 'Internal error' });
       return;
     }
   }

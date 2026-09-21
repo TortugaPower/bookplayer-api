@@ -162,6 +162,24 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
     const items = await get(user, 'New Name/', NOT_A_UUID);
 
     expect(paths(items)).toEqual(['New Name/A.m4b', 'New Name/B.m4b', 'New Name/Sub']);
+    // …and says so, at a level prod ships, without logging the user.
+    expect(mockLoggerService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        origin: 'LibraryService.getLibrary',
+        data: { uuid: NOT_A_UUID },
+      }),
+      'warn',
+    );
+  });
+
+  it('a well-formed or absent uuid produces no malformed-uuid warning', async () => {
+    const user = await createTestUser(getTestTransaction());
+    const { book } = await seedLibrary(user.id_user);
+
+    await get(user, 'Renamed/Book.m4b', book.uuid);
+    await get(user, 'New Name/');
+
+    expect(mockLoggerService.log).not.toHaveBeenCalledWith(expect.anything(), 'warn');
   });
 
   it('no uuid keeps the historical path lookup for contents and for a single item', async () => {

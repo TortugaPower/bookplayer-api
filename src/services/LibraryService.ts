@@ -148,6 +148,19 @@ export class LibraryService {
       // deletions against), so a lookup failure is raised instead and reaches
       // the controller's error path rather than a 200 with an empty library.
       const wantsContents = cleanPath.endsWith('/');
+      if (uuid && !isValidUUID(uuid)) {
+        // Deliberately loud: iOS sent `Optional("…")` here for years and the
+        // silent fallback hid it. `warn` is the lowest level prod ships.
+        // Only the uuid is logged — no user identifiers.
+        this._logger.log(
+          {
+            origin: 'LibraryService.getLibrary',
+            message: 'Ignoring malformed uuid; falling back to the path lookup',
+            data: { uuid },
+          },
+          'warn',
+        );
+      }
       let objectDB: LibraryItemDB[];
       if (isValidUUID(uuid)) {
         const owner = this.requireLookup(
