@@ -67,6 +67,23 @@ describe('LibraryController.getLibraryContentPath — error mapping', () => {
     );
   });
 
+  it('rejects array-shaped query parameters with 422 before touching the service', async () => {
+    const malformed: Array<Record<string, unknown>> = [
+      { relativePath: 'Folder/', uuid: ['11111111-1111-4111-8111-111111111111'] },
+      { relativePath: ['Folder/'] },
+    ];
+    for (const query of malformed) {
+      const res = makeRes();
+      const req = { ...request(), query };
+
+      await controller.getLibraryContentPath(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(422);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Invalid query parameters' });
+    }
+    expect(libraryService.getLibrary).not.toHaveBeenCalled();
+  });
+
   it('returns the listing on success without touching the status', async () => {
     libraryService.getLibrary.mockResolvedValue([{ relativePath: 'Folder/a.m4b' }]);
     const res = makeRes();

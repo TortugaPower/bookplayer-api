@@ -39,6 +39,17 @@ export class LibraryController {
   ): Promise<IResponse> {
     try {
       const { relativePath, uuid, sign, noLastItemPlayed, forceLastItem } = req.query;
+      // qs turns `?uuid=a&uuid=b` or `?relativePath[]=x` into arrays; an array
+      // string-coerces past isValidUUID and then fails as a DB binding, which
+      // would now surface as a 500. That is a malformed request, not a server
+      // fault, so reject it up front.
+      if (
+        (relativePath != null && typeof relativePath !== 'string') ||
+        (uuid != null && typeof uuid !== 'string')
+      ) {
+        res.status(422).json({ message: 'Invalid query parameters' });
+        return;
+      }
       const user = req.user;
       // `uuid` names the item; a trailing slash on `relativePath` asks for its
       // contents. See LibraryService.getLibrary for the resolution rules.

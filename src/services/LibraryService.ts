@@ -184,8 +184,12 @@ export class LibraryService {
           await this._libraryDB.getLibraryByUuid(user.id_user, uuid),
         )[0];
         if (!owner) return [];
+        // Positive classification: a NULL or unknown `type` (legacy rows) is
+        // not a container and returns the row, as it always has.
+        const ownerType = parseInt(`${owner.type}`);
         const isContainer =
-          parseInt(`${owner.type}`) !== parseInt(LibraryItemType.BOOK);
+          ownerType === parseInt(LibraryItemType.FOLDER) ||
+          ownerType === parseInt(LibraryItemType.BOUND);
         objectDB =
           wantsContents && isContainer
             ? this.requireLookup(

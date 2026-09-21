@@ -126,6 +126,37 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
     expect(Number(items[0].type)).toBe(0);
   });
 
+  it('a row with a NULL type is not a container: uuid + trailing slash returns the row itself', async () => {
+    const trx = getTestTransaction();
+    const user = await createTestUser(trx);
+    const uuid = '77777777-7777-4777-8777-777777777777';
+    // Legacy rows can carry type = NULL; createTestLibraryItem always sets one.
+    await trx('library_items').insert({
+      user_id: user.id_user,
+      key: 'Untyped',
+      title: 'Untyped',
+      original_filename: 'Untyped',
+      speed: 1,
+      actual_time: '0',
+      details: '',
+      duration: '0',
+      percent_completed: 0,
+      order_rank: 0,
+      type: null,
+      is_finish: false,
+      thumbnail: null,
+      source_path: 'root/test_Untyped',
+      synced: true,
+      active: true,
+      uuid,
+    });
+    await createTestLibraryItem(trx, { user_id: user.id_user, key: 'Untyped/child.m4b' });
+
+    const items = await get(user, 'Untyped/', uuid);
+
+    expect(paths(items)).toEqual(['Untyped']);
+  });
+
   it('a book uuid with a trailing slash still returns the book — books have no contents', async () => {
     const user = await createTestUser(getTestTransaction());
     const { book } = await seedLibrary(user.id_user);
