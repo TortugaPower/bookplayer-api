@@ -119,10 +119,32 @@ export class LibraryService {
   ): Promise<LibraryItem[]> {
     try {
       const cleanPath = path.replace(`${user.email}/`, '');
-      const objectDB = isValidUUID(uuid)
-        ? await this._libraryDB.getLibraryByUuid(user.id_user, uuid)
-        : await this._libraryDB.getLibrary(user.id_user, cleanPath);
-      
+      // Resolution contract: `uuid` identifies the item; a trailing slash on
+      // `relativePath` asks for its contents. A valid uuid is authoritative —
+      // it is looked up on its own and never falls back to the path, because
+      // the path is exactly what goes stale when a folder is moved or renamed.
+      // When the uuid resolves to a container (folder or bound book) and the
+      // caller asked for contents, the children are listed by the container's
+      // *server-side* key, so a client still holding the pre-rename path gets
+      // the right listing. Without a uuid (or with a malformed one, as every
+      // iOS build before 2026-09 sent) the path lookup behaves as it always has.
+      const wantsContents = cleanPath === '' || cleanPath.endsWith('/');
+      let objectDB: LibraryItemDB[];
+      if (isValidUUID(uuid)) {
+        const owner = (
+          await this._libraryDB.getLibraryByUuid(user.id_user, uuid)
+        )?.[0];
+        if (!owner) return [];
+        const isContainer =
+          parseInt(`${owner.type}`) !== parseInt(LibraryItemType.BOOK);
+        objectDB =
+          wantsContents && isContainer
+            ? await this._libraryDB.getLibrary(user.id_user, `${owner.key}/`)
+            : [owner];
+      } else {
+        objectDB = await this._libraryDB.getLibrary(user.id_user, cleanPath);
+      }
+
       if (!objectDB || objectDB.length <= 0) return []
 
       const externals = await this._libraryDB.getExternalResources(objectDB.map( ob => ob.id_library_item))

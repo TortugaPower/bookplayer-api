@@ -40,6 +40,8 @@ export class LibraryController {
     try {
       const { relativePath, uuid, sign, noLastItemPlayed, forceLastItem } = req.query;
       const user = req.user;
+      // `uuid` names the item; a trailing slash on `relativePath` asks for its
+      // contents. See LibraryService.getLibrary for the resolution rules.
       const path = `${user.email}/${relativePath ? relativePath : ''}`;
 
       const options = {
