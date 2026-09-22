@@ -83,7 +83,7 @@ export class LibraryController {
           payload.lastItemPlayed = await this._libraryService.getLastItemPlayed(user, options);
         } catch (err) {
           this._logger.log(
-            { origin: 'LibraryController.getLibraryContentPath.lastItemPlayed', message: err.message, data: { user_id: user.id_user } },
+            { origin: 'LibraryController.getLibraryContentPath', message: `lastItemPlayed failed: ${err.message}`, data: { user_id: user.id_user, step: 'lastItemPlayed' } },
             'error',
           );
         }

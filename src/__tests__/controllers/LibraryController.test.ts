@@ -131,7 +131,10 @@ describe('LibraryController.getLibraryContentPath — error mapping', () => {
     expect(payload.content).toEqual([{ relativePath: 'a.m4b' }]);
     expect(Object.keys(payload)).toEqual(['content']);
     expect(mockLoggerService.log).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { user_id: 1 } }),
+      expect.objectContaining({
+        origin: 'LibraryController.getLibraryContentPath',
+        data: { user_id: 1, step: 'lastItemPlayed' },
+      }),
       'error',
     );
   });

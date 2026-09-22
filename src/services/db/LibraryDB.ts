@@ -73,16 +73,21 @@ export class LibraryDB {
       // meaningful (it selects the children), so leave it alone there.
       const target = filter?.exactly ? path.replace(/\/+$/, '') : path;
       const pathNumber = target.split('/').length;
-      const objects = await db('library_items as li')
+      const query = db('library_items as li')
         .where({ user_id, active: true })
-        .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [pathNumber])
+        .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [pathNumber]);
+      if (filter?.exactly) {
+        // An exact key is an equality, not a pattern (and it lets the planner
+        // use the (user_id, key) partial unique index).
+        query.where('key', target);
+      } else {
         // The prefix is a literal key, not a pattern: a folder named `A_B` or
         // `100%` must not also match `AxB/…` or `100 percent/…` at the same
         // depth. Backslash is PostgreSQL's default LIKE escape character, so no
         // ESCAPE clause (and no dependency on standard_conforming_strings).
-        .whereRaw('key like ?', [
-          `${LibraryDB.escapeLikePrefix(target)}${filter?.exactly ? '' : '%'}`,
-        ])
+        query.whereRaw('key like ?', [`${LibraryDB.escapeLikePrefix(target)}%`]);
+      }
+      const objects = await query
         .andWhere((builder) => {
           if (!!filter?.rawFilter) {
             builder.whereRaw(filter?.rawFilter);

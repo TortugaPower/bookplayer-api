@@ -177,7 +177,7 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
     expect(mockLoggerService.log).toHaveBeenCalledWith(
       expect.objectContaining({
         origin: 'LibraryService.getLibrary',
-        data: { uuid: '99999999-9999-4999-8999-999999999999', wantsContents: true },
+        data: { user_id: user.id_user, uuid: '99999999-9999-4999-8999-999999999999', wantsContents: true },
       }),
       'warn',
     );
@@ -205,7 +205,7 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
     expect(mockLoggerService.log).toHaveBeenCalledWith(
       expect.objectContaining({
         origin: 'LibraryService.getLibrary',
-        data: { uuid: NOT_A_UUID },
+        data: { user_id: user.id_user, uuid: NOT_A_UUID },
       }),
       'warn',
     );

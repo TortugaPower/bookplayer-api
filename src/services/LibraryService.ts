@@ -182,8 +182,9 @@ export class LibraryService {
               origin: 'LibraryService.getLibrary',
               message: 'Ignoring malformed uuid; falling back to the path lookup',
               // Client-controlled and by definition not a uuid: keep the
-              // shape (`Optional("…")`), not an unbounded string.
-              data: { uuid: String(uuid).slice(0, 64) },
+              // shape (`Optional("…")`), not an unbounded string. user_id is
+              // an identifier, not PII, and makes the line actionable.
+              data: { user_id: user?.id_user, uuid: String(uuid).slice(0, 64) },
             },
             'warn',
           );
@@ -207,7 +208,7 @@ export class LibraryService {
               {
                 origin: 'LibraryService.getLibrary',
                 message: 'Valid uuid matched no active item; returning an empty result',
-                data: { uuid, wantsContents },
+                data: { user_id: user?.id_user, uuid, wantsContents },
               },
               'warn',
             );
