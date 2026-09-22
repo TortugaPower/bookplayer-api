@@ -372,7 +372,8 @@ All routes require auth + an active subscription (`checkSubscription`); most als
 | POST | `/external_set` | Mark an external resource's file uploaded (S3 PRO gate) |
 | POST | `/move`, `/rename` | Key rewrites (order changes arrive as per-item metadata updates; there is no reorder endpoint) |
 | DELETE | `/folder_in_out` | Merge a folder's children out and remove it |
-| GET / POST | `/bookmarks`, `/bookmark` | Bookmarks |
+| GET / POST | `/bookmarks` | List bookmarks |
+| PUT | `/bookmark` | Upsert a bookmark |
 | POST | `/thumbnail_set` | Presign a thumbnail upload |
 | GET | `/keys` | Synced identifiers |
 | POST | `/uuids` | Match client uuids to rows |

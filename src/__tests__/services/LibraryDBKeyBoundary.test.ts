@@ -111,6 +111,20 @@ describe('LibraryDB — key patterns match the row and its true children only', 
     expect(nested.map((r) => r.key).sort()).toEqual(['A_B/Sub', 'A_B/Sub/deep.m4b', 'A_B/one.m4b']);
   });
 
+  it('getLibrary resolves the three path shapes: root, children, one item', async () => {
+    const user = await createTestUser(getTestTransaction());
+    await seed(user.id_user);
+    const keys = async (path: string) => (await db.getLibrary(user.id_user, path)).map((r) => r.key).sort();
+
+    // '' is the root: every depth-1 row.
+    expect(await keys('')).toEqual(['A_B', 'AxB', 'Dune', 'Dune-1', 'Dune.m4b']);
+    // 'Folder/' is that folder's children.
+    expect(await keys('Dune/')).toEqual(['Dune/Book 1.m4b']);
+    // 'Dune' is one item — not `Dune-1`, not `Dune.m4b`.
+    expect(await keys('Dune')).toEqual(['Dune']);
+    expect(await keys('Dune.m4b')).toEqual(['Dune.m4b']);
+  });
+
   it('getLibrary exact match tolerates a trailing slash on a folder path', async () => {
     const user = await createTestUser(getTestTransaction());
     await seed(user.id_user);

@@ -76,9 +76,15 @@ export class LibraryDB {
       const query = db('library_items as li')
         .where({ user_id, active: true })
         .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [pathNumber]);
-      if (filter?.exactly) {
-        // An exact key is an equality, not a pattern (and it lets the planner
-        // use the (user_id, key) partial unique index).
+      // Three shapes reach here:
+      //   ''         the library root: every depth-1 row
+      //   'Folder/'  a container's children: every depth-2 row under it
+      //   'Dune'     one item: exactly that key
+      // The last one used to be `like 'Dune%'`, which also returned `Dune-1`
+      // and `Dune.m4b`; a single-item lookup is an equality (and lets the
+      // planner use the (user_id, key) partial unique index).
+      const isRoot = target === '';
+      if (filter?.exactly || (!isRoot && !target.endsWith('/'))) {
         query.where('key', target);
       } else {
         // The prefix is a literal key, not a pattern: a folder named `A_B` or
