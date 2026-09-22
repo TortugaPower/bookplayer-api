@@ -60,12 +60,14 @@ export class LibraryDB {
     }
   }
 
+  /** `null` means the query failed; `[]` means nothing matched. Callers that
+   *  answer clients must not collapse the two (see LibraryService.requireLookup). */
   async getLibrary(
     user_id: number,
     path: string,
     filter?: { rawFilter?: string; exactly?: boolean },
     trx?: Knex.Transaction,
-  ): Promise<LibraryItemDB[]> {
+  ): Promise<LibraryItemDB[] | null> {
     try {
       const db = trx || this.db;
       // An exact match is a key, and keys never end in '/': a client may still
@@ -113,12 +115,13 @@ export class LibraryDB {
     }
   }
 
+  /** `null` means the query failed; `[]` means no such uuid for this user. */
   async getLibraryByUuid(
     user_id: number,
     uuid: string,
     filter?: { rawFilter?: string; exactly?: boolean },
     trx?: Knex.Transaction,
-  ): Promise<LibraryItemDB[]> {
+  ): Promise<LibraryItemDB[] | null> {
     try {
       const db = trx || this.db;
       const objects = await db('library_items as li')
