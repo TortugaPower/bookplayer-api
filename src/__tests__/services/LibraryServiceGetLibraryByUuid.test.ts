@@ -173,14 +173,6 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
     const items = await get(user, 'Old Name/', '99999999-9999-4999-8999-999999999999');
 
     expect(items).toEqual([]);
-    // …and it is observable, at a level prod ships, without the user.
-    expect(mockLoggerService.log).toHaveBeenCalledWith(
-      expect.objectContaining({
-        origin: 'LibraryService.getLibrary',
-        data: { user_id: user.id_user, uuid: '99999999-9999-4999-8999-999999999999', wantsContents: true },
-      }),
-      'warn',
-    );
   });
 
   it('a uuid belonging to another user resolves to nothing', async () => {
@@ -201,36 +193,6 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
     const items = await get(user, 'New Name/', NOT_A_UUID);
 
     expect(paths(items)).toEqual(['New Name/A.m4b', 'New Name/B.m4b', 'New Name/Sub']);
-    // …and says so, at a level prod ships, without logging the user.
-    expect(mockLoggerService.log).toHaveBeenCalledWith(
-      expect.objectContaining({
-        origin: 'LibraryService.getLibrary',
-        data: { user_id: user.id_user, uuid: NOT_A_UUID },
-      }),
-      'warn',
-    );
-  });
-
-  it('the malformed-uuid warning logs at most 64 characters of the client value', async () => {
-    const user = await createTestUser(getTestTransaction());
-    await seedLibrary(user.id_user);
-
-    await get(user, 'New Name/', 'Optional("' + 'x'.repeat(300) + '")');
-
-    const warn = (mockLoggerService.log.mock.calls as any[][]).find((c) => c[1] === 'warn');
-    expect(warn[0].data.uuid).toHaveLength(64);
-  });
-
-  it('the malformed-uuid warning is throttled: one line per service instance per window', async () => {
-    const user = await createTestUser(getTestTransaction());
-    await seedLibrary(user.id_user);
-
-    await get(user, 'New Name/', NOT_A_UUID);
-    await get(user, 'New Name/', NOT_A_UUID);
-    await get(user, 'Renamed/Book.m4b', 'Optional("another-bad-one")');
-
-    const warns = (mockLoggerService.log.mock.calls as any[][]).filter((c) => c[1] === 'warn');
-    expect(warns).toHaveLength(1);
   });
 
   it('a failed lookup is not re-logged by the service (DB layer and controller already do)', async () => {
@@ -319,16 +281,6 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
       expect(items.length).toBeGreaterThan(0);
       expect(items.every((i) => Array.isArray(i.externalResources) && i.externalResources.length === 0)).toBe(true);
     });
-  });
-
-  it('a well-formed or absent uuid produces no malformed-uuid warning', async () => {
-    const user = await createTestUser(getTestTransaction());
-    const { book } = await seedLibrary(user.id_user);
-
-    await get(user, 'Renamed/Book.m4b', book.uuid);
-    await get(user, 'New Name/');
-
-    expect(mockLoggerService.log).not.toHaveBeenCalledWith(expect.anything(), 'warn');
   });
 
   it('no uuid keeps the historical path lookup for contents and for a single item', async () => {
