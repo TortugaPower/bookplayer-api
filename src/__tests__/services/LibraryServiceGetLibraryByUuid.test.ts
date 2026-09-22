@@ -173,6 +173,14 @@ describe('LibraryService.getLibrary — uuid resolution', () => {
     const items = await get(user, 'Old Name/', '99999999-9999-4999-8999-999999999999');
 
     expect(items).toEqual([]);
+    // …and it is observable, at a level prod ships, without the user.
+    expect(mockLoggerService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        origin: 'LibraryService.getLibrary',
+        data: { uuid: '99999999-9999-4999-8999-999999999999', wantsContents: true },
+      }),
+      'warn',
+    );
   });
 
   it('a uuid belonging to another user resolves to nothing', async () => {

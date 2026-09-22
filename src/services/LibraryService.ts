@@ -45,10 +45,11 @@ export class LibraryLookupError extends Error {
 // service instance per window keeps the signal without the cost — and the
 // controller builds a single instance at module scope, so in practice that
 // is one line per process.
-const MALFORMED_UUID_WARN_INTERVAL_MS = 10 * 60 * 1000;
+const UUID_WARN_INTERVAL_MS = 10 * 60 * 1000;
 
 export class LibraryService {
   private _lastMalformedUuidWarnAt = 0;
+  private _lastUnknownUuidWarnAt = 0;
   private readonly _logger = logger;
   private db = database;
 
@@ -174,7 +175,7 @@ export class LibraryService {
         // Throttled so today's shipped clients cannot flood the stream; only
         // the uuid is logged — no user identifiers.
         const now = Date.now();
-        if (now - this._lastMalformedUuidWarnAt > MALFORMED_UUID_WARN_INTERVAL_MS) {
+        if (now - this._lastMalformedUuidWarnAt > UUID_WARN_INTERVAL_MS) {
           this._lastMalformedUuidWarnAt = now;
           this._logger.log(
             {
@@ -193,7 +194,26 @@ export class LibraryService {
         const owner = this.requireLookup(
           await this._libraryDB.getLibraryByUuid(user.id_user, uuid),
         )[0];
-        if (!owner) return [];
+        if (!owner) {
+          // Normal after a delete on another device; what matters is the
+          // volume, so this is throttled like the malformed-uuid line. The
+          // empty result is safe: the requests that reconcile deletions never
+          // carry a uuid, and the one uuid-bearing contents request (iOS
+          // bound-book download) treats an empty list as a failed download.
+          const now = Date.now();
+          if (now - this._lastUnknownUuidWarnAt > UUID_WARN_INTERVAL_MS) {
+            this._lastUnknownUuidWarnAt = now;
+            this._logger.log(
+              {
+                origin: 'LibraryService.getLibrary',
+                message: 'Valid uuid matched no active item; returning an empty result',
+                data: { uuid, wantsContents },
+              },
+              'warn',
+            );
+          }
+          return [];
+        }
         // Positive classification: a NULL or unknown `type` (legacy rows) is
         // not a container and returns the row, as it always has.
         const ownerType = parseInt(`${owner.type}`);

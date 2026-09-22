@@ -11,6 +11,10 @@ import {
 } from '../validation/externalResource';
 
 // Query-string flags arrive as strings; `?sign=false` must not read as true.
+// Strict on purpose. Every shipped client sends the literal `true`: iOS
+// interpolates a Swift Bool (unchanged since 2023-02), Android's Retrofit
+// encodes a Kotlin Boolean, and the web app URL-encodes a JS boolean and
+// hard-codes `sign=true` on /last_played. There is no other spelling to accept.
 const isTrue = (value: unknown): boolean =>
   value === true || value === 'true' || value === '1';
 
@@ -64,15 +68,27 @@ export class LibraryController {
         appVersion: req.app_version,
       };
       const content = await this._libraryService.getLibrary(user, path, options, uuid);
-      let lastItemPlayed;
+      const payload: { content: LibraryItem[]; lastItemPlayed?: LibraryItem | null } = { content };
       if (
         ((!relativePath || relativePath === '/' || relativePath === '') &&
           !isTrue(noLastItemPlayed)) ||
         isTrue(forceLastItem)
       ) {
-        lastItemPlayed = await this._libraryService.getLastItemPlayed(user, options);
+        // The resume item rides along with the root listing, and the listing
+        // has already succeeded by now. A failure confined to the resume item
+        // must not fail the whole root sync: log it and omit the key. `null`
+        // keeps meaning "nothing played yet"; an absent key means "unavailable
+        // this time". /last_played remains the strict, 500-on-failure route.
+        try {
+          payload.lastItemPlayed = await this._libraryService.getLastItemPlayed(user, options);
+        } catch (err) {
+          this._logger.log(
+            { origin: 'LibraryController.getLibraryContentPath.lastItemPlayed', message: err.message, data: { user_id: user.id_user } },
+            'error',
+          );
+        }
       }
-      return res.json({ content, lastItemPlayed });
+      return res.json(payload);
     } catch (err) {
       // Identifiers only: `req.user` carries the email and subscription state.
       this._logger.log({ origin: 'LibraryController.getLibraryContentPath', message: err.message, data: { user_id: req.user?.id_user, query: req.query } }, 'error');

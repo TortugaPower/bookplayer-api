@@ -114,10 +114,38 @@ describe('LibraryController.getLibraryContentPath — error mapping', () => {
     await controller.getLibraryContentPath(request(), res);
 
     expect(res.status).not.toHaveBeenCalled();
-    expect(res.json).toHaveBeenCalledWith({
-      content: [{ relativePath: 'Folder/a.m4b' }],
-      lastItemPlayed: undefined,
-    });
+    expect(res.json).toHaveBeenCalledWith({ content: [{ relativePath: 'Folder/a.m4b' }] });
+  });
+
+  it('keeps the root listing when only the resume item fails, omitting lastItemPlayed', async () => {
+    libraryService.getLibrary.mockResolvedValue([{ relativePath: 'a.m4b' }]);
+    libraryService.getLastItemPlayed.mockRejectedValue(new LibraryLookupError());
+    const res = makeRes();
+    const req = request();
+    req.query = { relativePath: '', sign: 'true' };
+
+    await controller.getLibraryContentPath(req, res);
+
+    expect(res.status).not.toHaveBeenCalled();
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.content).toEqual([{ relativePath: 'a.m4b' }]);
+    expect(Object.keys(payload)).toEqual(['content']);
+    expect(mockLoggerService.log).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { user_id: 1 } }),
+      'error',
+    );
+  });
+
+  it('sends lastItemPlayed: null on the root listing when nothing has been played', async () => {
+    libraryService.getLibrary.mockResolvedValue([]);
+    libraryService.getLastItemPlayed.mockResolvedValue(null);
+    const res = makeRes();
+    const req = request();
+    req.query = { relativePath: '', sign: 'true' };
+
+    await controller.getLibraryContentPath(req, res);
+
+    expect(res.json).toHaveBeenCalledWith({ content: [], lastItemPlayed: null });
   });
 });
 
