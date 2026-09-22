@@ -179,7 +179,7 @@ lockfile stays invisible until somebody looks. Two ways to close that, both a ma
 this harness's: a Dependabot npm entry scoped to this directory (its pull requests skip the reviewer, so there is
 no loop), or `npm audit` run here whenever the SDK is bumped. Until one exists, this is a known residual.
 
-The SDK version is **pinned exactly** (`0.3.261`, not `^0.3.261`), and that is a safety property rather than
+The SDK version is **pinned exactly** (`0.3.280`, not `^0.3.280`), and that is a safety property rather than
 tidiness: the agent's sandbox is configured entirely by SDK option *names* — `settingSources: []`,
 `allowedTools: []`, `permissionMode: 'default'`, `canUseTool`, `env` — and every test stubs the agent seam, so a
 release that renamed or stopped honouring one of them would pass the whole suite with the isolation silently

@@ -137,8 +137,8 @@ jobs:
           # the job's workspace (which also holds the harness and its node_modules).
           REVIEW_CHECKOUT: ${{ github.workspace }}/pr
           # Model is NOT pinned: review.mjs asks the Models API for the newest Opus-tier model on
-          # every run (Opus 5 today). To pin, e.g. while diagnosing a regression, set an exact id.
-          # REVIEW_MODEL: claude-opus-5
+          # every run (Opus 5.5 today). To pin, e.g. while diagnosing a regression, set an exact id.
+          # REVIEW_MODEL: claude-opus-5-5
           REVIEW_MAX_TURNS: '200'  # a runaway guard only; the real bound is REVIEW_DEADLINE_MS (12 min) in review.mjs
         # Above the harness's own budget and well inside the job's 48, so review.mjs's clock is what ends this step
         # in every case it can: its 18 minutes are measured from before the model lookup, and the reconcile phase

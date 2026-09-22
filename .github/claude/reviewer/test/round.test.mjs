@@ -909,12 +909,13 @@ test('the round arms the clocks and the caps it computes', async () => {
     // And the GitHub client's own wall clock is armed from the same budget, so a retry ladder cannot run past
     // the end of the job.
 
-    // The resolved model and the turn cap reach the SDK options. Dropping either leaves the SDK to pick its own
+    // The resolved model, the turn cap and the effort level reach the SDK options. Dropping either leaves the SDK to pick its own
     // default while `resolveModel`, `REVIEW_MODEL` and the model-unavailable retry become decoration — and the
     // footer still names the model that did not run.
     const q = agentQuery({ userPrompt: 'p', systemPrompt: 's', abort: new AbortController(), env: { PATH: '/usr/bin' } });
     assert.equal(q.options.model, 'claude-opus-5-test');
     assert.equal(q.options.maxTurns, 7);
+    assert.equal(q.options.effort, 'high');
 
     // A SMALL job budget must shrink the review's own: the deadline is a ceiling, not the budget. A call site
     // that hands the agent `DEADLINE_MS` directly passes every assertion above and still lets the review run

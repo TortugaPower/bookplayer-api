@@ -11,7 +11,7 @@ import { buildSystemPrompt } from './prompts.mjs';
 // Used only when the Models API cannot be reached. An ordered list, not one constant: a single retired id would
 // otherwise leave the retry with nowhere to go (retryModel === MODEL trips its own guard) and the reviewer offline
 // until someone edited this file.
-export const FALLBACK_MODELS = ['claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6'];
+export const FALLBACK_MODELS = ['claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6'];
 
 export const FALLBACK_MODEL = FALLBACK_MODELS[0];
 
@@ -368,6 +368,9 @@ export function agentQuery({ userPrompt, systemPrompt, abort, onStderr = () => {
       permissionMode: 'default',
       canUseTool,
       maxTurns: maxTurns(),
+      // Pinned, not left to the model's default: Opus 5.5 defaults to medium, a level below Opus 5's high,
+      // so a model upgrade would otherwise quietly make the reviewer shallower.
+      effort: 'high',
       abortController: abort,
       // Set after agentEnv(), which strips anything matching /TOKEN/ — including this one.
       env: { ...env, CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(maxOutputTokens()) },

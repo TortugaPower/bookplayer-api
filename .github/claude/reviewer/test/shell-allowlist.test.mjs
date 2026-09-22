@@ -141,12 +141,13 @@ test('rankOpusModels: highest version, undated alias before dated snapshot, non-
     { id: 'claude-opus-4-8', created_at: '2026-04-01T00:00:00Z' },
     { id: 'claude-opus-5-20260601', created_at: '2026-06-01T00:00:00Z' },
     { id: 'claude-opus-5', created_at: '2026-06-01T00:00:00Z' },
+    { id: 'claude-opus-5-5', created_at: '2026-09-21T00:00:00Z' },
     { id: 'claude-fable-5-1', created_at: '2026-07-01T00:00:00Z' },
     { id: 'claude-opus-4-20250514', created_at: '2025-05-14T00:00:00Z' },
     { id: 'not-a-model' },
   ];
   assert.deepEqual(rankOpusModels(models), [
-    'claude-opus-5', 'claude-opus-5-20260601', 'claude-opus-4-8', 'claude-opus-4-1-20250805', 'claude-opus-4-20250514',
+    'claude-opus-5-5', 'claude-opus-5', 'claude-opus-5-20260601', 'claude-opus-4-8', 'claude-opus-4-1-20250805', 'claude-opus-4-20250514',
   ]);
   assert.deepEqual(rankOpusModels([{ id: 'claude-sonnet-5' }]), []);
   assert.deepEqual(rankOpusModels(undefined), []);
