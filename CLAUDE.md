@@ -497,8 +497,11 @@ async DoSomething(): Promise<Result | null> {
 and `getLastItemPlayed` throw `LibraryLookupError` when a DB read fails instead of returning `null`
 or `[]`: sync clients reconcile deletions (items, server links) against a listing, so a failed read
 must never look like an empty library. DB classes still return `null` on error; the service turns
-that `null` into the throw, and the controller maps it to a 500 the clients retry. Use the same shape
-for any new read with that property; keep "return null" everywhere else.
+that `null` into the throw. `GET /` and `GET /last_played` map it to a 500 the clients retry — with
+one deliberate exception: on the root listing the resume item is best-effort, so the controller logs
+a `getLastItemPlayed` failure and omits the `lastItemPlayed` key (absent = unavailable this time,
+`null` = nothing played yet) rather than failing a listing that has already succeeded. Use the same
+shape for any new read with that property; keep "return null" everywhere else.
 
 ### Controller Level
 
