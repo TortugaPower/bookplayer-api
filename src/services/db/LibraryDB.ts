@@ -672,10 +672,16 @@ export class LibraryDB {
     }
   }
 
+  /**
+   * The most recently played book, `undefined` when nothing has been played
+   * yet (knex `.first()`), and `null` when the query failed. The service keys
+   * on that difference — `null` becomes a LibraryLookupError, `undefined`
+   * becomes "no resume item" — so keep the three outcomes distinct.
+   */
   async getLastItemPlayed(
     user_id: number,
     trx?: Knex.Transaction,
-  ): Promise<LibraryItemDB> {
+  ): Promise<LibraryItemDB | null | undefined> {
     try {
       const db = trx || this.db;
       const itemDb = await db('library_items as li')
