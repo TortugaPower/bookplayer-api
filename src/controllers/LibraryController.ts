@@ -1,5 +1,5 @@
 import { IRequest, IResponse } from '../types/http';
-import { LibraryService, LibraryLookupError } from '../services/LibraryService';
+import { LibraryService } from '../services/LibraryService';
 import { logger } from '../services/LoggerService';
 import { LibraryDB } from '../services/db/LibraryDB';
 import { Bookmark, LibraryItem } from '../types/user';
@@ -95,11 +95,9 @@ export class LibraryController {
       // Anything thrown here is a server-side failure (DB read, presign,
       // prefix resolution) — there is no request validation on this path that
       // throws. Answer 5xx so clients treat it as retryable rather than as a
-      // permanent client error, per the controller pattern in CLAUDE.md.
-      if (err instanceof LibraryLookupError) {
-        res.status(500).json({ message: 'Library unavailable' });
-        return;
-      }
+      // permanent client error, per the controller pattern in CLAUDE.md. The
+      // message stays generic on purpose: iOS echoes it in an alert, and a
+      // specific "library unavailable" reads as data loss to a user.
       res.status(500).json({ message: 'Internal error' });
       return;
     }
@@ -119,12 +117,8 @@ export class LibraryController {
       return res.json({ lastItemPlayed });
     } catch (err) {
       // Same mapping as getLibraryContentPath: nothing thrown here is a client
-      // mistake, so answer 5xx and keep identifiers only in the log.
+      // mistake, so answer a generic 5xx and keep identifiers only in the log.
       this._logger.log({ origin: 'LibraryController.getLastPlayedItem', message: err.message, data: { user_id: req.user?.id_user, query: req.query } }, 'error');
-      if (err instanceof LibraryLookupError) {
-        res.status(500).json({ message: 'Library unavailable' });
-        return;
-      }
       res.status(500).json({ message: 'Internal error' });
       return;
     }

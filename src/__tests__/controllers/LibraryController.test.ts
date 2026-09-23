@@ -34,14 +34,14 @@ describe('LibraryController.getLibraryContentPath — error mapping', () => {
       app_version: '2022-12-12',
     }) as any;
 
-  it('answers 500 "Library unavailable" when the lookup itself failed', async () => {
+  it('answers a generic 500 when the lookup itself failed — never a message that reads as data loss', async () => {
     libraryService.getLibrary.mockRejectedValue(new LibraryLookupError());
     const res = makeRes();
 
     await controller.getLibraryContentPath(request(), res);
 
     expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith({ message: 'Library unavailable' });
+    expect(res.json).toHaveBeenCalledWith({ message: 'Internal error' });
     // Logged with identifiers only — never the user object (email, subscriptions).
     expect(mockLoggerService.log).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -166,14 +166,14 @@ describe('LibraryController.getLastPlayedItem — error mapping mirrors the list
   const request = () =>
     ({ query: { sign: 'true' }, user: { id_user: 1, email: 'user@example.com' }, app_version: '2022-12-12' }) as any;
 
-  it('answers 500 "Library unavailable" when the lookup failed', async () => {
+  it('answers a generic 500 when the lookup failed', async () => {
     libraryService.getLastItemPlayed.mockRejectedValue(new LibraryLookupError());
     const res = makeRes();
 
     await controller.getLastPlayedItem(request(), res);
 
     expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith({ message: 'Library unavailable' });
+    expect(res.json).toHaveBeenCalledWith({ message: 'Internal error' });
     expect(JSON.stringify(mockLoggerService.log.mock.calls)).not.toContain('user@example.com');
   });
 
