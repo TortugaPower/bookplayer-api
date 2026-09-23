@@ -59,7 +59,6 @@ the handler resolves, capturing the request envelope + response outcome.
 | `POST /rename` | `rename` |
 | `DELETE /` | `delete` |
 | `DELETE /folder_in_out` | `delete_folder_moving` |
-| `POST /reorder` | `reorder` |
 | `PUT /bookmark` | `set_bookmark` |
 | `POST /uuids` | `match_uuids` |
 | `PUT /external` / `DELETE /external` | `external_resource_put` / `external_resource_delete` |

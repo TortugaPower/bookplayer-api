@@ -10,6 +10,14 @@ import {
   ItemPutRequestBody,
 } from '../validation/externalResource';
 
+// Query-string flags arrive as strings; `?sign=false` must not read as true.
+// Strict on purpose. Every shipped client sends the literal `true`: iOS
+// interpolates a Swift Bool (unchanged since 2023-02), Android's Retrofit
+// encodes a Kotlin Boolean, and the web app URL-encodes a JS boolean and
+// hard-codes `sign=true` on /last_played. There is no other spelling to accept.
+const isTrue = (value: unknown): boolean =>
+  value === true || value === 'true' || value === '1';
+
 export class LibraryController {
   private readonly _logger = logger;
 
@@ -39,26 +47,58 @@ export class LibraryController {
   ): Promise<IResponse> {
     try {
       const { relativePath, uuid, sign, noLastItemPlayed, forceLastItem } = req.query;
+      // qs turns `?uuid=a&uuid=b` or `?relativePath[]=x` into arrays; an array
+      // string-coerces past isValidUUID and then fails as a DB binding, which
+      // would now surface as a 500. That is a malformed request, not a server
+      // fault, so reject it up front.
+      if (
+        (relativePath != null && typeof relativePath !== 'string') ||
+        (uuid != null && typeof uuid !== 'string')
+      ) {
+        res.status(422).json({ message: 'Invalid query parameters' });
+        return;
+      }
       const user = req.user;
+      // `uuid` names the item; a trailing slash on `relativePath` asks for its
+      // contents. See LibraryService.getLibrary for the resolution rules.
       const path = `${user.email}/${relativePath ? relativePath : ''}`;
 
       const options = {
-        withPresign: sign,
+        withPresign: isTrue(sign),
         appVersion: req.app_version,
       };
       const content = await this._libraryService.getLibrary(user, path, options, uuid);
-      let lastItemPlayed;
+      const payload: { content: LibraryItem[]; lastItemPlayed?: LibraryItem | null } = { content };
       if (
         ((!relativePath || relativePath === '/' || relativePath === '') &&
-          !noLastItemPlayed) ||
-        forceLastItem
+          !isTrue(noLastItemPlayed)) ||
+        isTrue(forceLastItem)
       ) {
-        lastItemPlayed = await this._libraryService.getLastItemPlayed(user, options);
+        // The resume item rides along with the root listing, and the listing
+        // has already succeeded by now. A failure confined to the resume item
+        // must not fail the whole root sync: log it and omit the key. `null`
+        // keeps meaning "nothing played yet"; an absent key means "unavailable
+        // this time". /last_played remains the strict, 500-on-failure route.
+        try {
+          payload.lastItemPlayed = await this._libraryService.getLastItemPlayed(user, options);
+        } catch (err) {
+          this._logger.log(
+            { origin: 'LibraryController.getLibraryContentPath', message: `lastItemPlayed failed: ${err.message}`, data: { user_id: user.id_user, step: 'lastItemPlayed' } },
+            'error',
+          );
+        }
       }
-      return res.json({ content, lastItemPlayed });
+      return res.json(payload);
     } catch (err) {
-      this._logger.log({ origin: 'LibraryController.getLibraryContentPath', message: err.message, data: { user: req.user, query: req.query } }, 'error');
-      res.status(400).json({ message: err.message });
+      // Identifiers only: `req.user` carries the email and subscription state.
+      this._logger.log({ origin: 'LibraryController.getLibraryContentPath', message: err.message, data: { user_id: req.user?.id_user, query: req.query } }, 'error');
+      // Anything thrown here is a server-side failure (DB read, presign,
+      // prefix resolution) — there is no request validation on this path that
+      // throws. Answer 5xx so clients treat it as retryable rather than as a
+      // permanent client error, per the controller pattern in CLAUDE.md. The
+      // message stays generic on purpose: iOS echoes it in an alert, and a
+      // specific "library unavailable" reads as data loss to a user.
+      res.status(500).json({ message: 'Internal error' });
       return;
     }
   }
@@ -71,13 +111,15 @@ export class LibraryController {
       const { sign } = req.query;
       const user = req.user;
       const lastItemPlayed = await this._libraryService.getLastItemPlayed(user, {
-        withPresign: sign,
+        withPresign: isTrue(sign),
         appVersion: req.app_version,
       });
       return res.json({ lastItemPlayed });
     } catch (err) {
-      this._logger.log({ origin: 'LibraryController.getLastPlayedItem', message: err.message, data: { user: req.user, query: req.query } }, 'error');
-      res.status(400).json({ message: err.message });
+      // Same mapping as getLibraryContentPath: nothing thrown here is a client
+      // mistake, so answer a generic 5xx and keep identifiers only in the log.
+      this._logger.log({ origin: 'LibraryController.getLastPlayedItem', message: err.message, data: { user_id: req.user?.id_user, query: req.query } }, 'error');
+      res.status(500).json({ message: 'Internal error' });
       return;
     }
   }
@@ -181,22 +223,6 @@ export class LibraryController {
       return res.json({ content });
     } catch (err) {
       this._logger.log({ origin: 'LibraryController.deleteLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
-      res.status(400).json({ message: err.message });
-      return;
-    }
-  }
-
-  public async reorderLibraryObject(
-    req: IRequest,
-    res: IResponse,
-  ): Promise<IResponse> {
-    try {
-      const params = req.body;
-      const user = req.user;
-      const content = await this._libraryService.reOrderObject(user, params);
-      return res.json({ content });
-    } catch (err) {
-      this._logger.log({ origin: 'LibraryController.reorderLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
       res.status(400).json({ message: err.message });
       return;
     }

@@ -60,19 +60,42 @@ export class LibraryDB {
     }
   }
 
+  /** `null` means the query failed; `[]` means nothing matched. Callers that
+   *  answer clients must not collapse the two (see LibraryService.requireLookup). */
   async getLibrary(
     user_id: number,
     path: string,
     filter?: { rawFilter?: string; exactly?: boolean },
     trx?: Knex.Transaction,
-  ): Promise<LibraryItemDB[]> {
+  ): Promise<LibraryItemDB[] | null> {
     try {
       const db = trx || this.db;
-      const pathNumber = path.split('/').length;
-      const objects = await db('library_items as li')
+      // An exact match is a key, and keys never end in '/': a client may still
+      // send a folder as `Folder/`. Without `exactly` the trailing slash is
+      // meaningful (it selects the children), so leave it alone there.
+      const target = filter?.exactly ? path.replace(/\/+$/, '') : path;
+      const pathNumber = target.split('/').length;
+      const query = db('library_items as li')
         .where({ user_id, active: true })
-        .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [pathNumber])
-        .whereRaw('key like ?', [`${path}${filter?.exactly ? '' : '%'}`])
+        .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [pathNumber]);
+      // Three shapes reach here:
+      //   ''         the library root: every depth-1 row
+      //   'Folder/'  a container's children: every depth-2 row under it
+      //   'Dune'     one item: exactly that key
+      // The last one used to be `like 'Dune%'`, which also returned `Dune-1`
+      // and `Dune.m4b`; a single-item lookup is an equality (and lets the
+      // planner use the (user_id, key) partial unique index).
+      const isRoot = target === '';
+      if (filter?.exactly || (!isRoot && !target.endsWith('/'))) {
+        query.where('key', target);
+      } else {
+        // The prefix is a literal key, not a pattern: a folder named `A_B` or
+        // `100%` must not also match `AxB/…` or `100 percent/…` at the same
+        // depth. Backslash is PostgreSQL's default LIKE escape character, so no
+        // ESCAPE clause (and no dependency on standard_conforming_strings).
+        query.whereRaw('key like ?', [`${LibraryDB.escapeLikePrefix(target)}%`]);
+      }
+      const objects = await query
         .andWhere((builder) => {
           if (!!filter?.rawFilter) {
             builder.whereRaw(filter?.rawFilter);
@@ -92,12 +115,13 @@ export class LibraryDB {
     }
   }
 
+  /** `null` means the query failed; `[]` means no such uuid for this user. */
   async getLibraryByUuid(
     user_id: number,
     uuid: string,
     filter?: { rawFilter?: string; exactly?: boolean },
     trx?: Knex.Transaction,
-  ): Promise<LibraryItemDB[]> {
+  ): Promise<LibraryItemDB[] | null> {
     try {
       const db = trx || this.db;
       const objects = await db('library_items as li')
@@ -157,7 +181,7 @@ export class LibraryDB {
       const objectsDeleted = await db('library_items as li')
         .update({ active: false })
         .where({ user_id, active: active === false ? active : true })
-        .whereRaw('key like ?', [`${path}${exactly ? '' : '%'}`])
+        .whereRaw(...LibraryDB.selfAndChildrenMatch(path, exactly))
         .returning('*');
       return objectsDeleted;
     } catch (err) {
@@ -193,7 +217,7 @@ export class LibraryDB {
       const objectsDeleted = await db('library_items as li')
         .update({ active: false })
         .where({ user_id, active: active === false ? active : true })
-        .whereRaw('key like ?', [`${targetItem.key}${exactly ? '' : '%'}`])
+        .whereRaw(...LibraryDB.selfAndChildrenMatch(targetItem.key, exactly))
         .returning('*');
       return objectsDeleted;
     } catch (err) {
@@ -220,7 +244,7 @@ export class LibraryDB {
           from library_items
           where user_id=? and active=true and key like ?
       `,
-          [user_id, `${folderPath}/%`],
+          [user_id, `${LibraryDB.escapeLikePrefix(folderPath)}/%`],
         )
         .then((result) => result.rows);
       return nestedObjects;
@@ -245,8 +269,34 @@ export class LibraryDB {
   /// `newKeyParams` carries any `?` placeholders the expression uses, in order.
   private static escapeLikePrefix(prefix: string): string {
     // Keys routinely contain `_` (a LIKE wildcard); escape so a folder named
-    // "My_Books" can't match a sibling "MyXBooks" subtree.
+    // "My_Books" can't match a sibling "MyXBooks" subtree. Every `key like`
+    // in this class builds its pattern through here — a key is a literal, never
+    // a pattern. Backslash is PostgreSQL's default LIKE escape character.
     return prefix.replace(/[\\%_]/g, (m) => `\\${m}`);
+  }
+
+  /**
+   * SQL + bindings matching the row whose key IS `prefix` and, unless
+   * `exactly`, its true descendants (`prefix/...`). Both halves are literal:
+   * a `/`-less prefix must not take a sibling (`Dune` vs `Dune-1/…`, the
+   * app's own de-duplication suffix; `The Life` vs `The Life with….mp3`) and
+   * wildcards must not widen it (`A_B` vs `AxB/…`). The destructive queries
+   * key on this — an over-match here soft-deletes rows AND removes their S3
+   * objects.
+   */
+  private static selfAndChildrenMatch(
+    prefix: string,
+    exactly?: boolean,
+  ): [string, string[]] {
+    // Callers pass client paths as-is; a folder may arrive as `Folder/`. Keys
+    // never end in `/`, so without this the pattern would match nothing and a
+    // delete would be reported as done while the rows stayed active.
+    const key = prefix.replace(/\/+$/, '');
+    if (exactly) return ['key = ?', [key]];
+    return [
+      '(key = ? or key like ?)',
+      [key, `${LibraryDB.escapeLikePrefix(key)}/%`],
+    ];
   }
 
   /**
@@ -625,10 +675,16 @@ export class LibraryDB {
     }
   }
 
+  /**
+   * The most recently played book, `undefined` when nothing has been played
+   * yet (knex `.first()`), and `null` when the query failed. The service keys
+   * on that difference — `null` becomes a LibraryLookupError, `undefined`
+   * becomes "no resume item" — so keep the three outcomes distinct.
+   */
   async getLastItemPlayed(
     user_id: number,
     trx?: Knex.Transaction,
-  ): Promise<LibraryItemDB> {
+  ): Promise<LibraryItemDB | null | undefined> {
     try {
       const db = trx || this.db;
       const itemDb = await db('library_items as li')
@@ -713,26 +769,6 @@ export class LibraryDB {
   }
 
   // Queries for orchestrated (transactional) service methods
-
-  async shiftOrderRanks(
-    params: {
-      user_id: number;
-      path: string;
-      pathDepth: number;
-      orderRange: [number, number];
-      direction: 'increment' | 'decrement';
-    },
-    trx: Knex.Transaction,
-  ): Promise<void> {
-    const { user_id, path, pathDepth, orderRange, direction } = params;
-    const op = direction === 'increment' ? '+' : '-';
-    await trx('library_items as li')
-      .update({ order_rank: trx.raw(`order_rank ${op} 1`) })
-      .where({ user_id, active: true })
-      .whereRaw("array_length(string_to_array(key, '/'), 1) = ?", [pathDepth])
-      .whereRaw('key like ?', [`${path}%`])
-      .whereBetween('order_rank', orderRange);
-  }
 
   async updateBySourcePath(
     params: { user_id: number; key: string; source_path: string },

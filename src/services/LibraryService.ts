@@ -27,6 +27,18 @@ import {
 import { LibraryDB, externalResourceRowToApi } from './db/LibraryDB';
 import { StoragePrefixService } from './StoragePrefixService';
 
+/**
+ * A library read that could not be answered because the DB layer failed (it
+ * logs and returns `null`). Distinct from "nothing matched" (`[]`) so the
+ * controller can report a retryable server error instead of an empty library.
+ */
+export class LibraryLookupError extends Error {
+  constructor(message = 'Library lookup failed') {
+    super(message);
+    this.name = 'LibraryLookupError';
+  }
+}
+
 export class LibraryService {
   private readonly _logger = logger;
   private db = database;
@@ -108,6 +120,14 @@ export class LibraryService {
     return parsed;
   }
 
+  /**
+   * Resolves `GET /v1/library`. See the resolution contract inside.
+   *
+   * @throws {LibraryLookupError} when a DB read fails. Deliberate departure
+   * from the "return null on error" service convention: an empty result is
+   * authoritative to sync clients, so a failed read must never look like one.
+   * Controllers map it to 500.
+   */
   async getLibrary(
     user: User,
     path: string,
@@ -117,16 +137,67 @@ export class LibraryService {
     },
     uuid?: string,
   ): Promise<LibraryItem[]> {
+    // The controller prefixes the client's relativePath with the account email
+    // (legacy key layout); strip it once here so nothing below — including the
+    // failure log — has to carry the email around.
+    const cleanPath = path.replace(`${user.email}/`, '');
     try {
-      const cleanPath = path.replace(`${user.email}/`, '');
-      const objectDB = isValidUUID(uuid)
-        ? await this._libraryDB.getLibraryByUuid(user.id_user, uuid)
-        : await this._libraryDB.getLibrary(user.id_user, cleanPath);
-      
+      // Resolution contract: `uuid` identifies the item; a trailing slash on
+      // `relativePath` asks for its contents. A valid uuid is authoritative —
+      // it is looked up on its own and never falls back to the path, because
+      // the path is exactly what goes stale when a folder is moved or renamed.
+      // When the uuid resolves to a container (folder or bound book) and the
+      // caller asked for contents, the children are listed by the container's
+      // *server-side* key, so a client still holding the pre-rename path gets
+      // the right listing. Without a uuid (or with a malformed one, as every
+      // iOS build before 2026-09 sent) the path lookup behaves as it always has;
+      // the empty path (library root) is only meaningful there.
+      //
+      // The DB layer returns `null` when a query fails and `[]` when nothing
+      // matches. Those must not collapse into the same response: an empty
+      // listing is authoritative to sync clients (it is what they reconcile
+      // deletions against), so a lookup failure is raised instead and reaches
+      // the controller's error path rather than a 200 with an empty library.
+      const wantsContents = cleanPath.endsWith('/');
+      let objectDB: LibraryItemDB[];
+      if (isValidUUID(uuid)) {
+        const owner = this.requireLookup(
+          await this._libraryDB.getLibraryByUuid(user.id_user, uuid),
+        )[0];
+        // Not found → []. Safe: the requests that reconcile deletions never
+        // carry a uuid (both apps list by path), and the one uuid-bearing
+        // contents request — the iOS bound-book download — treats an empty
+        // list as a failed download, not as an empty folder.
+        if (!owner) return [];
+        // Positive classification: a NULL or unknown `type` (legacy rows) is
+        // not a container and returns the row, as it always has.
+        const ownerType = parseInt(`${owner.type}`);
+        const isContainer =
+          ownerType === parseInt(LibraryItemType.FOLDER) ||
+          ownerType === parseInt(LibraryItemType.BOUND);
+        objectDB =
+          wantsContents && isContainer
+            ? this.requireLookup(
+                await this._libraryDB.getLibrary(user.id_user, `${owner.key}/`),
+              )
+            : [owner];
+      } else {
+        objectDB = this.requireLookup(
+          await this._libraryDB.getLibrary(user.id_user, cleanPath),
+        );
+      }
+
       if (!objectDB || objectDB.length <= 0) return []
 
-      const externals = await this._libraryDB.getExternalResources(objectDB.map( ob => ob.id_library_item))
-      const externalsMp = (externals ?? []).reduce((acc, source) => {
+      // Same rule as the item lookups: a failed links query must not read as
+      // "no links". Both apps reconcile each item's local server links against
+      // this list and delete the ones missing from it.
+      const externals = this.requireLookup(
+        await this._libraryDB.getExternalResources(
+          objectDB.map((ob) => ob.id_library_item),
+        ),
+      );
+      const externalsMp = externals.reduce((acc, source) => {
         const libId = source.library_item_id;
         
         if (!acc[libId]) {
@@ -204,13 +275,35 @@ export class LibraryService {
       }
       return library;
     } catch (err) {
-      this._logger.log({
-        origin: 'LibraryService.getLibrary',
-        message: err.message,
-        data: { user, path },
-      });
-      return null;
+      // A lookup failure was already logged with its cause by the DB layer and
+      // is logged with the request by the controller; a third line here would
+      // only add volume. Anything else is logged once, with identifiers only —
+      // the user object carries the email and subscription state, and the raw
+      // `path` is prefixed with the email; neither belongs in the log stream.
+      if (!(err instanceof LibraryLookupError)) {
+        this._logger.log(
+          {
+            origin: 'LibraryService.getLibrary',
+            message: err.message,
+            data: { user_id: user?.id_user, relativePath: cleanPath },
+          },
+          'error',
+        );
+      }
+      // Re-raised on purpose: the controller answers every thrown failure with
+      // a 500 (retryable). Swallowing it here would send clients a 200 with
+      // `content: null` / an empty library instead.
+      throw err;
     }
+  }
+
+  // `null` is the DB layer's "the query failed" (it logs and swallows the
+  // driver error); `[]` is "nothing matched". Only the second one is a result.
+  private requireLookup<T>(rows: T[] | null): T[] {
+    if (rows === null) {
+      throw new LibraryLookupError();
+    }
+    return rows;
   }
 
   async getObject(
@@ -509,62 +602,6 @@ export class LibraryService {
         origin: 'LibraryService.updateObject',
         message: err.message,
         data: { user, relativePath, params },
-      });
-      throw Error(err);
-    }
-  }
-
-  async reOrderObject(user: User, params: LibraryItem): Promise<boolean> {
-    let trx: Knex.Transaction;
-    try {
-      const { relativePath, orderRank } = params;
-      const cleanPath = relativePath.replace(`${user.email}/`, '');
-      const objectDB = await this._libraryDB.getLibrary(user.id_user, cleanPath);
-
-      if (objectDB.length !== 1) {
-        throw Error('Item not found');
-      }
-      const prevOrder = objectDB[0].order_rank || 0;
-
-      if (prevOrder === orderRank) {
-        throw Error('The order is the same');
-      }
-      const isGreater = prevOrder < orderRank;
-      const orderFilter: [number, number] = isGreater
-        ? [prevOrder + 1, orderRank]
-        : [orderRank, prevOrder - 1];
-
-      const pathArray = relativePath.split('/');
-      pathArray.pop();
-      const path = pathArray.join('/');
-      trx = await this.db.transaction();
-      await this._libraryDB.shiftOrderRanks(
-        {
-          user_id: user.id_user,
-          path,
-          pathDepth: pathArray.length || 1,
-          orderRange: orderFilter,
-          direction: isGreater ? 'decrement' : 'increment',
-        },
-        trx,
-      );
-
-      await this._libraryDB.updateLibraryItem(
-        user.id_user,
-        cleanPath,
-        { ...objectDB[0], order_rank: orderRank },
-        null,
-        trx,
-      );
-      await trx.commit();
-
-      return true;
-    } catch (err) {
-      await trx?.rollback();
-      this._logger.log({
-        origin: 'LibraryService.reOrderObject',
-        message: err.message,
-        data: { user, params },
       });
       throw Error(err);
     }
@@ -889,20 +926,34 @@ export class LibraryService {
     }
   }
 
+  /**
+   * @returns `null` only when nothing has been played yet.
+   * @throws {LibraryLookupError} when a DB read fails — see getLibrary. Any
+   * other failure (presign, prefix resolution) propagates too; the controller
+   * maps everything thrown to a 500.
+   */
   async getLastItemPlayed(
     user: User,
     options: { withPresign?: boolean; appVersion: string },
     trx?: Knex.Transaction,
   ): Promise<LibraryItem | null> {
     try {
+      // The DB class returns `null` when the query failed and `undefined`
+      // (knex `.first()`) when nothing has been played yet. Only the second
+      // one is the "no resume item" answer.
       const itemDb = await this._libraryDB.getLastItemPlayed(user.id_user, trx);
+      if (itemDb === null) throw new LibraryLookupError();
       if (!itemDb) return null;
       const item = (await this.parseLibraryItemDb(
         itemDb,
         LibraryItemOutput.API,
       )) as LibraryItem;
-      const externals = await this._libraryDB.getExternalResources([(itemDb as LibraryItemDB).id_library_item]);
-      item.externalResources = (externals ?? []).map(externalResourceRowToApi);
+      const externals = this.requireLookup(
+        await this._libraryDB.getExternalResources([
+          (itemDb as LibraryItemDB).id_library_item,
+        ]),
+      );
+      item.externalResources = externals.map(externalResourceRowToApi);
       switch (options.appVersion) {
         case '2023-10-29':
         case 'latest':
@@ -941,12 +992,21 @@ export class LibraryService {
       }
       return item;
     } catch (err) {
-      this._logger.log({
-        origin: 'LibraryService.getLastItemPlayed',
-        message: err.message,
-        data: { user },
-      });
-      return null;
+      // `null` means "nothing played yet" to the controller. No failure may be
+      // mistaken for that — not a failed read (already logged by the DB layer
+      // and the controller) and not a presign or prefix failure either — so
+      // everything propagates and the controller answers with a 500.
+      if (!(err instanceof LibraryLookupError)) {
+        this._logger.log(
+          {
+            origin: 'LibraryService.getLastItemPlayed',
+            message: err.message,
+            data: { user_id: user?.id_user },
+          },
+          'error',
+        );
+      }
+      throw err;
     }
   }
 
