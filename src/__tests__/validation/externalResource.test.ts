@@ -3,7 +3,6 @@ import { validateBody } from '../../validation/validate';
 import {
   putExternalResourceSchema,
   deleteExternalResourceSchema,
-  itemPutRequestSchema,
 } from '../../validation/externalResource';
 
 const VALID_UUID = '11111111-1111-1111-1111-111111111111';
@@ -97,29 +96,6 @@ describe('validateBody middleware', () => {
       validateBody(deleteExternalResourceSchema)(req, res, next);
       expect(res.status).toHaveBeenCalledWith(422);
       expect(res.json).toHaveBeenCalledWith({ message: 'providerId is required' });
-      expect(next).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('itemPutRequestSchema', () => {
-    it('calls next() with only uuid (uploaded optional)', () => {
-      const req: any = { body: { uuid: VALID_UUID } };
-      validateBody(itemPutRequestSchema)(req, res, next);
-      expect(next).toHaveBeenCalledTimes(1);
-    });
-
-    it('422s on a missing uuid', () => {
-      const req: any = { body: { uploaded: true } };
-      validateBody(itemPutRequestSchema)(req, res, next);
-      expect(res.status).toHaveBeenCalledWith(422);
-      expect(res.json).toHaveBeenCalledWith({ message: 'A valid item uuid is required' });
-      expect(next).not.toHaveBeenCalled();
-    });
-
-    it('422s when uploaded is not a boolean', () => {
-      const req: any = { body: { uuid: VALID_UUID, uploaded: 'yes' } };
-      validateBody(itemPutRequestSchema)(req, res, next);
-      expect(res.status).toHaveBeenCalledWith(422);
       expect(next).not.toHaveBeenCalled();
     });
   });

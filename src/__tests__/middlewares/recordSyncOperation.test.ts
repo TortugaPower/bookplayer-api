@@ -44,6 +44,20 @@ describe('recordSyncOperation helpers', () => {
       );
     });
 
+    it('logs the multipart upload lifecycle but not its per-window part URLs', () => {
+      expect(jobTypeFor({ method: 'POST', route: { path: '/upload/start' } })).toBe(
+        SyncOperationJobType.UPLOAD_START,
+      );
+      expect(jobTypeFor({ method: 'POST', route: { path: '/upload/complete' } })).toBe(
+        SyncOperationJobType.UPLOAD_COMPLETE,
+      );
+      expect(jobTypeFor({ method: 'POST', route: { path: '/upload/abort' } })).toBe(
+        SyncOperationJobType.UPLOAD_ABORT,
+      );
+      expect(jobTypeFor({ method: 'POST', route: { path: '/upload/parts' } })).toBeUndefined();
+      expect(jobTypeFor({ method: 'GET', route: { path: '/upload/parts' } })).toBeUndefined();
+    });
+
     it('returns undefined for reads and unmapped/unmatched routes', () => {
       // GET reads are not in the map
       expect(jobTypeFor({ method: 'GET', route: { path: '/' } })).toBeUndefined();

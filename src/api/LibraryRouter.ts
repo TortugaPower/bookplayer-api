@@ -7,8 +7,13 @@ import { validateBody } from '../validation/validate';
 import {
   putExternalResourceSchema,
   deleteExternalResourceSchema,
-  itemPutRequestSchema,
 } from '../validation/externalResource';
+import {
+  startUploadSchema,
+  partUrlsSchema,
+  completeUploadSchema,
+  abortUploadSchema,
+} from '../validation/multipartUpload';
 
 const LibraryRouter = express.Router();
 const controller = new LibraryController();
@@ -74,8 +79,22 @@ LibraryRouter.put('/bookmark', checkSubscription, requireCloudData, (req, res, n
 LibraryRouter.post('/thumbnail_set', checkSubscription, requireS3Upload, (req, res, next) =>
   controller.itemThumbnailPutRequest(req, res).catch(next),
 );
-LibraryRouter.post('/external_set', checkSubscription, validateBody(itemPutRequestSchema), requireS3Upload, (req, res, next) =>
-  controller.itemPutRequest(req, res).catch(next),
+// Multipart uploads of a book's file. S3 is PRO-only, and the key is always
+// derived from the caller's own row. See MultipartUploadService.
+LibraryRouter.post('/upload/start', checkSubscription, validateBody(startUploadSchema), requireS3Upload, (req, res, next) =>
+  controller.startUpload(req, res).catch(next),
+);
+LibraryRouter.post('/upload/parts', checkSubscription, validateBody(partUrlsSchema), requireS3Upload, (req, res, next) =>
+  controller.getUploadPartUrls(req, res).catch(next),
+);
+LibraryRouter.get('/upload/parts', checkSubscription, requireS3Upload, (req, res, next) =>
+  controller.listUploadParts(req, res).catch(next),
+);
+LibraryRouter.post('/upload/complete', checkSubscription, validateBody(completeUploadSchema), requireS3Upload, (req, res, next) =>
+  controller.completeUpload(req, res).catch(next),
+);
+LibraryRouter.post('/upload/abort', checkSubscription, validateBody(abortUploadSchema), requireS3Upload, (req, res, next) =>
+  controller.abortUpload(req, res).catch(next),
 );
 LibraryRouter.get('/keys', checkSubscription, requireCloudData, (req, res, next) =>
   controller.getUserLibraryKeys(req, res).catch(next),

@@ -7,8 +7,17 @@ import { isValidUUID } from '../utils';
 import {
   PutExternalResourceBody,
   DeleteExternalResourceBody,
-  ItemPutRequestBody,
 } from '../validation/externalResource';
+import { MultipartUploadService } from '../services/MultipartUploadService';
+import { UploadError } from '../types/multipartUpload';
+import {
+  AbortUploadBody,
+  CompleteUploadBody,
+  ListPartsQuery,
+  PartUrlsBody,
+  StartUploadBody,
+  listPartsQuerySchema,
+} from '../validation/multipartUpload';
 
 // Query-string flags arrive as strings; `?sign=false` must not read as true.
 // Strict on purpose. Every shipped client sends the literal `true`: iOS
@@ -24,6 +33,7 @@ export class LibraryController {
   constructor(
     private _libraryService: LibraryService = new LibraryService(),
     private _libraryDB: LibraryDB = new LibraryDB(),
+    private _multipartUploadService: MultipartUploadService = new MultipartUploadService(),
   ) {}
 
   public async getUserLibraryKeys(
@@ -375,32 +385,6 @@ export class LibraryController {
     }
   }
 
-  public async itemPutRequest(
-    req: IRequest,
-    res: IResponse,
-  ): Promise<IResponse> {
-    try {
-      const user = req.user;
-      // Body validated by validateBody(itemPutRequestSchema) at the route.
-      const data = req.body as ItemPutRequestBody;
-      // sourcePutRequest returns a presigned URL string, or `true` when
-      // confirming an upload (data.uploaded). Mirror itemThumbnailPutRequest so
-      // the confirm path doesn't leak `{ url: true }` to the client.
-      const result = await this._libraryService.sourcePutRequest(user, data);
-      if (!result) {
-        throw new Error('problem creating the request url');
-      }
-      return res.json({
-        url: !data.uploaded ? result : '',
-        uploaded: !!(data.uploaded && result),
-      });
-    } catch (err) {
-      this._logger.log({ origin: 'LibraryController.itemPutRequest', message: err.message, data: { id_user: req.user?.id_user, uuid: req.body?.uuid } }, 'error');
-      res.status(400).json({ message: err.message });
-      return;
-    }
-  }
-
   public async renameLibraryObject(
     req: IRequest,
     res: IResponse,
@@ -454,5 +438,88 @@ export class LibraryController {
       res.status(400).json({ message: err.message });
       return;
     }
+  }
+
+  // MARK: - Multipart uploads (/upload/*)
+  // Bodies are validated at the route. An UploadError carries the stable `code`
+  // the clients branch on; anything else is a 500 the client retries.
+
+  public async startUpload(req: IRequest, res: IResponse): Promise<IResponse> {
+    try {
+      const body = req.body as StartUploadBody;
+      const result = await this._multipartUploadService.startUpload(req.user, body);
+      return res.json(result);
+    } catch (err) {
+      return this.sendUploadError(res, err, 'LibraryController.startUpload', req);
+    }
+  }
+
+  public async getUploadPartUrls(req: IRequest, res: IResponse): Promise<IResponse> {
+    try {
+      const body = req.body as PartUrlsBody;
+      const parts = await this._multipartUploadService.getPartUrls(req.user, body);
+      return res.json({ parts });
+    } catch (err) {
+      return this.sendUploadError(res, err, 'LibraryController.getUploadPartUrls', req);
+    }
+  }
+
+  public async listUploadParts(req: IRequest, res: IResponse): Promise<IResponse> {
+    try {
+      const parsed = listPartsQuerySchema.safeParse(req.query);
+      if (!parsed.success) {
+        return res
+          .status(422)
+          .json({ message: parsed.error.issues[0]?.message ?? 'Invalid query parameters' });
+      }
+      const query = parsed.data as ListPartsQuery;
+      const parts = await this._multipartUploadService.listParts(req.user, query);
+      return res.json({ parts });
+    } catch (err) {
+      return this.sendUploadError(res, err, 'LibraryController.listUploadParts', req);
+    }
+  }
+
+  public async completeUpload(req: IRequest, res: IResponse): Promise<IResponse> {
+    try {
+      const body = req.body as CompleteUploadBody;
+      await this._multipartUploadService.completeUpload(req.user, body);
+      return res.json({ synced: true });
+    } catch (err) {
+      return this.sendUploadError(res, err, 'LibraryController.completeUpload', req);
+    }
+  }
+
+  public async abortUpload(req: IRequest, res: IResponse): Promise<IResponse> {
+    try {
+      const body = req.body as AbortUploadBody;
+      await this._multipartUploadService.abortUpload(req.user, body);
+      return res.json({ aborted: true });
+    } catch (err) {
+      return this.sendUploadError(res, err, 'LibraryController.abortUpload', req);
+    }
+  }
+
+  private sendUploadError(
+    res: IResponse,
+    err: Error,
+    origin: string,
+    req: IRequest,
+  ): IResponse {
+    const uuid = req.body?.uuid ?? req.query?.uuid;
+    if (err instanceof UploadError) {
+      this._logger.log(
+        { origin, message: err.message, data: { id_user: req.user?.id_user, uuid, code: err.code } },
+        'warn',
+      );
+      return res
+        .status(err.statusCode)
+        .json({ message: err.message, code: err.code, ...(err.details ?? {}) });
+    }
+    this._logger.log(
+      { origin, message: err.message, data: { id_user: req.user?.id_user, uuid } },
+      'error',
+    );
+    return res.status(500).json({ message: 'Internal error' });
   }
 }

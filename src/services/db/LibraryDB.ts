@@ -864,26 +864,31 @@ export class LibraryDB {
       .update({ uuid: params.uuid });
   }
 
-  async markExternalSourceUploaded(
+  /**
+   * Confirms a finished multipart upload: the item is synced and, for a book
+   * streamed in from a media server, its external resources are 'downloaded'.
+   * A normal upload has no external rows, so the second update touches nothing.
+   * Every active resource on the item is marked: the schema allows several
+   * providers per item, and if that becomes real the upload must name its
+   * provider and this update must scope to it.
+   *
+   * Scoped by row id and `active`: the caller resolved the row by uuid and
+   * derived the S3 key from it. `false` when the row is no longer active (or
+   * the write failed) — the caller tells those apart.
+   */
+  async markItemSynced(
     libraryItemId: number,
     trx?: Knex.Transaction,
   ): Promise<boolean> {
     const runner = async (tx: Knex.Transaction): Promise<boolean> => {
-      // Scoped only by library_item_id: assumes a single external source per
-      // item. The schema permits multiple active providers per item (unique
-      // index on library_item_id, provider_name, provider_id), so if concurrent
-      // multi-provider items become a real scenario, `external_set` must carry
-      // the provider and this update must scope to it — otherwise confirming one
-      // upload marks every provider 'downloaded'.
-      const idExternal = await tx('external_resources')
-        .update({ sync_status: 'downloaded' })
-        .where({ library_item_id: libraryItemId })
-        .returning('library_item_id');
-      const idUpdated = await tx('library_items')
+      const updated = await tx('library_items')
         .update({ synced: true })
-        .where({ id_library_item: libraryItemId })
-        .returning('id_library_item');
-      return !!idExternal[0]?.library_item_id && !!idUpdated[0]?.id_library_item;
+        .where({ id_library_item: libraryItemId, active: true });
+      if (updated !== 1) return false;
+      await tx('external_resources')
+        .update({ sync_status: 'downloaded' })
+        .where({ library_item_id: libraryItemId, active: true });
+      return true;
     };
     try {
       if (trx) {
@@ -892,7 +897,7 @@ export class LibraryDB {
       return await this.db.transaction(runner);
     } catch (err) {
       this._logger.log({
-        origin: 'LibraryDB.markExternalSourceUploaded',
+        origin: 'LibraryDB.markItemSynced',
         message: err.message,
         data: { libraryItemId },
       });

@@ -3,7 +3,6 @@
 
 export enum SyncOperationJobType {
   UPLOAD = 'upload',
-  UPLOAD_CONFIRM = 'upload_confirm',
   UPLOAD_ARTWORK = 'upload_artwork',
   UPDATE = 'update',
   MOVE = 'move',
@@ -14,6 +13,9 @@ export enum SyncOperationJobType {
   MATCH_UUIDS = 'match_uuids',
   EXTERNAL_RESOURCE_PUT = 'external_resource_put',
   EXTERNAL_RESOURCE_DELETE = 'external_resource_delete',
+  UPLOAD_START = 'upload_start',
+  UPLOAD_COMPLETE = 'upload_complete',
+  UPLOAD_ABORT = 'upload_abort',
 }
 
 export type SyncOperationOutcome = 'applied' | 'error';

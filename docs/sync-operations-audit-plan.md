@@ -52,7 +52,9 @@ the handler resolves, capturing the request envelope + response outcome.
 | method + path | job_type |
 |---|---|
 | `PUT /` | `upload` |
-| `POST /external_set` | `upload_confirm` |
+| `POST /upload/start` | `upload_start` |
+| `POST /upload/complete` | `upload_complete` |
+| `POST /upload/abort` | `upload_abort` |
 | `POST /thumbnail_set` | `upload_artwork` |
 | `POST /` | `update` |
 | `POST /move` | `move` |

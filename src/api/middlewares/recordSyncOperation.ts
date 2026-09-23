@@ -10,7 +10,6 @@ const syncAuditDB = new SyncAuditDB();
 // Only state-mutating routes appear here; GET reads are absent and skipped.
 const JOB_TYPE_BY_ROUTE: Record<string, SyncOperationJobType> = {
   'PUT /': SyncOperationJobType.UPLOAD,
-  'POST /external_set': SyncOperationJobType.UPLOAD_CONFIRM,
   'POST /thumbnail_set': SyncOperationJobType.UPLOAD_ARTWORK,
   'POST /': SyncOperationJobType.UPDATE,
   'POST /move': SyncOperationJobType.MOVE,
@@ -21,6 +20,10 @@ const JOB_TYPE_BY_ROUTE: Record<string, SyncOperationJobType> = {
   'POST /uuids': SyncOperationJobType.MATCH_UUIDS,
   'PUT /external': SyncOperationJobType.EXTERNAL_RESOURCE_PUT,
   'DELETE /external': SyncOperationJobType.EXTERNAL_RESOURCE_DELETE,
+  // Part-URL requests are left out: one per window top-up, no forensic value.
+  'POST /upload/start': SyncOperationJobType.UPLOAD_START,
+  'POST /upload/complete': SyncOperationJobType.UPLOAD_COMPLETE,
+  'POST /upload/abort': SyncOperationJobType.UPLOAD_ABORT,
 };
 
 // Fields on an `update` body that are identifiers or playback state, not

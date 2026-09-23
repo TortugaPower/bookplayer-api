@@ -361,6 +361,12 @@ npx knex migrate:rollback
 
 ### Library Routes (`/v1/library`)
 
+Uploads of a book's file go through the `/upload/*` multipart routes (contract and client error handling in
+`docs/multipart-uploads.md`). The single presigned PUT from `PUT /` stays for clients that predate them; for those,
+`POST /` ignores `synced:true` on a book whose object is missing, on every tier (and still answers 200): `synced`
+means "the file is in S3", and those clients confirm even when S3 rejected the PUT, as LITE clients do for files they
+never upload.
+
 All routes require auth + an active subscription (`checkSubscription`); most also require `requireCloudData`.
 
 | Method | Path | Purpose |
@@ -369,12 +375,15 @@ All routes require auth + an active subscription (`checkSubscription`); most als
 | POST / PUT / DELETE | `/` | Update metadata / upload metadata / soft-delete an item and its true children (bounded, escaped key match) |
 | GET | `/last_played` | Resume item, or `null` when nothing has been played; 500 on a failed read |
 | PUT / DELETE | `/external` | Link / unlink an external resource (Jellyfin, Audiobookshelf, …) |
-| POST | `/external_set` | Mark an external resource's file uploaded (S3 PRO gate) |
 | POST | `/move`, `/rename` | Key rewrites (order changes arrive as per-item metadata updates; there is no reorder endpoint) |
 | DELETE | `/folder_in_out` | Merge a folder's children out and remove it |
 | GET / POST | `/bookmarks` | List bookmarks |
 | PUT | `/bookmark` | Upsert a bookmark |
 | POST | `/thumbnail_set` | Presign a thumbnail upload |
+| POST | `/upload/start` | Open a multipart upload for a book's file (S3 PRO gate); answers `exists` and heals the row when the object is already there |
+| POST / GET | `/upload/parts` | Presign part URLs (≤32 per request) / list the parts S3 holds, to resume |
+| POST | `/upload/complete` | Complete from S3's own part list and set `synced=true` (and `downloaded` on a media-server book's external resources) — the only confirmation a multipart upload gets; safe to retry |
+| POST | `/upload/abort` | Abort; succeeds when the upload or row is already gone |
 | GET | `/keys` | Synced identifiers |
 | POST | `/uuids` | Match client uuids to rows |
 
@@ -635,6 +644,7 @@ describe('MyService', () => {
 | `LOG_LEVEL` | debug / info / warn / error |
 | `REDIS_URL` | Redis connection URL |
 | `CORS_ORIGIN` | Allowed CORS origins |
+| `UPLOAD_PART_URL_TTL_SECONDS` | Development only (ignored when `NODE_ENV=production`): multipart part-URL lifetime (default and max 604800), to test expired URLs |
 
 ## Common Tasks
 

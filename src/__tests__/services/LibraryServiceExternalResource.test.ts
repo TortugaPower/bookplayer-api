@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import { LibraryService } from '../../services/LibraryService';
-import { ExternalResource, StorageAction } from '../../types/user';
+import { ExternalResource } from '../../types/user';
 import {
   getTestTransaction,
   mockLoggerService,
@@ -105,86 +105,6 @@ describe('LibraryService — external resource flows', () => {
           '33333333-3333-3333-3333-333333333333',
           makeResource(),
         ),
-      ).rejects.toThrow();
-    });
-  });
-
-  describe('sourcePutRequest', () => {
-    it('uploaded=true marks the source downloaded and the item synced', async () => {
-      const trx = getTestTransaction();
-      const user = await createTestUser(trx);
-      const uuid = '44444444-4444-4444-4444-444444444444';
-      const item = await createTestLibraryItem(trx, {
-        user_id: user.id_user,
-        key: 'book.m4b',
-        uuid,
-        synced: false,
-      });
-      await createTestExternalResource(trx, {
-        library_item_id: item.id_library_item,
-        sync_status: 'pending',
-      });
-
-      const result = await service.sourcePutRequest(user as any, {
-        uuid,
-        uploaded: true,
-      });
-
-      expect(result).toBe(true);
-      const resourceAfter = await trx('external_resources')
-        .where({ library_item_id: item.id_library_item })
-        .first();
-      const itemAfter = await trx('library_items')
-        .where({ id_library_item: item.id_library_item })
-        .first();
-      expect(resourceAfter.sync_status).toBe('downloaded');
-      expect(itemAfter.synced).toBe(true);
-    });
-
-    it('uploaded=false builds the PUT key from the storage prefix (external_id), not the email', async () => {
-      const trx = getTestTransaction();
-      const user = await createTestUser(trx);
-      const uuid = '55555555-5555-5555-5555-555555555555';
-      await createTestLibraryItem(trx, {
-        user_id: user.id_user,
-        key: 'book.m4b',
-        uuid,
-        source_path: 'root/source_book.m4b',
-      });
-
-      // Relay / "Hide My Email" account: getPrefix resolves to external_id.
-      const getPrefix = jest.fn<() => Promise<string>>().mockResolvedValue('ext-abc');
-      const getPresignedUrl = jest
-        .fn<(params: { key: string; type: StorageAction }) => Promise<{ url: string }>>()
-        .mockResolvedValue({ url: 'https://signed.example/put' });
-      (service as any)._prefix = { getPrefix };
-      (service as any)._storage = { getPresignedUrl };
-
-      const url = await service.sourcePutRequest(user as any, {
-        uuid,
-        uploaded: false,
-      });
-
-      expect(url).toBe('https://signed.example/put');
-      expect(getPrefix).toHaveBeenCalled();
-      expect(getPresignedUrl).toHaveBeenCalledWith({
-        key: 'ext-abc/root/source_book.m4b',
-        type: StorageAction.PUT,
-      });
-      // Must not leak the email-based prefix.
-      const calledKey = getPresignedUrl.mock.calls[0][0].key;
-      expect(calledKey).not.toContain(user.email);
-    });
-
-    it('throws when the item does not exist', async () => {
-      const trx = getTestTransaction();
-      const user = await createTestUser(trx);
-
-      await expect(
-        service.sourcePutRequest(user as any, {
-          uuid: '66666666-6666-6666-6666-666666666666',
-          uploaded: false,
-        }),
       ).rejects.toThrow();
     });
   });
