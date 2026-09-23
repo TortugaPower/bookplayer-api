@@ -34,7 +34,9 @@ export const partUrlsSchema = z
     // MultipartUploadService, which answers it with `code: invalid_request`.
     partNumbers: z
       .array(partNumber, { required_error: 'partNumbers is required' })
-      .min(1, 'partNumbers is required'),
+      .min(1, 'partNumbers is required')
+      // No valid request has more distinct part numbers than an upload has parts.
+      .max(MAX_PARTS, `partNumbers can list at most ${MAX_PARTS} numbers`),
   })
   .strip();
 

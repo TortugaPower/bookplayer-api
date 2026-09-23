@@ -71,9 +71,11 @@ const partUrlTtlSeconds = (): number => {
 };
 
 // S3 reports a vanished upload as NoSuchUpload (404); the SDK exposes it on
-// `name`, with the status as a fallback for mocked or proxied errors.
+// `name`. The bare status only counts when there is no name: a NoSuchBucket
+// (a misconfigured bucket) is also a 404 and must surface as a failure, not
+// as "start over".
 const isNoSuchUpload = (error: { name?: string; $metadata?: { httpStatusCode?: number } }) =>
-  error?.name === 'NoSuchUpload' || error?.$metadata?.httpStatusCode === 404;
+  error?.name === 'NoSuchUpload' || (!error?.name && error?.$metadata?.httpStatusCode === 404);
 
 // A part list S3 refuses to assemble: a listed part it can't find, parts out of
 // order, or a non-final part under the 5 MiB minimum.

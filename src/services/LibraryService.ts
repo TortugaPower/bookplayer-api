@@ -39,6 +39,18 @@ export class LibraryLookupError extends Error {
   }
 }
 
+// The spellings Postgres itself accepts for a boolean, so a client can't mark a
+// row synced through a string or number the synced guard never sees as `true`.
+const SYNCED_TRUE = new Set(['true', 't', 'yes', 'y', 'on', '1']);
+const SYNCED_FALSE = new Set(['false', 'f', 'no', 'n', 'off', '0']);
+const parseSyncedFlag = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') return value;
+  const text = `${value}`.trim().toLowerCase();
+  if (SYNCED_TRUE.has(text)) return true;
+  if (SYNCED_FALSE.has(text)) return false;
+  return undefined;
+};
+
 export class LibraryService {
   private readonly _logger = logger;
   private db = database;
@@ -595,13 +607,19 @@ export class LibraryService {
       const cleanPath = (relativePath || '').replace(`${user.email}/`, '');
 
       let updateParams = params;
-      if (params.synced === true && (await this.isUnbackedBook(user, cleanPath, uuid))) {
+      if (params.synced !== undefined) {
+        // Postgres would cast 'true', 't', 1… to true on its own, which would
+        // slip past the guard below. Normalise first; a value that is neither
+        // is dropped rather than written.
+        updateParams = { ...params, synced: parseSyncedFlag(params.synced) } as LibraryItem;
+      }
+      if (updateParams.synced === true && (await this.isUnbackedBook(user, cleanPath, uuid))) {
         // `synced` means "the file is in S3", on every tier. Clients before
         // multipart confirm even when S3 rejected the PUT, and LITE clients
         // read `url: null` as "already stored". Keep the rest of the update,
         // drop the confirmation, and answer success: an error would make those
         // clients retry forever.
-        const { synced: _dropped, ...rest } = params;
+        const { synced: _dropped, ...rest } = updateParams;
         updateParams = rest as LibraryItem;
         this._logger.log(
           {

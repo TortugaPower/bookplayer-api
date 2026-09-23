@@ -60,6 +60,22 @@ describe('S3Service — multipart uploads', () => {
     expect(mockLoggerService.log).not.toHaveBeenCalled();
   });
 
+  it('treats a missing bucket as a failure, not a vanished upload', async () => {
+    // Also a 404: reading it as NoSuchUpload would send every client into a
+    // restart instead of surfacing the misconfiguration.
+    sendMock.mockRejectedValueOnce(s3Error('NoSuchBucket', 404));
+
+    await expect(service.listParts('k', 'up-1')).resolves.toBeNull();
+    expect(mockLoggerService.log).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads a bare 404 with no error name as a vanished upload', async () => {
+    // A plain rejection with no `name` at all (an Error always carries one).
+    sendMock.mockRejectedValueOnce({ message: 'gone', $metadata: { httpStatusCode: 404 } });
+
+    await expect(service.listParts('k', 'up-1')).resolves.toBe(NO_SUCH_UPLOAD);
+  });
+
   it('completes with the parts in the order given', async () => {
     await expect(
       service.completeMultipartUpload('k', 'up-1', [
