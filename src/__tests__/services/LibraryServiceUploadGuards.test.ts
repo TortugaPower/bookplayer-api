@@ -165,22 +165,6 @@ describe('LibraryService.updateObject — synced guard for older clients', () =>
     expect(fileExistsMock).toHaveBeenCalledWith({ key: 'test-prefix/root/20260101000000_Book.m4b' });
   });
 
-  it('writes nothing, and logs no DB failure, when the confirmation was the whole update', async () => {
-    const { trx, user, item } = await setup();
-
-    const result = await service.updateObject(
-      { ...user, subscriptions: [SubscriptionTierEnum.PRO] } as any,
-      undefined,
-      { synced: true } as any,
-      item.uuid,
-    );
-
-    expect(result).toBe(true);
-    expect(await syncedOf(trx, item.id_library_item)).toBe(false);
-    const origins = mockLoggerService.log.mock.calls.map((call: any[]) => call[0].origin);
-    expect(origins).not.toContain('LibraryDB.updateLibraryItem');
-  });
-
   it('skips the S3 check for a row that is already synced: dropping would change nothing', async () => {
     const { trx, user, item } = await setup();
     await trx('library_items').update({ synced: true }).where({ id_library_item: item.id_library_item });
@@ -296,45 +280,6 @@ describe('LibraryService.deleteObject — in-flight multipart uploads', () => {
       'list test-prefix/',
       'delete test-prefix/root/20260101000000_Book.m4b',
     ]);
-  });
-});
-
-describe('LibraryService.putObject — new rows start unsynced', () => {
-  it('ignores a client-sent synced:true: the row has no file yet', async () => {
-    const service = new LibraryService();
-    (service as any).db = getTestTransaction();
-    (service as any)._libraryDB.db = getTestTransaction();
-    (service as any)._libraryDB._logger = mockLoggerService;
-    (service as any)._logger = mockLoggerService;
-    (service as any)._storage = {
-      fileExists: jest.fn(async () => false),
-      getPresignedUrl: jest.fn(async () => ({ url: 'https://s3/put', expires_in: 1 })),
-    };
-    (service as any)._prefix = { getPrefix: jest.fn(async () => 'test-prefix') };
-    const trx = getTestTransaction();
-    const user = await createTestUser(trx);
-
-    await service.putObject(
-      { ...user, subscriptions: [SubscriptionTierEnum.PRO] } as any,
-      {
-        relativePath: 'New.m4b',
-        originalFileName: 'New.m4b',
-        title: 'New',
-        details: 'Test Author',
-        speed: 1,
-        currentTime: 0,
-        duration: 100,
-        percentCompleted: 0,
-        isFinished: false,
-        orderRank: 0,
-        type: '2',
-        uuid: '44444444-4444-4444-8444-444444444444',
-        synced: true,
-      } as any,
-    );
-
-    const row = await trx('library_items').where({ user_id: user.id_user, key: 'New.m4b' }).first();
-    expect(row.synced).toBe(false);
   });
 });
 

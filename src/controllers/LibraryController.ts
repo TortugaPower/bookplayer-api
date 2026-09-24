@@ -19,10 +19,6 @@ import {
   listPartsQuerySchema,
 } from '../validation/multipartUpload';
 
-// Body keys POST / never writes: identifiers the handler passes separately,
-// and the storage path only the server assigns.
-const CLIENT_READONLY_FIELDS = new Set(['relativePath', 'originalFileName', 'uuid', 'source_path', 'sourcePath']);
-
 // Query-string flags arrive as strings; `?sign=false` must not read as true.
 // Strict on purpose. Every shipped client sends the literal `true`: iOS
 // interpolates a Swift Bool (unchanged since 2023-02), Android's Retrofit
@@ -146,11 +142,10 @@ export class LibraryController {
       const { relativePath, uuid } = req.body;
       const user = req.user;
 
-      // `source_path` is server-owned: putObject assigns it, and it decides
-      // which S3 object complete, delete and downloads touch. No client sends
-      // it, and accepting it would let a row point at another book's bytes.
+      // Body validated by validateBody(updateItemSchema) at the route, which
+      // also strips server-owned columns such as `source_path`.
       const updateFields = Object.keys(req.body).filter(
-        (key) => !CLIENT_READONLY_FIELDS.has(key),
+        (key) => key !== 'relativePath' && key !== 'originalFileName' && key !== 'uuid',
       );
 
       if (updateFields.length) {
@@ -475,9 +470,10 @@ export class LibraryController {
     try {
       const parsed = listPartsQuerySchema.safeParse(req.query);
       if (!parsed.success) {
-        return res
-          .status(422)
-          .json({ message: parsed.error.issues[0]?.message ?? 'Invalid query parameters' });
+        return res.status(422).json({
+          message: parsed.error.issues[0]?.message ?? 'Invalid query parameters',
+          code: 'invalid_request',
+        });
       }
       const query = parsed.data as ListPartsQuery;
       const parts = await this._multipartUploadService.listParts(req.user, query);

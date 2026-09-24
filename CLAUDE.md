@@ -372,7 +372,7 @@ All routes require auth + an active subscription (`checkSubscription`); most als
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/` | List / resolve items. **`uuid` names the item; a trailing `/` on `relativePath` asks for its contents.** A valid uuid is authoritative (not found → `[]`, no path fallback); a folder or bound book resolved by uuid with a trailing slash lists its children by the *server-side* key. No uuid → path lookup. `sign=true` presigns URLs (PRO only). A failed DB read is a 500, never an empty library. |
-| POST / PUT / DELETE | `/` | Update metadata / upload metadata / soft-delete an item and its true children (bounded, escaped key match) |
+| POST / PUT / DELETE | `/` | Update metadata / upload metadata / soft-delete an item and its true children (bounded, escaped key match). POST and PUT bodies are validated with zod (`src/validation/libraryItem.ts`): every metadata field optional, unknown keys stripped, so `source_path` — and `synced` on PUT — can't be written by a client. Both apps retry a failed sync job forever, so keep those schemas matching what they send (the fixtures in `src/__tests__/validation/libraryItem.test.ts`) |
 | GET | `/last_played` | Resume item, or `null` when nothing has been played; 500 on a failed read |
 | PUT / DELETE | `/external` | Link / unlink an external resource (Jellyfin, Audiobookshelf, …) |
 | POST | `/move`, `/rename` | Key rewrites (order changes arrive as per-item metadata updates; there is no reorder endpoint) |

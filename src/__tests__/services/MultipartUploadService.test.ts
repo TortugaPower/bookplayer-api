@@ -140,20 +140,6 @@ describe('MultipartUploadService', () => {
     });
 
     it.each([
-      ['a part under S3 minimum', { fileSize: 100 * MiB, partSize: 4 * MiB }],
-      ['a part over S3 maximum', { fileSize: 100 * MiB, partSize: 5 * 1024 * MiB + 1 }],
-      ['more than 10,000 parts', { fileSize: 10_001 * 5 * MiB, partSize: 5 * MiB }],
-      ['a book over the 10 GiB ceiling', { fileSize: 10 * 1024 * MiB + 1, partSize: 64 * MiB }],
-    ])('rejects %s as a request that can never work, before touching S3', async (_label, sizes) => {
-      const err = await uploadErrorOf(service.startUpload(user, { uuid, ...sizes }));
-
-      // Not invalid_parts: that one tells the client to restart, which would fail the same way.
-      expect(err.code).toBe(UploadErrorCode.INVALID_REQUEST);
-      expect(err.statusCode).toBe(422);
-      expect(libraryDB.getLibraryByUuid).not.toHaveBeenCalled();
-    });
-
-    it.each([
       ['a file smaller than one part', MiB, 64 * MiB, 1],
       ['a file exactly one part long', 64 * MiB, 64 * MiB, 1],
       ['a book exactly at the 10 GiB ceiling, in the smallest parts', 10 * 1024 * MiB, 5 * MiB, 2048],
@@ -194,33 +180,11 @@ describe('MultipartUploadService', () => {
   });
 
   describe('getPartUrls', () => {
-    it('refuses part numbers no book within the ceiling can have', async () => {
-      // 10 GiB in 5 MiB parts is 2,048 parts; anything higher is not a book.
-      const err = await uploadErrorOf(service.getPartUrls(user, { uuid, uploadId: 'up-1', partNumbers: [2049] }));
-
-      expect(err.code).toBe(UploadErrorCode.INVALID_REQUEST);
-      expect(storage.getPresignedPartUrl).not.toHaveBeenCalled();
-      await expect(
-        service.getPartUrls(user, { uuid, uploadId: 'up-1', partNumbers: [2048] }),
-      ).resolves.toHaveLength(1);
-    });
-
-    it('answers more than 32 distinct parts with invalid_request, counting after de-duplication', async () => {
-      const many = Array.from({ length: 33 }, (_, i) => i + 1);
-
-      const err = await uploadErrorOf(service.getPartUrls(user, { uuid, uploadId: 'up-1', partNumbers: many }));
-      expect(err.code).toBe(UploadErrorCode.INVALID_REQUEST);
-
-      const repeated = [...Array(40).fill(1), 2];
-      await expect(
-        service.getPartUrls(user, { uuid, uploadId: 'up-1', partNumbers: repeated }),
-      ).resolves.toHaveLength(2);
-    });
-
-    it('signs each requested part once, in order', async () => {
-      const urls = await service.getPartUrls(user, { uuid, uploadId: 'up-1', partNumbers: [3, 1, 3] });
+    it('signs each requested part at the row key', async () => {
+      const urls = await service.getPartUrls(user, { uuid, uploadId: 'up-1', partNumbers: [1, 3] });
 
       expect(urls.map((u) => u.partNumber)).toEqual([1, 3]);
+      expect(storage.getPresignedPartUrl).toHaveBeenCalledWith('prefix/root/20260101000000_Book.m4b', 'up-1', 3);
       expect(urls[0]).toEqual({ partNumber: 1, url: 'https://s3/part-1', expiresAt: 1_900_000_000 });
     });
   });
@@ -265,18 +229,6 @@ describe('MultipartUploadService', () => {
 
       expect(err.code).toBe(UploadErrorCode.INVALID_PARTS);
       expect(err.details).toEqual({ extra: [3] });
-      expect(storage.completeMultipartUpload).not.toHaveBeenCalled();
-      expect(libraryDB.markItemSynced).not.toHaveBeenCalled();
-    });
-
-    it('refuses to assemble a book over the ceiling, and frees its parts now', async () => {
-      // The server keeps no state, so a client could pass start with a small
-      // fileSize; complete is where the ceiling has to hold.
-      const err = await uploadErrorOf(complete(3, 10 * 1024 * MiB + 1));
-
-      expect(err.code).toBe(UploadErrorCode.INVALID_REQUEST);
-      expect(storage.abortMultipartUpload).toHaveBeenCalledWith('prefix/root/20260101000000_Book.m4b', 'up-1');
-      expect(storage.listParts).not.toHaveBeenCalled();
       expect(storage.completeMultipartUpload).not.toHaveBeenCalled();
       expect(libraryDB.markItemSynced).not.toHaveBeenCalled();
     });

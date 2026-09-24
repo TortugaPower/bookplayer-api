@@ -53,7 +53,7 @@ describe('validateBody middleware', () => {
       validateBody(putExternalResourceSchema)(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(422);
-      expect(res.json).toHaveBeenCalledWith({ message: 'providerName is required' });
+      expect(res.json).toHaveBeenCalledWith({ message: 'providerName is required', code: 'invalid_request' });
       expect(next).not.toHaveBeenCalled();
     });
 
@@ -65,7 +65,7 @@ describe('validateBody middleware', () => {
       validateBody(putExternalResourceSchema)(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(422);
-      expect(res.json).toHaveBeenCalledWith({ message: 'providerName is required' });
+      expect(res.json).toHaveBeenCalledWith({ message: 'providerName is required', code: 'invalid_request' });
       expect(next).not.toHaveBeenCalled();
     });
 
@@ -77,7 +77,7 @@ describe('validateBody middleware', () => {
       validateBody(putExternalResourceSchema)(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(422);
-      expect(res.json).toHaveBeenCalledWith({ message: 'A valid item uuid is required' });
+      expect(res.json).toHaveBeenCalledWith({ message: 'A valid item uuid is required', code: 'invalid_request' });
       expect(next).not.toHaveBeenCalled();
     });
   });
@@ -95,7 +95,7 @@ describe('validateBody middleware', () => {
       const req: any = { body: { uuid: VALID_UUID, providerName: 'dropbox' } };
       validateBody(deleteExternalResourceSchema)(req, res, next);
       expect(res.status).toHaveBeenCalledWith(422);
-      expect(res.json).toHaveBeenCalledWith({ message: 'providerId is required' });
+      expect(res.json).toHaveBeenCalledWith({ message: 'providerId is required', code: 'invalid_request' });
       expect(next).not.toHaveBeenCalled();
     });
   });

@@ -8,6 +8,7 @@ import {
   putExternalResourceSchema,
   deleteExternalResourceSchema,
 } from '../validation/externalResource';
+import { putItemSchema, updateItemSchema } from '../validation/libraryItem';
 import {
   startUploadSchema,
   partUrlsSchema,
@@ -40,10 +41,10 @@ const requireS3Upload = requireSubscription([SubscriptionTierEnum.PRO]);
 LibraryRouter.get('/', checkSubscription, requireCloudData, (req, res, next) =>
   controller.getLibraryContentPath(req, res).catch(next),
 );
-LibraryRouter.post('/', checkSubscription, requireCloudData, (req, res, next) =>
+LibraryRouter.post('/', checkSubscription, validateBody(updateItemSchema), requireCloudData, (req, res, next) =>
   controller.getLibraryObject(req, res).catch(next),
 );
-LibraryRouter.put('/', checkSubscription, requireCloudData, (req, res, next) =>
+LibraryRouter.put('/', checkSubscription, validateBody(putItemSchema), requireCloudData, (req, res, next) =>
   controller.putLibraryObject(req, res).catch(next),
 );
 LibraryRouter.put('/external', checkSubscription, validateBody(putExternalResourceSchema), requireCloudData, (req, res, next) =>

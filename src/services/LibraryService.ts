@@ -388,10 +388,6 @@ export class LibraryService {
         params,
         LibraryItemOutput.DB,
       )) as LibraryItemDB;
-      // `synced` means "the file is in S3", and a new row has no file yet:
-      // it starts false (the column default) whatever the client sends, and
-      // only an upload's confirmation (or `complete`) can set it.
-      libObj.synced = undefined;
 
       const cleanPath = relativePath.replace(`${user.email}/`, '');
       const objectDB = await this._libraryDB.getLibrary(user.id_user, cleanPath, {
@@ -621,12 +617,6 @@ export class LibraryService {
         { relativePath, ...updateParams },
         LibraryItemOutput.DB,
       )) as LibraryItemDB;
-      if (updateParams !== params && Object.values(libraryItem).every((v) => v === undefined)) {
-        // Only a uuid-only body `{ uuid, synced: true }` gets here — with a
-        // relativePath the update still writes `key`. Writing nothing would
-        // only log a misleading "Empty .update()" failure.
-        return true;
-      }
       const result = await this._libraryDB.updateLibraryItem(
         user.id_user,
         cleanPath,

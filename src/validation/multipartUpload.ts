@@ -1,28 +1,44 @@
 import { z } from 'zod';
-import { MAX_PARTS } from '../types/multipartUpload';
+import {
+  MAX_BOOK_PARTS,
+  MAX_BOOK_SIZE,
+  MAX_PART_SIZE,
+  MAX_PART_URLS_PER_REQUEST,
+  MIN_PART_SIZE,
+} from '../types/multipartUpload';
 
-// Request-body schemas for /v1/library/upload/*. Range checks that depend on
-// each other (partSize vs fileSize) live in MultipartUploadService.
+// Request-body schemas for /v1/library/upload/*. Every limit on what a client
+// may ask for lives here; MultipartUploadService only checks the request
+// against S3 and the database.
 
 const uuid = z
   .string({ required_error: 'A valid item uuid is required' })
   .uuid('A valid item uuid is required');
 const uploadId = z
   .string({ required_error: 'uploadId is required' })
-  .trim()
   .min(1, 'uploadId is required');
 const positiveInt = (field: string) =>
   z
     .number({ required_error: `${field} is required`, invalid_type_error: `${field} must be a number` })
     .int(`${field} must be an integer`)
     .positive(`${field} must be positive`);
-const partNumber = positiveInt('partNumber').max(MAX_PARTS, `partNumber must be at most ${MAX_PARTS}`);
+const fileSize = positiveInt('fileSize').max(
+  MAX_BOOK_SIZE,
+  `fileSize exceeds the ${MAX_BOOK_SIZE}-byte limit for a book`,
+);
+// No book within the ceiling needs more parts than this, even in 5 MiB parts.
+const partNumber = positiveInt('partNumber').max(
+  MAX_BOOK_PARTS,
+  `partNumber must be at most ${MAX_BOOK_PARTS}`,
+);
 
 export const startUploadSchema = z
   .object({
     uuid,
-    fileSize: positiveInt('fileSize'),
-    partSize: positiveInt('partSize'),
+    fileSize,
+    partSize: positiveInt('partSize')
+      .min(MIN_PART_SIZE, `partSize must be at least ${MIN_PART_SIZE} bytes`)
+      .max(MAX_PART_SIZE, `partSize must be at most ${MAX_PART_SIZE} bytes`),
   })
   .strip();
 
@@ -30,13 +46,10 @@ export const partUrlsSchema = z
   .object({
     uuid,
     uploadId,
-    // The per-request cap is enforced after de-duplication in
-    // MultipartUploadService, which answers it with `code: invalid_request`.
     partNumbers: z
       .array(partNumber, { required_error: 'partNumbers is required' })
       .min(1, 'partNumbers is required')
-      // No valid request has more distinct part numbers than an upload has parts.
-      .max(MAX_PARTS, `partNumbers can list at most ${MAX_PARTS} numbers`),
+      .max(MAX_PART_URLS_PER_REQUEST, `At most ${MAX_PART_URLS_PER_REQUEST} part URLs per request`),
   })
   .strip();
 
@@ -47,10 +60,10 @@ export const completeUploadSchema = z
   .object({
     uuid,
     uploadId,
-    partCount: positiveInt('partCount').max(MAX_PARTS, `partCount must be at most ${MAX_PARTS}`),
+    partCount: partNumber,
     // The size the client read from the file on disk, checked against the
     // parts before S3 assembles anything.
-    fileSize: positiveInt('fileSize'),
+    fileSize,
   })
   .strip();
 

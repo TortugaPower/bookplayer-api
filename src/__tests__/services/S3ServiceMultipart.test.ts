@@ -69,13 +69,6 @@ describe('S3Service — multipart uploads', () => {
     expect(mockLoggerService.log).toHaveBeenCalledTimes(1);
   });
 
-  it('reads a bare 404 with no error name as a vanished upload', async () => {
-    // A plain rejection with no `name` at all (an Error always carries one).
-    sendMock.mockRejectedValueOnce({ message: 'gone', $metadata: { httpStatusCode: 404 } });
-
-    await expect(service.listParts('k', 'up-1')).resolves.toBe(NO_SUCH_UPLOAD);
-  });
-
   it('completes with the parts in the order given', async () => {
     await expect(
       service.completeMultipartUpload('k', 'up-1', [

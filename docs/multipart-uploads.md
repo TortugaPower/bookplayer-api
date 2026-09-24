@@ -62,8 +62,7 @@ Every error body is `{ message, code? }`. Branch on `code`, never on `message`.
 | `upload_not_found` | 409 | S3 no longer has the upload (aborted or reclaimed). Forget the `uploadId` and `start` again. Counts against the restart budget. |
 | `parts_missing` | 409 | `complete` found gaps; the body carries `missing: [partNumber…]`. Re-send those parts, then `complete` again. Not a restart. |
 | `invalid_parts` | 422 | At `complete`: part sizes break the rules, S3 holds parts beyond `partCount` (body carries `extra: [partNumber…]`), the parts don't add up to `fileSize` (body carries `uploadedBytes` and `fileSize`) — completing would store a truncated file — or S3 refused the part list. Start again (restart budget). |
-| `invalid_request` | 422 | At `start`, `POST /parts` or `complete`: `fileSize` over the 10 GiB book ceiling (at `complete` the upload is also aborted), `partSize` outside 5 MiB–5 GiB, a part number above 2,048, or more than 32 part URLs asked for. The same request can never succeed: fix it rather than restart or retry — for an oversized book, tell the user it's too large to back up. |
-| — | 422 | Body validation failed (`message` says which field). A client bug; do not retry unchanged. |
+| `invalid_request` | 422 | The request failed validation; `message` names the field. On these routes: `fileSize` over the 10 GiB book ceiling, `partSize` outside 5 MiB–5 GiB, a part number above 2,048, more than 32 part URLs, or a missing field. The same request can never succeed: fix it rather than restart or retry — for an oversized book, tell the user it's too large to back up (better: check the size before `start`). |
 | — | 500 | Unexpected failure. Retry with backoff. |
 
 Part PUTs go straight to S3: a 403 means the URL expired (ask for a new one), a 404 `NoSuchUpload` means start over,

@@ -5,12 +5,6 @@ import { StoragePrefixService } from './StoragePrefixService';
 import { LibraryItemDB, LibraryItemType, User } from '../types/user';
 import {
   INVALID_PART_LIST,
-  MAX_BOOK_PARTS,
-  MAX_BOOK_SIZE,
-  MAX_PART_SIZE,
-  MAX_PART_URLS_PER_REQUEST,
-  MAX_PARTS,
-  MIN_PART_SIZE,
   MultipartPart,
   NO_SUCH_UPLOAD,
   PartUrl,
@@ -45,24 +39,9 @@ export class MultipartUploadService {
     user: User,
     params: { uuid: string; fileSize: number; partSize: number },
   ): Promise<StartUploadResult> {
+    // Sizes and limits were validated at the route (startUploadSchema).
     const { uuid, fileSize, partSize } = params;
-    if (partSize < MIN_PART_SIZE || partSize > MAX_PART_SIZE) {
-      throw new UploadError(
-        UploadErrorCode.INVALID_REQUEST,
-        422,
-        `partSize must be between ${MIN_PART_SIZE} and ${MAX_PART_SIZE} bytes`,
-      );
-    }
-    this.assertWithinBookLimit(fileSize);
     const partCount = Math.ceil(fileSize / partSize);
-    if (partCount > MAX_PARTS) {
-      throw new UploadError(
-        UploadErrorCode.INVALID_REQUEST,
-        422,
-        `fileSize needs ${partCount} parts; the maximum is ${MAX_PARTS}`,
-      );
-    }
-
     const { item, key } = await this.resolveTarget(user, uuid);
 
     // One open upload per book. A client only calls start without an uploadId
@@ -94,26 +73,11 @@ export class MultipartUploadService {
     user: User,
     params: { uuid: string; uploadId: string; partNumbers: number[] },
   ): Promise<PartUrl[]> {
+    // Part numbers and the per-request cap were validated at the route.
     const { uuid, uploadId, partNumbers } = params;
-    const unique = [...new Set(partNumbers)];
-    if (unique.some((n) => n > MAX_BOOK_PARTS)) {
-      throw new UploadError(
-        UploadErrorCode.INVALID_REQUEST,
-        422,
-        `No book within the ${MAX_BOOK_SIZE}-byte limit needs a part above ${MAX_BOOK_PARTS}`,
-      );
-    }
-    if (unique.length > MAX_PART_URLS_PER_REQUEST) {
-      throw new UploadError(
-        UploadErrorCode.INVALID_REQUEST,
-        422,
-        `At most ${MAX_PART_URLS_PER_REQUEST} part URLs per request`,
-      );
-    }
-
     const { key } = await this.resolveTarget(user, uuid);
     const urls: PartUrl[] = [];
-    for (const partNumber of unique.sort((a, b) => a - b)) {
+    for (const partNumber of partNumbers) {
       const signed = await this._storage.getPresignedPartUrl(key, uploadId, partNumber);
       if (!signed) {
         throw new Error(`Could not sign part ${partNumber}`);
@@ -140,14 +104,6 @@ export class MultipartUploadService {
     const { uuid, uploadId, partCount, fileSize } = params;
     const { item, key } = await this.resolveTarget(user, uuid);
 
-    // start's size check can't bind complete: the server keeps no state, and
-    // the parts must add up to exactly this fileSize, so capping it here means
-    // nothing over the ceiling ever becomes an object. Free the parts now
-    // rather than in 7 days.
-    if (fileSize > MAX_BOOK_SIZE) {
-      await this._storage.abortMultipartUpload(key, uploadId);
-      this.assertWithinBookLimit(fileSize);
-    }
 
     const listed = await this._storage.listParts(key, uploadId);
     if (listed === NO_SUCH_UPLOAD) {
@@ -208,16 +164,6 @@ export class MultipartUploadService {
       if (upload.key === key) {
         await this._storage.abortMultipartUpload(key, upload.uploadId);
       }
-    }
-  }
-
-  private assertWithinBookLimit(fileSize: number): void {
-    if (fileSize > MAX_BOOK_SIZE) {
-      throw new UploadError(
-        UploadErrorCode.INVALID_REQUEST,
-        422,
-        `fileSize exceeds the ${MAX_BOOK_SIZE}-byte limit for a book`,
-      );
     }
   }
 

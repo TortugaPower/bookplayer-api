@@ -70,12 +70,10 @@ const partUrlTtlSeconds = (): number => {
   return configured > 0 ? Math.min(configured, MAX_PRESIGN_SECONDS) : MAX_PRESIGN_SECONDS;
 };
 
-// S3 reports a vanished upload as NoSuchUpload (404); the SDK exposes it on
-// `name`. The bare status only counts when there is no name: a NoSuchBucket
-// (a misconfigured bucket) is also a 404 and must surface as a failure, not
-// as "start over".
-const isNoSuchUpload = (error: { name?: string; $metadata?: { httpStatusCode?: number } }) =>
-  error?.name === 'NoSuchUpload' || (!error?.name && error?.$metadata?.httpStatusCode === 404);
+// S3 reports a vanished upload as NoSuchUpload on the error's `name`. Only
+// that name counts: a NoSuchBucket (a misconfigured bucket) is also a 404 and
+// must surface as a failure, not as "start over".
+const isNoSuchUpload = (error: { name?: string }) => error?.name === 'NoSuchUpload';
 
 // A part list S3 refuses to assemble: a listed part it can't find, parts out of
 // order, or a non-final part under the 5 MiB minimum.
