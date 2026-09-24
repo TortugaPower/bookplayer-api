@@ -35,7 +35,7 @@ All routes are under `/v1/library/upload`, require an active subscription and th
 | `POST /start` | `{ uuid, fileSize, partSize }` | `{ status: "started", uploadId, partSize, partCount }`, or `{ status: "exists" }` when the object is already in S3 (the row is marked synced) |
 | `POST /parts` | `{ uuid, uploadId, partNumbers }` (1–32 distinct part numbers; duplicates are ignored) | `{ parts: [{ partNumber, url, expiresAt }] }` |
 | `GET /parts` | `?uuid=&uploadId=` | `{ parts: [{ partNumber, size }] }` |
-| `POST /complete` | `{ uuid, uploadId, partCount }` | `{ synced: true }` |
+| `POST /complete` | `{ uuid, uploadId, partCount, fileSize }` (`fileSize` read from the file on disk) | `{ synced: true }` |
 | `POST /abort` | `{ uuid, uploadId }` | `{ aborted: true }` (also when already gone) |
 
 Constraints (S3's): `partSize` between 5 MiB and 5 GiB, at most 10,000 parts, an object of at most 5 TiB, every part
@@ -51,7 +51,7 @@ Every error body is `{ message, code? }`. Branch on `code`, never on `message`.
 | `item_not_found` | 404 | No active book with that uuid. If the book still exists locally, re-register it through the sync lane; otherwise drop the upload. |
 | `upload_not_found` | 409 | S3 no longer has the upload (aborted or reclaimed). Forget the `uploadId` and `start` again. Counts against the restart budget. |
 | `parts_missing` | 409 | `complete` found gaps; the body carries `missing: [partNumber…]`. Re-send those parts, then `complete` again. Not a restart. |
-| `invalid_parts` | 422 | At `complete`: part sizes break the rules, S3 holds parts beyond `partCount` (body carries `extra: [partNumber…]` — completing would truncate the file), or S3 refused the part list. Start again (restart budget). |
+| `invalid_parts` | 422 | At `complete`: part sizes break the rules, S3 holds parts beyond `partCount` (body carries `extra: [partNumber…]`), the parts don't add up to `fileSize` (body carries `uploadedBytes` and `fileSize`) — completing would store a truncated file — or S3 refused the part list. Start again (restart budget). |
 | `invalid_request` | 422 | At `start` or `POST /parts`: `partSize` outside 5 MiB–5 GiB, `fileSize` over 5 TiB, more than 10,000 parts, or more than 32 part URLs asked for. The same request can never succeed: fix it rather than restart or retry. |
 | — | 422 | Body validation failed (`message` says which field). A client bug; do not retry unchanged. |
 | — | 500 | Unexpected failure. Retry with backoff. |

@@ -127,9 +127,9 @@ export class MultipartUploadService {
 
   async completeUpload(
     user: User,
-    params: { uuid: string; uploadId: string; partCount: number },
+    params: { uuid: string; uploadId: string; partCount: number; fileSize: number },
   ): Promise<void> {
-    const { uuid, uploadId, partCount } = params;
+    const { uuid, uploadId, partCount, fileSize } = params;
     const { item, key } = await this.resolveTarget(user, uuid);
 
     const listed = await this._storage.listParts(key, uploadId);
@@ -142,7 +142,7 @@ export class MultipartUploadService {
       throw new Error('Could not list the uploaded parts');
     }
 
-    const parts = this.verifyParts(listed, partCount);
+    const parts = this.verifyParts(listed, partCount, fileSize);
     const completed = await this._storage.completeMultipartUpload(key, uploadId, parts);
     if (completed === NO_SUCH_UPLOAD) {
       // A concurrent `complete` for the same upload won the race.
@@ -181,12 +181,14 @@ export class MultipartUploadService {
 
   /**
    * Every part 1…partCount must be present, nothing may sit above partCount,
-   * and every part except the last must share one size. Missing parts are the
-   * client's to re-send, not a reason to start over, so they get their own
-   * code and the list. Parts above partCount mean the client's count is wrong;
-   * completing would silently truncate the file and still mark it synced.
+   * every part except the last must share one size, and together they must be
+   * exactly the file. Missing parts are the client's to re-send, not a reason
+   * to start over, so they get their own code and the list. Anything else
+   * means the client's count is wrong: completing would silently truncate the
+   * file and still mark it synced. A count that is too low but whose parts all
+   * exist is only caught by the size — hence `fileSize`.
    */
-  private verifyParts(listed: MultipartPart[], partCount: number): MultipartPart[] {
+  private verifyParts(listed: MultipartPart[], partCount: number, fileSize: number): MultipartPart[] {
     const extra = listed.filter((part) => part.partNumber > partCount).map((part) => part.partNumber);
     if (extra.length) {
       throw new UploadError(
@@ -219,6 +221,15 @@ export class MultipartUploadService {
         UploadErrorCode.INVALID_PARTS,
         422,
         'Uploaded parts do not share one part size',
+      );
+    }
+    const uploaded = parts.reduce((total, part) => total + part.size, 0);
+    if (uploaded !== fileSize || partCount !== Math.ceil(fileSize / expectedSize)) {
+      throw new UploadError(
+        UploadErrorCode.INVALID_PARTS,
+        422,
+        `Parts 1..${partCount} hold ${uploaded} bytes; the file is ${fileSize}`,
+        { uploadedBytes: uploaded, fileSize },
       );
     }
     return parts;

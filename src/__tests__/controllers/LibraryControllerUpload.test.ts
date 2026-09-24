@@ -42,7 +42,7 @@ describe('LibraryController — multipart upload error mapping', () => {
     );
     const res = makeRes();
 
-    await controller.completeUpload(request({ uuid, uploadId: 'up-1', partCount: 3 }), res);
+    await controller.completeUpload(request({ uuid, uploadId: 'up-1', partCount: 3, fileSize: 135 }), res);
 
     expect(res.status).toHaveBeenCalledWith(409);
     expect(res.json).toHaveBeenCalledWith({
@@ -66,7 +66,7 @@ describe('LibraryController — multipart upload error mapping', () => {
     uploads.completeUpload.mockResolvedValue(undefined);
     const res = makeRes();
 
-    await controller.completeUpload(request({ uuid, uploadId: 'up-1', partCount: 1 }), res);
+    await controller.completeUpload(request({ uuid, uploadId: 'up-1', partCount: 1, fileSize: 7 }), res);
 
     expect(res.json).toHaveBeenCalledWith({ synced: true });
   });

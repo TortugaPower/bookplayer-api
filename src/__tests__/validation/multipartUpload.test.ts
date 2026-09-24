@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import { partUrlsSchema } from '../../validation/multipartUpload';
+import { completeUploadSchema, partUrlsSchema } from '../../validation/multipartUpload';
 
 const uuid = '11111111-1111-4111-8111-111111111111';
 
@@ -12,5 +12,12 @@ describe('partUrlsSchema', () => {
     const result = partUrlsSchema.safeParse({ uuid, uploadId: 'up-1', partNumbers: Array(10_001).fill(1) });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe('completeUploadSchema', () => {
+  it('requires the file size, so complete can check the parts add up to it', () => {
+    expect(completeUploadSchema.safeParse({ uuid, uploadId: 'up-1', partCount: 3 }).success).toBe(false);
+    expect(completeUploadSchema.safeParse({ uuid, uploadId: 'up-1', partCount: 3, fileSize: 135 }).success).toBe(true);
   });
 });

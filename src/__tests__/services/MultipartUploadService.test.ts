@@ -191,8 +191,9 @@ describe('MultipartUploadService', () => {
   });
 
   describe('completeUpload', () => {
-    const complete = (partCount: number) =>
-      service.completeUpload(user, { uuid, uploadId: 'up-1', partCount });
+    // The two part layouts the tests use: one 7-byte part, or 64 + 64 + 7.
+    const complete = (partCount: number, fileSize = partCount === 1 ? 7 : 135) =>
+      service.completeUpload(user, { uuid, uploadId: 'up-1', partCount, fileSize });
 
     it('completes from S3 own part list and only then marks the row synced', async () => {
       storage.listParts.mockResolvedValueOnce([part(2, 64), part(1, 64), part(3, 7)]);
@@ -213,6 +214,35 @@ describe('MultipartUploadService', () => {
       expect(err.details).toEqual({ extra: [3] });
       expect(storage.completeMultipartUpload).not.toHaveBeenCalled();
       expect(libraryDB.markItemSynced).not.toHaveBeenCalled();
+    });
+
+    it('refuses a count that is too low when every counted part exists: only the size shows the truncation', async () => {
+      // A client that rounds fileSize/partSize down sends 2 for a 3-part book
+      // and never uploads part 3; S3 holds exactly 1..2, so no part is "extra".
+      storage.listParts.mockResolvedValueOnce([part(1, 64), part(2, 64)]);
+
+      const err = await uploadErrorOf(complete(2, 135));
+
+      expect(err.code).toBe(UploadErrorCode.INVALID_PARTS);
+      expect(err.details).toEqual({ uploadedBytes: 128, fileSize: 135 });
+      expect(storage.completeMultipartUpload).not.toHaveBeenCalled();
+      expect(libraryDB.markItemSynced).not.toHaveBeenCalled();
+    });
+
+    it('refuses parts that do not add up to the file', async () => {
+      storage.listParts.mockResolvedValueOnce([part(1, 64), part(2, 64), part(3, 7)]);
+
+      const err = await uploadErrorOf(complete(3, 200));
+
+      expect(err.code).toBe(UploadErrorCode.INVALID_PARTS);
+    });
+
+    it('refuses an empty trailing part the size alone would not catch', async () => {
+      storage.listParts.mockResolvedValueOnce([part(1, 64), part(2, 0)]);
+
+      const err = await uploadErrorOf(complete(2, 64));
+
+      expect(err.code).toBe(UploadErrorCode.INVALID_PARTS);
     });
 
     it('lists the missing parts so the client re-sends only those', async () => {

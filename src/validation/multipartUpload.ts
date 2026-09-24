@@ -48,6 +48,9 @@ export const completeUploadSchema = z
     uuid,
     uploadId,
     partCount: positiveInt('partCount').max(MAX_PARTS, `partCount must be at most ${MAX_PARTS}`),
+    // The size the client read from the file on disk, checked against the
+    // parts before S3 assembles anything.
+    fileSize: positiveInt('fileSize'),
   })
   .strip();
 
@@ -58,5 +61,5 @@ export const abortUploadSchema = z.object({ uuid, uploadId }).strip();
 export type StartUploadBody = { uuid: string; fileSize: number; partSize: number };
 export type PartUrlsBody = { uuid: string; uploadId: string; partNumbers: number[] };
 export type ListPartsQuery = { uuid: string; uploadId: string };
-export type CompleteUploadBody = { uuid: string; uploadId: string; partCount: number };
+export type CompleteUploadBody = { uuid: string; uploadId: string; partCount: number; fileSize: number };
 export type AbortUploadBody = { uuid: string; uploadId: string };
