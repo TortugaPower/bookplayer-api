@@ -19,8 +19,6 @@ import {
   extractMessage,
   extractErrorCode,
   sanitizeParams,
-  shouldRecordAccountRejection,
-  resetAccountRejectionThrottle,
 } from '../../api/middlewares/recordSyncOperation';
 import {
   SyncOperationJobType,
@@ -144,23 +142,6 @@ describe('recordSyncOperation helpers', () => {
       expect(extractErrorCode({ message: 'Invalid key' })).toBeNull();
       expect(extractErrorCode('not json')).toBeNull();
       expect(extractErrorCode(null)).toBeNull();
-    });
-  });
-
-  describe('shouldRecordAccountRejection', () => {
-    beforeEach(() => resetAccountRejectionThrottle());
-
-    it('records the first rejection per key and window, then skips until the window passes', () => {
-      const t0 = 1_000_000;
-      expect(shouldRecordAccountRejection('7:match_uuids:not_subscribed', t0)).toBe(true);
-      expect(shouldRecordAccountRejection('7:match_uuids:not_subscribed', t0 + 5_000)).toBe(false);
-      expect(shouldRecordAccountRejection('7:match_uuids:not_subscribed', t0 + 10 * 60 * 1000)).toBe(true);
-    });
-
-    it('keeps users and job types apart', () => {
-      expect(shouldRecordAccountRejection('7:match_uuids:not_subscribed', 0)).toBe(true);
-      expect(shouldRecordAccountRejection('8:match_uuids:not_subscribed', 0)).toBe(true);
-      expect(shouldRecordAccountRejection('7:move:not_subscribed', 0)).toBe(true);
     });
   });
 
@@ -320,18 +301,19 @@ describe('recordSyncOperation middleware', () => {
       res.emitFinish();
     };
 
-    beforeEach(() => resetAccountRejectionThrottle());
+    it('never records not_subscribed or tier_required', () => {
+      rejected(7);
+      rejected(8, '/move');
 
-    it('records one not_subscribed per user and job type, not one per retry', () => {
-      rejected(7);
-      rejected(7);
-      rejected(7);
-      expect(recordMock()).toHaveBeenCalledTimes(1);
-      expect((recordMock().mock.calls[0][0] as SyncOperationRecord).error_message).toBe('You are not subscribed');
+      const req: any = { method: 'PUT', path: '/', route: { path: '/' }, user: { id_user: 7 }, body: { relativePath: 'Book.m4b' } };
+      const res = makeRes();
+      recordSyncOperation(req, res, jest.fn());
+      res.statusCode = 403;
+      // Express's res.json goes out through res.send as a JSON string.
+      res.send('{"message":"Requires one of: pro","error":"tier_required"}');
+      res.emitFinish();
 
-      rejected(8);
-      rejected(7, '/move');
-      expect(recordMock()).toHaveBeenCalledTimes(3);
+      expect(recordMock()).not.toHaveBeenCalled();
     });
 
     it('still records every other error, coded or not', () => {
