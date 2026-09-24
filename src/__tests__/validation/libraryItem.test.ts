@@ -119,6 +119,35 @@ describe('updateItemSchema (POST /)', () => {
     expect(parsed).not.toHaveProperty('sourcePath');
   });
 
+  it('tolerates null metadata, as the parser behind it always has, so an old queued task cannot wedge sync', () => {
+    const nullMetadata: Record<string, unknown> = {
+      uuid,
+      relativePath: 'Folder/Book.m4b',
+      originalFileName: null,
+      title: null,
+      details: null,
+      speed: null,
+      currentTime: null,
+      duration: null,
+      percentCompleted: null,
+      isFinished: null,
+      orderRank: null,
+      lastPlayDateTimestamp: null,
+      type: null,
+    };
+
+    expect(updateItemSchema.safeParse(nullMetadata).success).toBe(true);
+    expect(putItemSchema.safeParse(nullMetadata).success).toBe(true);
+  });
+
+  it.each([
+    ['relativePath', { relativePath: null } as Record<string, unknown>],
+    ['synced', { synced: null } as Record<string, unknown>],
+    ['uuid', { uuid: null } as Record<string, unknown>],
+  ])('still rejects null %s: it would write NULL into the row', (_field, body) => {
+    expect(updateItemSchema.safeParse({ ...iosSyncedConfirmation, ...body }).success).toBe(false);
+  });
+
   it('drops keys the apps add for their own queue, like the task id', () => {
     expect(updateItemSchema.parse(iosUpdate)).not.toHaveProperty('id');
   });
