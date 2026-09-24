@@ -104,6 +104,8 @@ export class S3Service {
    * when the caller lacks s3:ListBucket, and this role holds it (see
    * getDirectoryContent / calculateFolderSize, which call ListObjectsV2), so
    * a 403 here means a permission or KMS problem rather than a missing key.
+   *
+   * Callers that act on "missing" must check `=== false`, never `!exists`.
    */
   async fileExists(key: string): Promise<boolean | null> {
     try {
