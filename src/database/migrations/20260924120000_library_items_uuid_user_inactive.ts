@@ -18,8 +18,17 @@ export async function up(knex: Knex): Promise<void> {
     ON library_items (uuid, user_id)
     WHERE active = false
   `);
+
+  // The same question by key (requests without a uuid) uses the plain key
+  // index. Production has it but no migration ever created it, so fresh
+  // databases went without; declare it here. A no-op where it exists.
+  await knex.raw(`
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS library_items_key_index
+    ON library_items (key)
+  `);
 }
 
+// Leaves library_items_key_index alone: production had it before this migration.
 export async function down(knex: Knex): Promise<void> {
   await knex.raw('DROP INDEX CONCURRENTLY IF EXISTS library_items_uuid_user_inactive');
 }

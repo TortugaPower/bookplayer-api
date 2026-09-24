@@ -149,8 +149,9 @@ export class LibraryDB {
   /**
    * Whether the user once had this item and deleted it: a soft-deleted row
    * with that uuid (or, without one, that key). `null` means the query failed.
-   * The uuid lookup is served by `library_items_uuid_user_inactive`; the key
-   * lookup by `library_items_key_index`.
+   * The uuid lookup is served by `library_items_uuid_user_inactive`, the key
+   * lookup by `library_items_key_index` (both declared in migration
+   * 20260924120000).
    */
   async hasDeletedItem(
     user_id: number,
