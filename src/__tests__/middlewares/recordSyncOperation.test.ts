@@ -17,6 +17,7 @@ import {
   jobTypeFor,
   isProgressOnlyUpdate,
   extractMessage,
+  extractErrorCode,
   sanitizeParams,
 } from '../../api/middlewares/recordSyncOperation';
 import {
@@ -128,6 +129,19 @@ describe('recordSyncOperation helpers', () => {
     it('truncates to 512 chars', () => {
       const long = 'x'.repeat(600);
       expect(extractMessage(long)!.length).toBe(512);
+    });
+  });
+
+  describe('extractErrorCode', () => {
+    it('pulls .error from a stringified or object body', () => {
+      expect(extractErrorCode('{"message":"You are not subscribed","error":"not_subscribed"}')).toBe('not_subscribed');
+      expect(extractErrorCode({ message: 'x', error: 'item_not_found' })).toBe('item_not_found');
+    });
+
+    it('returns null without a code, or for a body that is not JSON', () => {
+      expect(extractErrorCode({ message: 'Invalid key' })).toBeNull();
+      expect(extractErrorCode('not json')).toBeNull();
+      expect(extractErrorCode(null)).toBeNull();
     });
   });
 
@@ -275,6 +289,44 @@ describe('recordSyncOperation middleware', () => {
     expect(arg.outcome).toBe('error');
     expect(arg.error_message).toBe('Item not exists');
     expect(arg.item_uuid).toBe('336453c8-24e3-4298-9e8c-8b41f70ac4e7');
+  });
+
+  describe('account-level rejections', () => {
+    const rejected = (id_user: number, path = '/uuids', method = 'POST') => {
+      const req: any = { method, path, route: { path }, user: { id_user }, body: { items: {} } };
+      const res = makeRes();
+      recordSyncOperation(req, res, jest.fn());
+      res.statusCode = 400;
+      res.json({ message: 'You are not subscribed', error: 'not_subscribed' });
+      res.emitFinish();
+    };
+
+    it('never records not_subscribed or tier_required', () => {
+      rejected(7);
+      rejected(8, '/move');
+
+      const req: any = { method: 'PUT', path: '/', route: { path: '/' }, user: { id_user: 7 }, body: { relativePath: 'Book.m4b' } };
+      const res = makeRes();
+      recordSyncOperation(req, res, jest.fn());
+      res.statusCode = 403;
+      // Express's res.json goes out through res.send as a JSON string.
+      res.send('{"message":"Requires one of: pro","error":"tier_required"}');
+      res.emitFinish();
+
+      expect(recordMock()).not.toHaveBeenCalled();
+    });
+
+    it('still records every other error, coded or not', () => {
+      for (let i = 0; i < 2; i += 1) {
+        const req: any = { method: 'POST', path: '/move', route: { path: '/move' }, user: { id_user: 7 }, body: { origin: 'a', destination: 'b' } };
+        const res = makeRes();
+        recordSyncOperation(req, res, jest.fn());
+        res.statusCode = 404;
+        res.json({ message: 'Item not found: "a"', error: 'item_not_found' });
+        res.emitFinish();
+      }
+      expect(recordMock()).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('does not record reads', () => {

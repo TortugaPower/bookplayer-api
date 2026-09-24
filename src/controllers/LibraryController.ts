@@ -1,5 +1,5 @@
 import { IRequest, IResponse } from '../types/http';
-import { LibraryService } from '../services/LibraryService';
+import { ITEM_DELETED, LibraryLookupError, LibraryService } from '../services/LibraryService';
 import { logger } from '../services/LoggerService';
 import { LibraryDB } from '../services/db/LibraryDB';
 import { Bookmark, LibraryItem } from '../types/user';
@@ -10,6 +10,7 @@ import {
 } from '../validation/externalResource';
 import { MultipartUploadService } from '../services/MultipartUploadService';
 import { UploadError } from '../types/multipartUpload';
+import { ApiError } from '../types/apiError';
 import {
   AbortUploadBody,
   CompleteUploadBody,
@@ -182,9 +183,7 @@ export class LibraryController {
       const content = (await this._libraryService.putObject(user, params)) ?? {};
       return res.json({ content });
     } catch (err) {
-      this._logger.log({ origin: 'LibraryController.putLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
-      res.status(err.statusCode || 400).json({ message: err.message });
-      return;
+      return this.sendLibraryError(res, err, 'LibraryController.putLibraryObject', req);
     }
   }
 
@@ -200,9 +199,7 @@ export class LibraryController {
       const content = (await this._libraryService.putExternalResource(user, uuid, externalResource)) ?? {};
       return res.json({ content });
     } catch (err) {
-      this._logger.log({ origin: 'LibraryController.putExternalResource', message: err.message, data: { id_user: req.user?.id_user, uuid: req.body?.uuid } }, 'error');
-      res.status(400).json({ message: err.message });
-      return;
+      return this.sendLibraryError(res, err, 'LibraryController.putExternalResource', req);
     }
   }
 
@@ -218,9 +215,7 @@ export class LibraryController {
       const content = (await this._libraryService.deleteExternalResource(user, uuid, providerId, providerName)) ?? {};
       return res.json({ content });
     } catch (err) {
-      this._logger.log({ origin: 'LibraryController.deleteExternalResource', message: err.message, data: { id_user: req.user?.id_user, uuid: req.body?.uuid } }, 'error');
-      res.status(400).json({ message: err.message });
-      return;
+      return this.sendLibraryError(res, err, 'LibraryController.deleteExternalResource', req);
     }
   }
 
@@ -256,9 +251,7 @@ export class LibraryController {
         : await this._libraryService.moveLibraryObject(user, params);
       return res.json({ content });
     } catch (err) {
-      this._logger.log({ origin: 'LibraryController.moveLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
-      res.status(400).json({ message: err.message });
-      return;
+      return this.sendLibraryError(res, err, 'LibraryController.moveLibraryObject', req);
     }
   }
 
@@ -274,9 +267,12 @@ export class LibraryController {
         const items = await this._libraryDB.getLibraryByUuid(user.id_user, uuid, {
           exactly: true,
         });
-        const item = items?.[0];
+        if (items === null) throw new LibraryLookupError();
+        const item = items[0];
         if (!item) {
-          throw new Error('Invalid folder');
+          // Removing a folder that isn't there is already done, deleted or
+          // not, as LibraryService.deleteFolderMoving answers for a path.
+          return res.json({ success: true });
         }
         folderPath = item.key;
       } else if (!relativePath) {
@@ -285,9 +281,7 @@ export class LibraryController {
       const success = await this._libraryService.deleteFolderMoving(user, folderPath);
       return res.json({ success });
     } catch (err) {
-      this._logger.log({ origin: 'LibraryController.deleteFolderMoving', message: err.message, data: { user: req.user, body: req.body } }, 'error');
-      res.status(400).json({ message: err.message });
-      return;
+      return this.sendLibraryError(res, err, 'LibraryController.deleteFolderMoving', req);
     }
   }
 
@@ -334,11 +328,23 @@ export class LibraryController {
         : await this._libraryDB.getLibrary(user.id_user, bookmark.key, {
           exactly: true,
         });
-      if (!itemDB || !itemDB[0]) {
-        throw new Error('Invalid key');
+      if (itemDB === null) throw new LibraryLookupError();
+      // A delete (`active: false`) asks for "no bookmark": with no item, or no
+      // such bookmark, that already holds.
+      const isDelete = bookmark.active === false;
+      if (!itemDB[0]) {
+        if (!isDelete) {
+          await this._libraryService.confirmDeleted(user, { uuid: bookmark.uuid, key: bookmark.key });
+        }
+        return res.json({ bookmark: null });
       }
       bookmark.library_item_id = itemDB[0].id_library_item;
-      const inserted = await this._libraryDB.upsertBookmark(bookmark);
+      const inserted = isDelete
+        ? await this._libraryDB.deactivateBookmark(bookmark)
+        : await this._libraryDB.upsertBookmark(bookmark);
+      if (inserted === undefined) {
+        return res.json({ bookmark: null });
+      }
       if (!inserted) {
         throw new Error('problem creating the bookmark');
       }
@@ -350,9 +356,7 @@ export class LibraryController {
         },
       });
     } catch (err) {
-      this._logger.log({ origin: 'LibraryController.upsertBookmark', message: err.message, data: { user: req.user, body: req.body } }, 'error');
-      res.status(400).json({ message: err.message });
-      return;
+      return this.sendLibraryError(res, err, 'LibraryController.upsertBookmark', req);
     }
   }
 
@@ -372,6 +376,16 @@ export class LibraryController {
         throw new Error('Invalid parameters');
       }
       const url = await this._libraryService.thumbnailPutRequest(user, thumbnailData);
+      if (url === ITEM_DELETED) {
+        // Nothing to set on a deleted item. The apps shipped so far decode
+        // `thumbnail_url` as a required URL and keep retrying, as they did on
+        // the old 400; new clients must decode it as optional and stop.
+        return res.json({
+          thumbnail_name: thumbnailData.thumbnail_name,
+          thumbnail_url: null,
+          uploaded: false,
+        });
+      }
       if (!url) {
         throw new Error('problem creating the request url');
       }
@@ -381,9 +395,7 @@ export class LibraryController {
         uploaded: thumbnailData.uploaded && url,
       });
     } catch (err) {
-      this._logger.log({ origin: 'LibraryController.itemThumbnailPutRequest', message: err.message, data: { user: req.user, body: req.body } }, 'error');
-      res.status(400).json({ message: err.message });
-      return;
+      return this.sendLibraryError(res, err, 'LibraryController.itemThumbnailPutRequest', req);
     }
   }
 
@@ -403,9 +415,11 @@ export class LibraryController {
         : await this._libraryDB.getLibrary(user.id_user, cleanPath, {
           exactly: true,
         });
+      if (objectDB === null) throw new LibraryLookupError();
       const itemDb = objectDB[0];
       if (!itemDb) {
-        throw Error('Item not found');
+        await this._libraryService.confirmDeleted(user, { uuid, key: cleanPath });
+        return res.json({ content: [] });
       }
       const content = await this._libraryService.renameLibraryObject(user, {
         item: itemDb,
@@ -413,9 +427,7 @@ export class LibraryController {
       });
       return res.json({ content });
     } catch (err) {
-      this._logger.log({ origin: 'LibraryController.renameLibraryObject', message: err.message, data: { user: req.user, body: req.body } }, 'error');
-      res.status(400).json({ message: err.message });
-      return;
+      return this.sendLibraryError(res, err, 'LibraryController.renameLibraryObject', req);
     }
   }
 
@@ -501,6 +513,39 @@ export class LibraryController {
     } catch (err) {
       return this.sendUploadError(res, err, 'LibraryController.abortUpload', req);
     }
+  }
+
+  /**
+   * The legacy library routes answer every failure `400 { message }`. Two
+   * kinds now get their own answer: an ApiError carries the stable `error`
+   * code the apps stop on, and a failed DB read (LibraryLookupError) is a 500
+   * they retry, where it used to read as the item not existing.
+   */
+  private sendLibraryError(
+    res: IResponse,
+    err: Error,
+    origin: string,
+    req: IRequest,
+  ): IResponse {
+    if (err instanceof ApiError) {
+      this._logger.log(
+        { origin, message: err.message, data: { id_user: req.user?.id_user, body: req.body, code: err.code } },
+        'warn',
+      );
+      return res.status(err.statusCode).json({ message: err.message, error: err.code });
+    }
+    if (err instanceof LibraryLookupError) {
+      this._logger.log(
+        { origin, message: err.message, data: { id_user: req.user?.id_user, body: req.body } },
+        'error',
+      );
+      return res.status(500).json({ message: 'Internal error' });
+    }
+    this._logger.log(
+      { origin, message: err.message, data: { id_user: req.user?.id_user, body: req.body } },
+      'error',
+    );
+    return res.status(400).json({ message: err.message });
   }
 
   private sendUploadError(

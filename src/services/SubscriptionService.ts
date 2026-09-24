@@ -214,9 +214,11 @@ export class SubscriptionService {
       }, 'warn');
     }
 
+    // 'rc' only when RC answered: an unreachable RC leaves just the local
+    // negative, which callers must not treat as confirmed.
     const subState = {
       active: rcActive,
-      verified: 'rc',
+      verified: rcReachable ? 'rc' : 'local',
       subscriptions: rcEntitlements ?? []
     } as SubscriptionState;
 

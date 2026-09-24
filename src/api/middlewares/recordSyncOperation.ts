@@ -3,6 +3,7 @@ import { logger } from '../../services/LoggerService';
 import { isValidUUID } from '../../utils';
 import { SyncAuditDB } from '../../services/db/SyncAuditDB';
 import { SyncOperationJobType } from '../../types/syncOperation';
+import { ApiErrorCode } from '../../types/apiError';
 
 const syncAuditDB = new SyncAuditDB();
 
@@ -87,6 +88,29 @@ export function extractMessage(payload: unknown): string | null {
   return typeof message === 'string' ? message.slice(0, 512) : null;
 }
 
+// The `error` code next to the message, when the response carries one.
+export function extractErrorCode(payload: unknown): string | null {
+  let body: unknown = payload;
+  if (typeof payload === 'string') {
+    try {
+      body = JSON.parse(payload);
+    } catch {
+      return null;
+    }
+  }
+  const code = body && typeof body === 'object' ? (body as Record<string, unknown>).error : null;
+  return typeof code === 'string' ? code : null;
+}
+
+// Account-level rejections are not recorded. They come from apps that retry
+// the same task every 5 seconds forever (a lapsed subscription whose queue
+// never cleared), so each one was a DB write that only bumped a counter, and
+// the account's state is RevenueCat's to answer, not this log's.
+export const UNRECORDED_ERROR_CODES = new Set<string>([
+  ApiErrorCode.NOT_SUBSCRIBED,
+  ApiErrorCode.TIER_REQUIRED,
+]);
+
 // Store the request body for forensics, minus content with no forensic value:
 // bookmark note/title are user free-text (already persisted in the bookmarks
 // table), and an oversized body is replaced with a size marker to bound rows.
@@ -115,7 +139,8 @@ export function sanitizeParams(jobType: SyncOperationJobType, body: unknown): un
  *   thin wrappers over res.json/res.send (errors go out through res.send in the
  *   global error handler; successes through res.json).
  * - Logs nothing for reads (routes absent from JOB_TYPE_BY_ROUTE) or for
- *   playback-only `update`s.
+ *   playback-only `update`s, or for account-level rejections
+ *   (`not_subscribed`, `tier_required`).
  * - Gated by SYNC_AUDIT_ENABLED=true.
  */
 export const recordSyncOperation = (
@@ -147,6 +172,12 @@ export const recordSyncOperation = (
 
       const status = res.statusCode;
       const outcome = status >= 200 && status < 400 ? 'applied' : 'error';
+      if (
+        outcome === 'error' &&
+        UNRECORDED_ERROR_CODES.has(extractErrorCode(res.locals.__syncAuditPayload) ?? '')
+      ) {
+        return;
+      }
       const body = req.body ?? {};
       const rawPath =
         pickString(body.relativePath) ??

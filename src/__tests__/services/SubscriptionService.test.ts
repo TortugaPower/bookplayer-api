@@ -176,6 +176,8 @@ describe('SubscriptionService.isActive', () => {
     const result = await service.isActive(externalId);
 
     expect(result?.active).toBe(false);
+    // Only the local negative is known: callers must not treat it as confirmed.
+    expect(result?.verified).toBe('local');
     expect(cache.store.has(`sub:v2:${externalId}`)).toBe(false);
   });
 

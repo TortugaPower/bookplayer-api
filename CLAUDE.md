@@ -544,9 +544,31 @@ public async Handler(req: IRequest, res: IResponse): Promise<IResponse> {
 | 200 | Success |
 | 400 | Bad request / Operation failed |
 | 403 | Forbidden (auth failed) |
+| 404 | `item_not_found` (library routes) |
 | 409 | Conflict (duplicate) |
 | 422 | Validation error |
 | 500 | Server error |
+
+### Error codes (`error`)
+
+A 4xx that can never succeed as sent carries a stable machine-readable code next to the message:
+`{ message, error }` (`src/types/apiError.ts`, and `UploadErrorCode` for `/upload/*`). It's the key the passkey
+routes already used, and iOS decodes it into `networkErrorWithCode`. Both apps retry a failed sync task forever, so
+the code is what lets them stop and show the failure; a 4xx without one keeps being retried. Throw an `ApiError`
+from services and let the controller's `sendLibraryError` answer it.
+
+| error | HTTP | Meaning |
+|---|---|---|
+| `not_subscribed` | 400 | `checkSubscription` failed, confirmed by RevenueCat. If RC couldn't be reached, the same 400 goes out without the code |
+| `tier_required` | 403 | Subscribed, but not on a tier with this feature, confirmed live by RevenueCat; same rule when RC is unreachable |
+| `item_not_found` | 404 | No row, active or deleted, has the uuid (or, without one, the key) the request names. An item the user **deleted** answers success with nothing changed (its intent no longer applies), checked through `LibraryService.confirmDeleted` |
+| `uuid_conflict` | 409 | `PUT /`: the uuid already belongs to an item of a different type |
+| `invalid_request` | 422 | Failed body validation (`validateBody`) |
+
+Removals of something already gone answer success: deleting a bookmark, unlinking an external resource, or
+`folder_in_out` on a folder that isn't there. A failed DB read on these routes is a 500 (`LibraryLookupError`), never
+a "not found" the apps would stop on. The audit log doesn't record `not_subscribed` / `tier_required` rejections: they are
+the same stuck task retrying every 5 seconds, and RevenueCat answers the account's state.
 
 ## Logging
 

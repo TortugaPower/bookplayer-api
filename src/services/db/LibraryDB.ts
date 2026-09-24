@@ -146,6 +146,38 @@ export class LibraryDB {
     }
   }
 
+  /**
+   * Whether the user once had this item and deleted it: a soft-deleted row
+   * with that uuid (or, without one, that key). `null` means the query failed.
+   * The uuid lookup is served by `library_items_uuid_user_inactive`, the key
+   * lookup by `library_items_key_index` (both declared in migration
+   * 20260924120000).
+   */
+  async hasDeletedItem(
+    user_id: number,
+    ref: { uuid?: string; key?: string },
+    trx?: Knex.Transaction,
+  ): Promise<boolean | null> {
+    try {
+      const db = trx || this.db;
+      const query = db('library_items').where({ user_id, active: false });
+      if (isValidUUID(ref.uuid)) {
+        query.where('uuid', ref.uuid);
+      } else {
+        query.where('key', (ref.key ?? '').replace(/\/+$/, ''));
+      }
+      const row = await query.first('id_library_item');
+      return !!row;
+    } catch (err) {
+      this._logger.log({
+        origin: 'LibraryDB.hasDeletedItem',
+        message: err.message,
+        data: { user_id, ref },
+      });
+      return null;
+    }
+  }
+
   async getItemByThumbnail(
     user_id: number,
     thumbnail: string,
@@ -769,6 +801,33 @@ export class LibraryDB {
     }
   }
 
+  /**
+   * Deletes a bookmark by deactivating its row. Unlike `upsertBookmark`, it
+   * never inserts: a delete for a bookmark the server never had leaves nothing
+   * behind (`undefined`), where the upsert's insert would create it active.
+   * `null` means the query failed.
+   */
+  async deactivateBookmark(
+    bookmark: Pick<Bookmark, 'library_item_id' | 'time'>,
+    trx?: Knex.Transaction,
+  ): Promise<Bookmark | undefined | null> {
+    try {
+      const db = trx || this.db;
+      const [row] = await db('bookmarks')
+        .where({ library_item_id: bookmark.library_item_id, time: bookmark.time })
+        .update({ active: false })
+        .returning(['note', 'time', 'active']);
+      return row;
+    } catch (err) {
+      this._logger.log({
+        origin: 'LibraryDB.deactivateBookmark',
+        message: err.message,
+        data: { bookmark },
+      });
+      return null;
+    }
+  }
+
   // Queries for orchestrated (transactional) service methods
 
   async updateBySourcePath(
@@ -977,12 +1036,13 @@ export class LibraryDB {
     }
   }
 
+  /** `undefined` when no active link matched; `null` means the query failed. */
   async softDeleteExternalResource(
     libraryItemId: number,
     providerId: string,
     providerName: string,
     trx?: Knex.Transaction,
-  ): Promise<ExternalResourceDb | null> {
+  ): Promise<ExternalResourceDb | undefined | null> {
     try {
       const db = trx || this.db;
       const [updatedRow] = await db('external_resources')
@@ -994,7 +1054,7 @@ export class LibraryDB {
         })
         .update({ active: false, updated_at: new Date() })
         .returning('*');
-      return (updatedRow as ExternalResourceDb) || null;
+      return updatedRow as ExternalResourceDb | undefined;
     } catch (err) {
       this._logger.log({
         origin: 'LibraryDB.softDeleteExternalResource',

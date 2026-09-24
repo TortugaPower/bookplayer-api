@@ -204,7 +204,8 @@ describe('LibraryDB — external_resources', () => {
         trx,
       );
 
-      expect(deleted).toBeNull();
+      // undefined = nothing matched; null is reserved for a failed query.
+      expect(deleted).toBeUndefined();
     });
 
     it('allows re-adding the same resource after a soft delete (partial unique index)', async () => {

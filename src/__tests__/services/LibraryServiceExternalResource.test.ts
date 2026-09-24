@@ -141,7 +141,9 @@ describe('LibraryService — external resource flows', () => {
       expect(row.active).toBe(false);
     });
 
-    it('throws when the library item is not found', async () => {
+    // Unlinking asks for "no link", which already holds: success, not an
+    // error the apps would retry forever.
+    it('treats a missing library item as already unlinked', async () => {
       const trx = getTestTransaction();
       const user = await createTestUser(trx);
 
@@ -152,10 +154,10 @@ describe('LibraryService — external resource flows', () => {
           'id:whatever',
           'dropbox',
         ),
-      ).rejects.toThrow();
+      ).resolves.toBeNull();
     });
 
-    it('throws when the resource does not exist on the item', async () => {
+    it('treats a resource that is not on the item as already unlinked', async () => {
       const trx = getTestTransaction();
       const user = await createTestUser(trx);
       const uuid = '99999999-9999-9999-9999-999999999999';
@@ -167,7 +169,7 @@ describe('LibraryService — external resource flows', () => {
 
       await expect(
         service.deleteExternalResource(user as any, uuid, 'id:absent', 'dropbox'),
-      ).rejects.toThrow();
+      ).resolves.toBeNull();
     });
   });
 });
