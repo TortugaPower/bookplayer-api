@@ -7,7 +7,7 @@ import { IRequest, IResponse, INext } from '../types/http';
 //   Router.put('/external', checkSubscription, validateBody(schema), handler)
 //
 // On failure it responds 422 with the first issue's message (matching the
-// codebase's `{ message }` convention) plus `code: 'invalid_request'` — the
+// codebase's `{ message }` convention) plus `error: 'invalid_request'` — the
 // request can never succeed as sent, so clients must fix it, not retry — and
 // does not call the handler. On success it overwrites `req.body` with the
 // parsed/coerced data — defaults applied, unknown keys stripped — so the
@@ -20,7 +20,7 @@ export const validateBody =
       const issue = parsed.error.issues[0];
       res.status(422).json({
         message: issue?.message ?? 'Invalid request body',
-        code: 'invalid_request',
+        error: 'invalid_request',
       });
       return;
     }

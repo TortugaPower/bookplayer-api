@@ -443,8 +443,8 @@ export class LibraryController {
   }
 
   // MARK: - Multipart uploads (/upload/*)
-  // Bodies are validated at the route. An UploadError carries the stable `code`
-  // the clients branch on; anything else is a 500 the client retries.
+  // Bodies are validated at the route. An UploadError's code goes out as `error`,
+  // the stable code the clients branch on; anything else is a 500 they retry.
 
   public async startUpload(req: IRequest, res: IResponse): Promise<IResponse> {
     try {
@@ -472,7 +472,7 @@ export class LibraryController {
       if (!parsed.success) {
         return res.status(422).json({
           message: parsed.error.issues[0]?.message ?? 'Invalid query parameters',
-          code: 'invalid_request',
+          error: 'invalid_request',
         });
       }
       const query = parsed.data as ListPartsQuery;
@@ -517,7 +517,7 @@ export class LibraryController {
       );
       return res
         .status(err.statusCode)
-        .json({ message: err.message, code: err.code, ...(err.details ?? {}) });
+        .json({ message: err.message, error: err.code, ...(err.details ?? {}) });
     }
     this._logger.log(
       { origin, message: err.message, data: { id_user: req.user?.id_user, uuid } },

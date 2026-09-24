@@ -12,7 +12,7 @@ function makeRes() {
 
 const uuid = '11111111-1111-4111-8111-111111111111';
 
-// Clients branch on `code`, so the mapping from UploadError to the wire is
+// Clients branch on `error`, so the mapping from UploadError to the wire is
 // part of the contract; anything unexpected must read as retryable (5xx).
 describe('LibraryController — multipart upload error mapping', () => {
   let uploads: Record<string, jest.Mock<(...args: any[]) => Promise<any>>>;
@@ -47,7 +47,7 @@ describe('LibraryController — multipart upload error mapping', () => {
     expect(res.status).toHaveBeenCalledWith(409);
     expect(res.json).toHaveBeenCalledWith({
       message: '1 of 3 parts are not uploaded yet',
-      code: 'parts_missing',
+      error: 'parts_missing',
       missing: [2],
     });
   });

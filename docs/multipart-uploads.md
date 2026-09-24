@@ -54,9 +54,9 @@ last exactly `partSize`. The client PUTs each part's bytes to its URL with no ex
 
 ## Errors
 
-Every error body is `{ message, code? }`. Branch on `code`, never on `message`.
+Every error body is `{ message, error? }`: `error` is the stable code (the key the passkey routes already use, which iOS decodes into `networkErrorWithCode`). Branch on `error`, never on `message`.
 
-| code | HTTP | Client action |
+| error | HTTP | Client action |
 |---|---|---|
 | `item_not_found` | 404 | No active book with that uuid. If the book still exists locally, re-register it through the sync lane; otherwise drop the upload. |
 | `upload_not_found` | 409 | S3 no longer has the upload (aborted or reclaimed). Forget the `uploadId` and `start` again. Counts against the restart budget. |
