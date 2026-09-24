@@ -5,7 +5,8 @@ import { StoragePrefixService } from './StoragePrefixService';
 import { LibraryItemDB, LibraryItemType, User } from '../types/user';
 import {
   INVALID_PART_LIST,
-  MAX_OBJECT_SIZE,
+  MAX_BOOK_PARTS,
+  MAX_BOOK_SIZE,
   MAX_PART_SIZE,
   MAX_PART_URLS_PER_REQUEST,
   MAX_PARTS,
@@ -52,13 +53,7 @@ export class MultipartUploadService {
         `partSize must be between ${MIN_PART_SIZE} and ${MAX_PART_SIZE} bytes`,
       );
     }
-    if (fileSize > MAX_OBJECT_SIZE) {
-      throw new UploadError(
-        UploadErrorCode.INVALID_REQUEST,
-        422,
-        `fileSize exceeds the ${MAX_OBJECT_SIZE}-byte object limit`,
-      );
-    }
+    this.assertWithinBookLimit(fileSize);
     const partCount = Math.ceil(fileSize / partSize);
     if (partCount > MAX_PARTS) {
       throw new UploadError(
@@ -95,6 +90,13 @@ export class MultipartUploadService {
   ): Promise<PartUrl[]> {
     const { uuid, uploadId, partNumbers } = params;
     const unique = [...new Set(partNumbers)];
+    if (unique.some((n) => n > MAX_BOOK_PARTS)) {
+      throw new UploadError(
+        UploadErrorCode.INVALID_REQUEST,
+        422,
+        `No book within the ${MAX_BOOK_SIZE}-byte limit needs a part above ${MAX_BOOK_PARTS}`,
+      );
+    }
     if (unique.length > MAX_PART_URLS_PER_REQUEST) {
       throw new UploadError(
         UploadErrorCode.INVALID_REQUEST,
@@ -131,6 +133,15 @@ export class MultipartUploadService {
   ): Promise<void> {
     const { uuid, uploadId, partCount, fileSize } = params;
     const { item, key } = await this.resolveTarget(user, uuid);
+
+    // start's size check can't bind complete: the server keeps no state, and
+    // the parts must add up to exactly this fileSize, so capping it here means
+    // nothing over the ceiling ever becomes an object. Free the parts now
+    // rather than in 7 days.
+    if (fileSize > MAX_BOOK_SIZE) {
+      await this._storage.abortMultipartUpload(key, uploadId);
+      this.assertWithinBookLimit(fileSize);
+    }
 
     const listed = await this._storage.listParts(key, uploadId);
     if (listed === NO_SUCH_UPLOAD) {
@@ -176,6 +187,16 @@ export class MultipartUploadService {
     const aborted = await this._storage.abortMultipartUpload(key, params.uploadId);
     if (aborted === null) {
       throw new Error('Could not abort the multipart upload');
+    }
+  }
+
+  private assertWithinBookLimit(fileSize: number): void {
+    if (fileSize > MAX_BOOK_SIZE) {
+      throw new UploadError(
+        UploadErrorCode.INVALID_REQUEST,
+        422,
+        `fileSize exceeds the ${MAX_BOOK_SIZE}-byte limit for a book`,
+      );
     }
   }
 

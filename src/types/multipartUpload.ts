@@ -7,9 +7,15 @@
 export const MIN_PART_SIZE = 5 * 1024 * 1024;
 export const MAX_PART_SIZE = 5 * 1024 * 1024 * 1024;
 export const MAX_PARTS = 10000;
-// S3's largest object. Checked at start: S3 would only refuse it at complete,
-// after every part was already sent.
-export const MAX_OBJECT_SIZE = 5 * 1024 * 1024 * 1024 * 1024;
+// The largest book we store — a product ceiling, far below S3's 5 TiB object
+// limit. The longest audiobook known (Wind and Truth, 62 h 48 min) is ~1.7 GiB
+// at 64 kbps and ~6.7 GiB even at 256 kbps. Enforced at start (before an
+// upload exists), at complete (the server is stateless, so it can't trust
+// start's number), and on part numbers.
+export const MAX_BOOK_SIZE = 10 * 1024 * 1024 * 1024;
+// No book within the ceiling needs a part number above this: MAX_BOOK_SIZE
+// split into the smallest parts S3 allows.
+export const MAX_BOOK_PARTS = Math.ceil(MAX_BOOK_SIZE / MIN_PART_SIZE);
 // Bounds one presign request; the client asks per window top-up.
 export const MAX_PART_URLS_PER_REQUEST = 32;
 
