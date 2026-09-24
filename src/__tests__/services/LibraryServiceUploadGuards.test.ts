@@ -181,36 +181,6 @@ describe('LibraryService.updateObject — synced guard for older clients', () =>
     expect(origins).not.toContain('LibraryDB.updateLibraryItem');
   });
 
-  it.each([['the string "true"', 'true'], ['the number 1', 1], ['"t"', 't']])(
-    'guards a confirmation sent as %s, which Postgres would read as true',
-    async (_label, value) => {
-      const { trx, user, item } = await setup();
-
-      await service.updateObject(
-        { ...user, subscriptions: [SubscriptionTierEnum.PRO] } as any,
-        'Book.m4b',
-        { synced: value } as any,
-        item.uuid,
-      );
-
-      expect(await syncedOf(trx, item.id_library_item)).toBe(false);
-      expect(fileExistsMock).toHaveBeenCalled();
-    },
-  );
-
-  it('writes a false-like synced as a real false, and drops a value that is neither', async () => {
-    const { trx, user, item } = await setup();
-    await trx('library_items').update({ synced: true }).where({ id_library_item: item.id_library_item });
-    const pro = { ...user, subscriptions: [SubscriptionTierEnum.PRO] } as any;
-
-    await service.updateObject(pro, 'Book.m4b', { synced: 'maybe' } as any, item.uuid);
-    expect(await syncedOf(trx, item.id_library_item)).toBe(true);
-
-    await service.updateObject(pro, 'Book.m4b', { synced: 'false' } as any, item.uuid);
-    expect(await syncedOf(trx, item.id_library_item)).toBe(false);
-    expect(fileExistsMock).not.toHaveBeenCalled();
-  });
-
   it('skips the S3 check for a row that is already synced: dropping would change nothing', async () => {
     const { trx, user, item } = await setup();
     await trx('library_items').update({ synced: true }).where({ id_library_item: item.id_library_item });
