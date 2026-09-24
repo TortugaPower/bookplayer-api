@@ -61,9 +61,34 @@ describe('LibraryDB.markItemSynced', () => {
     expect(await status(removed.id)).toBe('pending');
   });
 
+  it('leaves a Hardcover link alone: it has no file, and its status is not ours to set', async () => {
+    // A book imported from Jellyfin and also tracked on Hardcover. Android keeps
+    // its Hardcover reading state in sync_status; iOS keeps a link marker there.
+    const { trx, item } = await setup();
+    const jellyfin = await createTestExternalResource(trx, {
+      library_item_id: item.id_library_item,
+      provider_name: 'jellyfin',
+    });
+    const hardcover = await createTestExternalResource(trx, {
+      library_item_id: item.id_library_item,
+      provider_name: 'hardcover',
+      sync_status: 'reading',
+    });
+
+    await db.markItemSynced(item.id_library_item, trx);
+
+    const status = async (id: number) =>
+      (await trx('external_resources').where({ id }).first()).sync_status;
+    expect(await status(jellyfin.id)).toBe('downloaded');
+    expect(await status(hardcover.id)).toBe('reading');
+  });
+
   it('reports false, and touches nothing, once the row is no longer active', async () => {
     const { trx, item } = await setup(false);
-    const resource = await createTestExternalResource(trx, { library_item_id: item.id_library_item });
+    const resource = await createTestExternalResource(trx, {
+      library_item_id: item.id_library_item,
+      provider_name: 'jellyfin',
+    });
 
     await expect(db.markItemSynced(item.id_library_item, trx)).resolves.toBe(false);
 

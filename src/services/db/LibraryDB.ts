@@ -8,6 +8,7 @@ import {
   ItemMatchPayload,
   LibraryItemDB,
   LibraryItemMovedDB,
+  MEDIA_SERVER_PROVIDERS,
 } from '../../types/user';
 import { isValidUUID } from '../../utils';
 
@@ -866,11 +867,13 @@ export class LibraryDB {
 
   /**
    * Confirms a finished multipart upload: the item is synced and, for a book
-   * streamed in from a media server, its external resources are 'downloaded'.
-   * A normal upload has no external rows, so the second update touches nothing.
-   * Every active resource on the item is marked: the schema allows several
-   * providers per item, and if that becomes real the upload must name its
-   * provider and this update must scope to it.
+   * streamed in from a media server, its media-server resources are
+   * 'downloaded'. A normal upload has none, so the second update touches
+   * nothing. Only media-server rows: a book can also be linked to Hardcover,
+   * which has no file and whose sync_status is its own marker — on Android,
+   * its reading state. If a book were ever linked to two media servers, the
+   * upload would have to name its provider and this update scope to it;
+   * importing from a second server creates a separate book today.
    *
    * Scoped by row id and `active`: the caller resolved the row by uuid and
    * derived the S3 key from it. `false` when the row is no longer active (or
@@ -887,7 +890,8 @@ export class LibraryDB {
       if (updated !== 1) return false;
       await tx('external_resources')
         .update({ sync_status: 'downloaded' })
-        .where({ library_item_id: libraryItemId, active: true });
+        .where({ library_item_id: libraryItemId, active: true })
+        .whereIn('provider_name', MEDIA_SERVER_PROVIDERS);
       return true;
     };
     try {

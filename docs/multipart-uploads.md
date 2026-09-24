@@ -17,8 +17,9 @@ when S3 rejected the PUT, leaving rows that claim to be backed up with nothing i
   objects and never sends a key.
 - **S3 is the source of truth.** Resuming and completing both read S3's part list. The client never sends ETags.
 - **The server confirms.** `complete` is the only thing that sets `synced=true` for a multipart upload. For a book
-  streamed in from a media server (Jellyfin, Audiobookshelf), it also marks the item's external resources
-  `downloaded`: these routes are the only way a media-server book's file reaches S3.
+  streamed in from a media server (Jellyfin, Audiobookshelf), it also marks the item's media-server resources
+  `downloaded`: these routes are the only way a media-server book's file reaches S3. A Hardcover link on the same
+  book is left alone — Hardcover has no file, and its `sync_status` is the client's own marker.
 - **`synced` means the file is in S3, on every tier.** `PUT /` creates rows unsynced, and `POST /` ignores
   `synced:true` for a book with no object. So `GET /keys`, which lists synced rows, is "books whose file is in S3":
   a LITE account's books are left out of it on purpose, because LITE never uploads a file. Clients use `/keys` only
