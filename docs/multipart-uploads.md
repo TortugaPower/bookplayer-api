@@ -24,6 +24,9 @@ when S3 rejected the PUT, leaving rows that claim to be backed up with nothing i
   a LITE account's books are left out of it on purpose, because LITE never uploads a file. Clients use `/keys` only
   for the one-off "upload what the server is missing" pass (iOS: an install's first sync; Android: a tier change),
   and should run that pass only on PRO.
+- **One open upload per book.** `start` aborts whatever is still open for the book before opening a new one. Uploading
+  the same book from two devices at once is unsupported: each device's `start` would cancel the other's upload. That
+  is deliberate — a book's file is uploaded by the device it was imported on, and every other device downloads it.
 - **A book deleted mid-upload leaves nothing behind.** If the row is gone by the time S3 finishes assembling the
   file, `complete` deletes the object and answers `item_not_found`; the lifecycle rule only reclaims *incomplete*
   uploads, so nothing else would.
