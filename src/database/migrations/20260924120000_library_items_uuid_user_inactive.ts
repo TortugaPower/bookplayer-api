@@ -21,7 +21,16 @@ export async function up(knex: Knex): Promise<void> {
 
   // The same question by key (requests without a uuid) uses the plain key
   // index. Production has it but no migration ever created it, so fresh
-  // databases went without; declare it here. A no-op where it exists.
+  // databases went without; declare it here. A no-op where it exists. Only an
+  // INVALID leftover is dropped first: production's valid copy predates this.
+  const { rows } = await knex.raw(`
+    SELECT i.indisvalid
+    FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+    WHERE c.relname = 'library_items_key_index'
+  `);
+  if (rows[0] && !rows[0].indisvalid) {
+    await knex.raw('DROP INDEX CONCURRENTLY library_items_key_index');
+  }
   await knex.raw(`
     CREATE INDEX CONCURRENTLY IF NOT EXISTS library_items_key_index
     ON library_items (key)
