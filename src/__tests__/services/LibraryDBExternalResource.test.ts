@@ -159,35 +159,6 @@ describe('LibraryDB — external_resources', () => {
     });
   });
 
-  describe('markExternalSourceUploaded', () => {
-    it('flips external_resources.sync_status and library_items.synced together', async () => {
-      const trx = getTestTransaction();
-      const user = await createTestUser(trx);
-      const item = await createTestLibraryItem(trx, {
-        user_id: user.id_user,
-        key: 'book.m4b',
-        synced: false,
-      });
-      await createTestExternalResource(trx, {
-        library_item_id: item.id_library_item,
-        sync_status: 'pending',
-      });
-
-      const ok = await db.markExternalSourceUploaded(item.id_library_item, trx);
-      expect(ok).toBe(true);
-
-      const resourceAfter = await trx('external_resources')
-        .where({ library_item_id: item.id_library_item })
-        .first();
-      const itemAfter = await trx('library_items')
-        .where({ id_library_item: item.id_library_item })
-        .first();
-
-      expect(resourceAfter.sync_status).toBe('downloaded');
-      expect(itemAfter.synced).toBe(true);
-    });
-  });
-
   describe('softDeleteExternalResource', () => {
     it('flips active to false and returns the row', async () => {
       const trx = getTestTransaction();

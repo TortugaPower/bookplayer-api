@@ -8,6 +8,12 @@ import { logger } from './LoggerService';
 import { S3Service } from './S3Service';
 import { Readable } from 'stream';
 import { stripStoragePrefix } from '../utils';
+import {
+  INVALID_PART_LIST,
+  MultipartPart,
+  MultipartUploadRef,
+  NO_SUCH_UPLOAD,
+} from '../types/multipartUpload';
 
 export class StorageService {
   private readonly _logger = logger;
@@ -229,5 +235,42 @@ export class StorageService {
       });
       return null;
     }
+  }
+
+  // Multipart uploads exist only on S3, so these delegate without an origin
+  // switch. S3Service logs and returns null on unexpected failures.
+  createMultipartUpload(key: string): Promise<string | null> {
+    return this._s3Service.createMultipartUpload(key);
+  }
+
+  getPresignedPartUrl(
+    key: string,
+    uploadId: string,
+    partNumber: number,
+  ): Promise<{ url: string; expires_in: number } | null> {
+    return this._s3Service.getPresignedPartUrl(key, uploadId, partNumber);
+  }
+
+  listParts(
+    key: string,
+    uploadId: string,
+  ): Promise<MultipartPart[] | typeof NO_SUCH_UPLOAD | null> {
+    return this._s3Service.listParts(key, uploadId);
+  }
+
+  completeMultipartUpload(
+    key: string,
+    uploadId: string,
+    parts: MultipartPart[],
+  ): Promise<true | typeof NO_SUCH_UPLOAD | typeof INVALID_PART_LIST | null> {
+    return this._s3Service.completeMultipartUpload(key, uploadId, parts);
+  }
+
+  abortMultipartUpload(key: string, uploadId: string): Promise<boolean | null> {
+    return this._s3Service.abortMultipartUpload(key, uploadId);
+  }
+
+  listMultipartUploads(prefix: string): Promise<MultipartUploadRef[] | null> {
+    return this._s3Service.listMultipartUploads(prefix);
   }
 }

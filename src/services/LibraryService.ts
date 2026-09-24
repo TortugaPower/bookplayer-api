@@ -418,10 +418,11 @@ export class LibraryService {
           
           return earlyApiResponse;
         }
-        // Override the source path with the stored path
-        if (itemDb.source_path) {
-          libObj.source_path = itemDb.source_path;
-        }
+        // Sign where the row says the bytes live. A legacy row (no source_path)
+        // is read at its key everywhere else — the synced guard, multipart's
+        // resolveTarget, downloads — and this path is never written back to it,
+        // so a fresh timestamped path would orphan the upload.
+        libObj.source_path = itemDb.source_path || itemDb.key;
       } else {
         itemDb = await this._libraryDB.insertLibraryItem(user.id_user, libObj);
         if (!itemDb) {
@@ -556,13 +557,21 @@ export class LibraryService {
       }
 
       const storagePrefix = await this._prefix.getPrefix(user);
-      for (let index = 0; index < deletedObjects.length; index++) {
-        const item = deletedObjects[index];
+      const sourceKeys = deletedObjects.map((item) => {
         const keyPath =
           parseInt(item.type) === parseInt(LibraryItemType.BOOK)
             ? `${item.key}`
             : `${item.key}/`;
-        const sourceKey = `${storagePrefix}/${item.source_path || keyPath}`;
+        return `${storagePrefix}/${item.source_path || keyPath}`;
+      });
+      await this.abortInFlightUploads(
+        storagePrefix,
+        sourceKeys.filter(
+          (_, index) =>
+            parseInt(deletedObjects[index].type) === parseInt(LibraryItemType.BOOK),
+        ),
+      );
+      for (const sourceKey of sourceKeys) {
         await this._storage.deleteFile({ sourceKey });
       }
       return deletedObjects.map((i) => i.key);
@@ -585,8 +594,27 @@ export class LibraryService {
     try {
       const cleanPath = (relativePath || '').replace(`${user.email}/`, '');
 
+      let updateParams = params;
+      if (params.synced === true && (await this.isUnbackedBook(user, cleanPath, uuid))) {
+        // `synced` means "the file is in S3", on every tier. Clients before
+        // multipart confirm even when S3 rejected the PUT, and LITE clients
+        // read `url: null` as "already stored". Keep the rest of the update,
+        // drop the confirmation, and answer success: an error would make those
+        // clients retry forever.
+        const { synced: _dropped, ...rest } = params;
+        updateParams = rest as LibraryItem;
+        this._logger.log(
+          {
+            origin: 'LibraryService.updateObject',
+            message: 'Ignored synced:true for a book with no object in storage',
+            data: { id_user: user.id_user, relativePath: cleanPath, uuid },
+          },
+          'warn',
+        );
+      }
+
       const libraryItem = (await this.parseLibraryItemDb(
-        { relativePath, ...params },
+        { relativePath, ...updateParams },
         LibraryItemOutput.DB,
       )) as LibraryItemDB;
       const result = await this._libraryDB.updateLibraryItem(
@@ -604,6 +632,52 @@ export class LibraryService {
         data: { user, relativePath, params },
       });
       throw Error(err);
+    }
+  }
+
+  /**
+   * True only when the item is a book and S3 definitely has no object for it,
+   * whatever the caller's tier: a LITE user who was once PRO keeps the files
+   * they uploaded then, and those still confirm. An unreachable S3 (null)
+   * leaves the old behavior in place rather than stalling uploads that landed.
+   */
+  private async isUnbackedBook(
+    user: User,
+    cleanPath: string,
+    uuid?: string,
+  ): Promise<boolean> {
+    const rows = isValidUUID(uuid)
+      ? await this._libraryDB.getLibraryByUuid(user.id_user, uuid)
+      : await this._libraryDB.getLibrary(user.id_user, cleanPath, { exactly: true });
+    const item = rows?.[0];
+    if (!item || parseInt(`${item.type}`) !== parseInt(LibraryItemType.BOOK)) {
+      return false;
+    }
+    // Already synced: dropping the confirmation would change nothing, so skip
+    // the HEAD older clients' repeat confirmations would otherwise cost.
+    if (item.synced) return false;
+    const storagePrefix = await this._prefix.getPrefix(user);
+    const exists = await this._storage.fileExists({
+      key: `${storagePrefix}/${item.source_path || item.key}`,
+    });
+    return exists === false;
+  }
+
+  /**
+   * Cancels multipart uploads still in progress for deleted books, so their
+   * parts stop billing now instead of when the 7-day lifecycle rule reclaims
+   * them. One listing of the user's prefix covers the whole delete, however
+   * many books a folder held. Best effort: a failure here must not fail the
+   * delete (S3Service logs it and returns null).
+   */
+  private async abortInFlightUploads(storagePrefix: string, bookKeys: string[]): Promise<void> {
+    if (!bookKeys.length) return;
+    const deleted = new Set(bookKeys);
+    const uploads = await this._storage.listMultipartUploads(`${storagePrefix}/`);
+    for (const upload of uploads ?? []) {
+      if (deleted.has(upload.key)) {
+        await this._storage.abortMultipartUpload(upload.key, upload.uploadId);
+      }
     }
   }
 
@@ -1053,43 +1127,6 @@ export class LibraryService {
         data: { user, params },
       });
       throw Error(err);
-    }
-  }
-
-  async sourcePutRequest(
-    user: User,
-    params: {
-      uuid: string;
-      uploaded?: boolean;
-    },
-  ): Promise<string | boolean> {
-    try {
-      const { uuid, uploaded } = params;
-      const objectDB = await this._libraryDB.getLibraryByUuid(user.id_user, uuid, {
-        exactly: true,
-      });
-      const itemDb = objectDB?.[0];
-      if (!itemDb) {
-        throw new Error('Item not exists');
-      }
-      if (uploaded) {
-        return this._libraryDB.markExternalSourceUploaded(itemDb.id_library_item);
-      }
-      const originalFile = itemDb.source_path || itemDb.key;
-      const storagePrefix = await this._prefix.getPrefix(user);
-
-      const { url } = await this._storage.getPresignedUrl({
-        key: `${storagePrefix}/${originalFile}`,
-        type: StorageAction.PUT,
-      });
-      return url;
-    } catch (err) {
-      this._logger.log({
-        origin: 'LibraryService.sourcePutRequest',
-        message: err.message,
-        data: { id_user: user.id_user, params },
-      });
-      throw err;
     }
   }
 

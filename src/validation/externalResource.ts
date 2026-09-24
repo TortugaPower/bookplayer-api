@@ -35,14 +35,6 @@ export const deleteExternalResourceSchema = z
   })
   .strip();
 
-// POST /external_set — request a presigned PUT URL, or confirm an upload.
-export const itemPutRequestSchema = z
-  .object({
-    uuid,
-    uploaded: z.boolean().optional(),
-  })
-  .strip();
-
 // Validated output shapes. Declared explicitly (not via z.infer) because this
 // project's tsconfig lacks strictNullChecks — see validate.ts. Controllers cast
 // the validated req.body to these.
@@ -62,7 +54,3 @@ export type DeleteExternalResourceBody = {
   providerId: string;
 };
 
-export type ItemPutRequestBody = {
-  uuid: string;
-  uploaded?: boolean;
-};

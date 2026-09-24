@@ -3,7 +3,6 @@ import { validateBody } from '../../validation/validate';
 import {
   putExternalResourceSchema,
   deleteExternalResourceSchema,
-  itemPutRequestSchema,
 } from '../../validation/externalResource';
 
 const VALID_UUID = '11111111-1111-1111-1111-111111111111';
@@ -54,7 +53,7 @@ describe('validateBody middleware', () => {
       validateBody(putExternalResourceSchema)(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(422);
-      expect(res.json).toHaveBeenCalledWith({ message: 'providerName is required' });
+      expect(res.json).toHaveBeenCalledWith({ message: 'providerName is required', error: 'invalid_request' });
       expect(next).not.toHaveBeenCalled();
     });
 
@@ -66,7 +65,7 @@ describe('validateBody middleware', () => {
       validateBody(putExternalResourceSchema)(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(422);
-      expect(res.json).toHaveBeenCalledWith({ message: 'providerName is required' });
+      expect(res.json).toHaveBeenCalledWith({ message: 'providerName is required', error: 'invalid_request' });
       expect(next).not.toHaveBeenCalled();
     });
 
@@ -78,7 +77,7 @@ describe('validateBody middleware', () => {
       validateBody(putExternalResourceSchema)(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(422);
-      expect(res.json).toHaveBeenCalledWith({ message: 'A valid item uuid is required' });
+      expect(res.json).toHaveBeenCalledWith({ message: 'A valid item uuid is required', error: 'invalid_request' });
       expect(next).not.toHaveBeenCalled();
     });
   });
@@ -96,30 +95,7 @@ describe('validateBody middleware', () => {
       const req: any = { body: { uuid: VALID_UUID, providerName: 'dropbox' } };
       validateBody(deleteExternalResourceSchema)(req, res, next);
       expect(res.status).toHaveBeenCalledWith(422);
-      expect(res.json).toHaveBeenCalledWith({ message: 'providerId is required' });
-      expect(next).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('itemPutRequestSchema', () => {
-    it('calls next() with only uuid (uploaded optional)', () => {
-      const req: any = { body: { uuid: VALID_UUID } };
-      validateBody(itemPutRequestSchema)(req, res, next);
-      expect(next).toHaveBeenCalledTimes(1);
-    });
-
-    it('422s on a missing uuid', () => {
-      const req: any = { body: { uploaded: true } };
-      validateBody(itemPutRequestSchema)(req, res, next);
-      expect(res.status).toHaveBeenCalledWith(422);
-      expect(res.json).toHaveBeenCalledWith({ message: 'A valid item uuid is required' });
-      expect(next).not.toHaveBeenCalled();
-    });
-
-    it('422s when uploaded is not a boolean', () => {
-      const req: any = { body: { uuid: VALID_UUID, uploaded: 'yes' } };
-      validateBody(itemPutRequestSchema)(req, res, next);
-      expect(res.status).toHaveBeenCalledWith(422);
+      expect(res.json).toHaveBeenCalledWith({ message: 'providerId is required', error: 'invalid_request' });
       expect(next).not.toHaveBeenCalled();
     });
   });

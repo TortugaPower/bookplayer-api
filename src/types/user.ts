@@ -176,6 +176,11 @@ export interface LibraryItem {
   externalResources?: ExternalResource[] | null | undefined;
 }
 
+// Providers that are servers a book's file comes from. The other kind — a
+// metadata service like Hardcover — links a book but never has a file, and its
+// sync_status is the client's own marker, never a file state for us to set.
+export const MEDIA_SERVER_PROVIDERS = ['jellyfin', 'audiobookshelf'];
+
 // Wire/API contract (camelCase) — what the iOS client sends and receives.
 export interface ExternalResource {
   providerName: string;
