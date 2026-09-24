@@ -19,15 +19,15 @@ import {
   listPartsQuerySchema,
 } from '../validation/multipartUpload';
 
+// Body keys POST / never writes: identifiers the handler passes separately,
+// and the storage path only the server assigns.
+const CLIENT_READONLY_FIELDS = new Set(['relativePath', 'originalFileName', 'uuid', 'source_path', 'sourcePath']);
+
 // Query-string flags arrive as strings; `?sign=false` must not read as true.
 // Strict on purpose. Every shipped client sends the literal `true`: iOS
 // interpolates a Swift Bool (unchanged since 2023-02), Android's Retrofit
 // encodes a Kotlin Boolean, and the web app URL-encodes a JS boolean and
 // hard-codes `sign=true` on /last_played. There is no other spelling to accept.
-// Body keys POST / never writes: identifiers the handler passes separately,
-// and the storage path only the server assigns.
-const CLIENT_READONLY_FIELDS = new Set(['relativePath', 'originalFileName', 'uuid', 'source_path', 'sourcePath']);
-
 const isTrue = (value: unknown): boolean =>
   value === true || value === 'true' || value === '1';
 
