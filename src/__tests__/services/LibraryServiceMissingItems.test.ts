@@ -173,6 +173,17 @@ describe('LibraryService — requests naming a missing item', () => {
       await expect(service.deleteExternalResource(user as any, NEVER, 'p1', 'jellyfin')).resolves.toBeNull();
       await expect(service.deleteExternalResource(user as any, ORIGIN, 'p1', 'jellyfin')).resolves.toBeNull();
     });
+
+    it('keeps a failed unlink write retryable instead of reporting it done', async () => {
+      const trx = getTestTransaction();
+      const user = await createTestUser(trx);
+      await createTestLibraryItem(trx, { user_id: user.id_user, key: 'Book.m4b', uuid: ORIGIN });
+      jest.spyOn((service as any)._libraryDB as LibraryDB, 'softDeleteExternalResource').mockResolvedValueOnce(null);
+
+      await expect(
+        service.deleteExternalResource(user as any, ORIGIN, 'p1', 'jellyfin'),
+      ).rejects.toBeInstanceOf(LibraryLookupError);
+    });
   });
 
   describe('thumbnails', () => {

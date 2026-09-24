@@ -1042,6 +1042,8 @@ export class LibraryService {
 
       const deletedRow = await this._libraryDB.softDeleteExternalResource(libraryItem.id_library_item, providerId, providerName, trx);
 
+      // A failed write must stay retryable, not read as "already unlinked".
+      if (deletedRow === null) throw new LibraryLookupError('External resource unlink failed');
       if (!deletedRow) {
         await trx.rollback();
         return null;

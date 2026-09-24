@@ -22,9 +22,13 @@ export const checkSubscription = async (
     const externalId = user.external_id || (await userDB.getExternalIdByUserId(user.id_user));
     const subState = await subscriptionService.isActive(externalId);
     if (!subState?.active) {
-      return res
-        .status(400)
-        .json({ message: 'You are not subscribed', error: ApiErrorCode.NOT_SUBSCRIBED });
+      // The code tells the apps to stop, so it goes only on a negative RC
+      // confirmed. When RC couldn't be reached the answer is the same 400
+      // without it, which the apps keep retrying.
+      return res.status(400).json({
+        message: 'You are not subscribed',
+        ...(subState?.verified === 'rc' ? { error: ApiErrorCode.NOT_SUBSCRIBED } : {}),
+      });
     }
     req.user.subscriptions = subState.subscriptions
     next();
@@ -60,9 +64,11 @@ export const requireSubscription = (allowedTypes: SubscriptionTier[]) => {
       return;
     }
 
+    // `live` is null when RC couldn't be reached: same 403, but without the
+    // code that tells the apps to stop.
     res.status(403).json({
       message: `Requires one of: ${allowedTypes.join(', ')}`,
-      error: ApiErrorCode.TIER_REQUIRED,
+      ...(live ? { error: ApiErrorCode.TIER_REQUIRED } : {}),
     });
   };
 };

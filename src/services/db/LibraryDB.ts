@@ -1036,12 +1036,13 @@ export class LibraryDB {
     }
   }
 
+  /** `undefined` when no active link matched; `null` means the query failed. */
   async softDeleteExternalResource(
     libraryItemId: number,
     providerId: string,
     providerName: string,
     trx?: Knex.Transaction,
-  ): Promise<ExternalResourceDb | null> {
+  ): Promise<ExternalResourceDb | undefined | null> {
     try {
       const db = trx || this.db;
       const [updatedRow] = await db('external_resources')
@@ -1053,7 +1054,7 @@ export class LibraryDB {
         })
         .update({ active: false, updated_at: new Date() })
         .returning('*');
-      return (updatedRow as ExternalResourceDb) || null;
+      return updatedRow as ExternalResourceDb | undefined;
     } catch (err) {
       this._logger.log({
         origin: 'LibraryDB.softDeleteExternalResource',

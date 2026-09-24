@@ -61,13 +61,20 @@ describe('checkSubscription middleware', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('returns 400 "not subscribed" when isActive returns false', async () => {
-    mockIsActive.mockResolvedValue({ active: false, verified: 'local', subscriptions: [] });
+  it('returns 400 "not subscribed" with the stop code when RC confirmed it', async () => {
+    mockIsActive.mockResolvedValue({ active: false, verified: 'rc', subscriptions: [] });
     await checkSubscription(req, res, next);
     expect(mockIsActive).toHaveBeenCalledWith('ext-1');
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({ message: 'You are not subscribed', error: 'not_subscribed' });
     expect(next).not.toHaveBeenCalled();
+  });
+
+  it('leaves out the stop code when RC could not be reached', async () => {
+    mockIsActive.mockResolvedValue({ active: false, verified: 'local', subscriptions: [] });
+    await checkSubscription(req, res, next);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ message: 'You are not subscribed' });
   });
 
   it('forwards thrown errors to next()', async () => {
@@ -165,6 +172,8 @@ describe('requireSubscription middleware', () => {
     await requireSubscription([SubscriptionTierEnum.PRO])(req, res, next);
 
     expect(res.status).toHaveBeenCalledWith(403);
+    // Not confirmed, so no code telling the apps to stop.
+    expect(res.json).toHaveBeenCalledWith({ message: 'Requires one of: pro' });
     expect(next).not.toHaveBeenCalled();
   });
 

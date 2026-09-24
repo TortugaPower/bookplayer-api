@@ -559,8 +559,8 @@ from services and let the controller's `sendLibraryError` answer it.
 
 | error | HTTP | Meaning |
 |---|---|---|
-| `not_subscribed` | 400 | `checkSubscription` failed |
-| `tier_required` | 403 | Subscribed, but not on a tier with this feature |
+| `not_subscribed` | 400 | `checkSubscription` failed, confirmed by RevenueCat. If RC couldn't be reached, the same 400 goes out without the code |
+| `tier_required` | 403 | Subscribed, but not on a tier with this feature, confirmed live by RevenueCat; same rule when RC is unreachable |
 | `item_not_found` | 404 | No row, active or deleted, has the uuid (or, without one, the key) the request names. An item the user **deleted** answers success with nothing changed (its intent no longer applies), checked through `LibraryService.confirmDeleted` |
 | `uuid_conflict` | 409 | `PUT /`: the uuid already belongs to an item of a different type |
 | `invalid_request` | 422 | Failed body validation (`validateBody`) |
