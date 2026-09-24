@@ -314,6 +314,45 @@ describe('LibraryService.deleteObject — in-flight multipart uploads', () => {
   });
 });
 
+describe('LibraryService.putObject — new rows start unsynced', () => {
+  it('ignores a client-sent synced:true: the row has no file yet', async () => {
+    const service = new LibraryService();
+    (service as any).db = getTestTransaction();
+    (service as any)._libraryDB.db = getTestTransaction();
+    (service as any)._libraryDB._logger = mockLoggerService;
+    (service as any)._logger = mockLoggerService;
+    (service as any)._storage = {
+      fileExists: jest.fn(async () => false),
+      getPresignedUrl: jest.fn(async () => ({ url: 'https://s3/put', expires_in: 1 })),
+    };
+    (service as any)._prefix = { getPrefix: jest.fn(async () => 'test-prefix') };
+    const trx = getTestTransaction();
+    const user = await createTestUser(trx);
+
+    await service.putObject(
+      { ...user, subscriptions: [SubscriptionTierEnum.PRO] } as any,
+      {
+        relativePath: 'New.m4b',
+        originalFileName: 'New.m4b',
+        title: 'New',
+        details: 'Test Author',
+        speed: 1,
+        currentTime: 0,
+        duration: 100,
+        percentCompleted: 0,
+        isFinished: false,
+        orderRank: 0,
+        type: '2',
+        uuid: '44444444-4444-4444-8444-444444444444',
+        synced: true,
+      } as any,
+    );
+
+    const row = await trx('library_items').where({ user_id: user.id_user, key: 'New.m4b' }).first();
+    expect(row.synced).toBe(false);
+  });
+});
+
 /**
  * A legacy row (no source_path) is read at its key everywhere: the synced
  * guard, multipart's resolveTarget, downloads. Its re-upload URL must point

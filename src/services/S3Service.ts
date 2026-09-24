@@ -248,8 +248,8 @@ export class S3Service {
       this._logger.log({
         origin: 'S3Service.createMultipartUpload',
         message: error.message,
-        data: { key },
-      });
+        data: { key: stripStoragePrefix(key) },
+      }, 'error');
       return null;
     }
   }
@@ -280,8 +280,8 @@ export class S3Service {
       this._logger.log({
         origin: 'S3Service.getPresignedPartUrl',
         message: error.message,
-        data: { key, partNumber },
-      });
+        data: { key: stripStoragePrefix(key), partNumber },
+      }, 'error');
       return null;
     }
   }
@@ -318,8 +318,8 @@ export class S3Service {
       this._logger.log({
         origin: 'S3Service.listParts',
         message: error.message,
-        data: { key },
-      });
+        data: { key: stripStoragePrefix(key) },
+      }, 'error');
       return null;
     }
   }
@@ -350,8 +350,8 @@ export class S3Service {
       this._logger.log({
         origin: 'S3Service.completeMultipartUpload',
         message: error.message,
-        data: { key, partCount: parts.length },
-      });
+        data: { key: stripStoragePrefix(key), partCount: parts.length },
+      }, 'error');
       return null;
     }
   }
@@ -372,8 +372,8 @@ export class S3Service {
       this._logger.log({
         origin: 'S3Service.abortMultipartUpload',
         message: error.message,
-        data: { key },
-      });
+        data: { key: stripStoragePrefix(key) },
+      }, 'error');
       return null;
     }
   }
@@ -409,9 +409,10 @@ export class S3Service {
     } catch (error) {
       this._logger.log({
         origin: 'S3Service.listMultipartUploads',
+        // `prefix` is the user's storage prefix (an email for legacy
+        // accounts), so it isn't logged; callers log whose delete this was.
         message: error.message,
-        data: { prefix },
-      });
+      }, 'error');
       return null;
     }
   }
@@ -492,8 +493,8 @@ export class S3Service {
         this._logger.log({
           origin: 'S3: deleteFile',
           message: 'Deleting without a support copy: object exceeds the 5 GiB copy limit',
-          data: { sourceKey },
-        });
+          data: { key: stripStoragePrefix(sourceKey) },
+        }, 'warn');
       }
       await this.clientObject.send(
         new DeleteObjectCommand({
@@ -506,8 +507,8 @@ export class S3Service {
       this._logger.log({
         origin: 'S3: deleteFile',
         message: error.message,
-        data: { sourceKey },
-      });
+        data: { key: stripStoragePrefix(sourceKey) },
+      }, 'error');
       return null;
     }
   }

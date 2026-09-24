@@ -400,6 +400,10 @@ export class LibraryService {
         params,
         LibraryItemOutput.DB,
       )) as LibraryItemDB;
+      // `synced` means "the file is in S3", and a new row has no file yet:
+      // it starts false (the column default) whatever the client sends, and
+      // only an upload's confirmation (or `complete`) can set it.
+      libObj.synced = undefined;
 
       const cleanPath = relativePath.replace(`${user.email}/`, '');
       const objectDB = await this._libraryDB.getLibrary(user.id_user, cleanPath, {

@@ -19,6 +19,11 @@ when S3 rejected the PUT, leaving rows that claim to be backed up with nothing i
 - **The server confirms.** `complete` is the only thing that sets `synced=true` for a multipart upload. For a book
   streamed in from a media server (Jellyfin, Audiobookshelf), it also marks the item's external resources
   `downloaded`: these routes are the only way a media-server book's file reaches S3.
+- **`synced` means the file is in S3, on every tier.** `PUT /` creates rows unsynced, and `POST /` ignores
+  `synced:true` for a book with no object. So `GET /keys`, which lists synced rows, is "books whose file is in S3":
+  a LITE account's books are left out of it on purpose, because LITE never uploads a file. Clients use `/keys` only
+  for the one-off "upload what the server is missing" pass (iOS: an install's first sync; Android: a tier change),
+  and should run that pass only on PRO.
 - **A book deleted mid-upload leaves nothing behind.** If the row is gone by the time S3 finishes assembling the
   file, `complete` deletes the object and answers `item_not_found`; the lifecycle rule only reclaims *incomplete*
   uploads, so nothing else would.
