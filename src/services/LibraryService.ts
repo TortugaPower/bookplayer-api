@@ -1313,11 +1313,7 @@ export class LibraryService {
             !fileMoved.source_path &&
             parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
           ) {
-            const suffix =
-              parseInt(fileMoved.type) === parseInt(LibraryItemType.BOOK)
-                ? ''
-                : '/';
-            const sourceKey = `${storagePrefix}/${fileMoved.old_key}${suffix}`;
+            const sourceKey = `${storagePrefix}/${fileMoved.old_key}`;
             const original_filename = `${
               process.env.ROOT_FOLDER
             }/${moment().format('YYYYMMDDHHmmss')}_${
@@ -1328,16 +1324,83 @@ export class LibraryService {
               sourceKey,
               targetKey,
             });
-            if (isMoved) {
-              await this._libraryDB.updateBySourcePath(
+            // Either way the row must end up naming the object that actually
+            // exists. A legacy item (source_path IS NULL) is read back at
+            // `${prefix}/${key}`, so once the key rewrite commits, an object
+            // still sitting at old_key is unreachable — the row would point at
+            // nothing while the bytes are orphaned under the pre-move path.
+            //
+            // Throwing to roll the rewrite back is not an option: the items
+            // relocated earlier in this batch are already at their new keys,
+            // and the rollback would strip the source_path that names them,
+            // orphaning those instead. So on failure we record where the file
+            // really is. The move itself still succeeds — it is a display-path
+            // change — and the item stays playable from its legacy key.
+            // Where the object is, as best we can establish it.
+            let pinnedSourcePath = original_filename;
+
+            if (!isMoved) {
+              // A failed move does not locate the bytes on its own. moveFile
+              // is copy-then-delete, so the failure may be a copy that never
+              // landed (bytes at old_key) or a delete that landed on S3 but
+              // lost its response (bytes at the target, source already gone).
+              // fileExists also reports 403 as false, so a false is "could not
+              // find it", not "it is not there". Probe before concluding.
+              const sourceStillThere = await this._storage.fileExists({
+                key: sourceKey,
+              });
+              const targetLanded =
+                sourceStillThere === false
+                  ? await this._storage.fileExists({ key: targetKey })
+                  : null;
+
+              // Anything short of a definitive "source is gone" means the
+              // object is, or is presumed, still at the old key — the common
+              // case, and the safe default when the probe itself failed
+              // (fileExists returns null then).
+              if (sourceStillThere !== false) {
+                pinnedSourcePath = fileMoved.old_key;
+              }
+
+              // Nothing found at either key. Pinning would record a path that
+              // holds nothing and freeze the row: the guard above skips items
+              // that already have a source_path, so no later move would retry
+              // the relocation. Leave it null instead — still broken, but
+              // still detectable and still retryable.
+              const foundNothing =
+                sourceStillThere === false && targetLanded !== true;
+
+              this._logger.log(
                 {
-                  user_id: user.id_user,
-                  key: fileMoved.key,
-                  source_path: original_filename,
+                  origin: 'LibraryService.processMovedFiles',
+                  message: 'Storage relocation failed',
+                  data: {
+                    id_user: user.id_user,
+                    oldKey: fileMoved.old_key,
+                    newKey: fileMoved.key,
+                    sourceStillThere,
+                    targetLanded,
+                    // The decision itself, not just its inputs. A remediation
+                    // sweep can then separate a confirmed phantom (both
+                    // probes 404) from one where the target probe only came
+                    // back indeterminate.
+                    foundNothing,
+                    targetIndeterminate: targetLanded === null,
+                    pinnedSourcePath: foundNothing ? null : pinnedSourcePath,
+                  },
                 },
-                trx,
+                'error',
               );
+              if (foundNothing) continue;
             }
+            await this._libraryDB.updateBySourcePath(
+              {
+                user_id: user.id_user,
+                key: fileMoved.key,
+                source_path: pinnedSourcePath,
+              },
+              trx,
+            );
           }
         }
       }),

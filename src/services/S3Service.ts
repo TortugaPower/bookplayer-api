@@ -18,6 +18,7 @@ import { S3ClientHeaders, StorageAction, StorageItem } from '../types/user';
 import moment from 'moment';
 import { logger } from './LoggerService';
 import { Readable } from 'stream';
+import { stripStoragePrefix } from '../utils';
 
 /**
  * Objects are written straight into Intelligent-Tiering instead of landing in
@@ -41,7 +42,16 @@ export class S3Service {
   private client = new S3({ region: process.env.S3_REGION });
   private clientObject = new S3Client({ region: process.env.S3_REGION });
 
-  async fileExists(key: string): Promise<boolean> {
+  /**
+   * Tri-state on purpose: true/false are definitive, null means the probe
+   * could not determine it and the caller must not read that as "absent".
+   *
+   * A 403 is indeterminate, not absent. S3 masks a missing key as 403 only
+   * when the caller lacks s3:ListBucket, and this role holds it (see
+   * getDirectoryContent / calculateFolderSize, which call ListObjectsV2), so
+   * a 403 here means a permission or KMS problem rather than a missing key.
+   */
+  async fileExists(key: string): Promise<boolean | null> {
     try {
       const data = await this.client.headObject({
         Bucket: process.env.S3_BUCKET,
@@ -53,13 +63,31 @@ export class S3Service {
       if (error.$metadata?.httpStatusCode === 404) {
         return false;
       } else if (error.$metadata?.httpStatusCode === 403) {
-        return false;
+        // Indeterminate, not absent — see the tri-state note above. Returning
+        // false here would let a permission failure read as "the object is
+        // nowhere", which is how a caller ends up recording that nothing
+        // exists when in fact it could not look.
+        this._logger.log(
+          {
+            origin: 'S3Service.fileExists',
+            message: 'Existence probe denied (403); treating as indeterminate',
+            data: { key: stripStoragePrefix(key) },
+          },
+          'warn',
+        );
+        return null;
       } else {
-        this._logger.log({
-          origin: 'S3: fileExists',
-          message: error.message,
-          data: { key },
-        });
+        // Same level as the 403 branch: this is the wider indeterminate class
+        // (5xx, timeouts, SDK failures) and it drives the same caller
+        // decision, so it has to clear the production LOG_LEVEL of 'warn' too.
+        this._logger.log(
+          {
+            origin: 'S3Service.fileExists',
+            message: error.message,
+            data: { key: stripStoragePrefix(key), errorName: error.name },
+          },
+          'warn',
+        );
         return null;
       }
     }
@@ -146,6 +174,11 @@ export class S3Service {
   }
 
   async moveFile(sourceKey: string, targetKey: string): Promise<boolean> {
+    // Copy-then-delete, so a failure has two very different shapes: the copy
+    // never landed (bytes only at sourceKey) or the copy landed and the delete
+    // did not (bytes at both). `copied` tells them apart in the log — the
+    // caller only sees false either way.
+    let copied = false;
     try {
       await this.clientObject.send(
         new CopyObjectCommand({
@@ -162,6 +195,7 @@ export class S3Service {
           StorageClass: WRITE_STORAGE_CLASS,
         }),
       );
+      copied = true;
       await this.clientObject.send(
         new DeleteObjectCommand({
           Bucket: process.env.S3_BUCKET,
@@ -170,12 +204,24 @@ export class S3Service {
       );
       return true;
     } catch (error) {
-      this._logger.log({
-        origin: 'S3: moveFile',
-        message: error.message,
-        data: { sourceKey, targetKey },
-      });
-      return null;
+      // 'error': a failed relocation desynchronizes the DB key from the object
+      // it names, so it has to survive the production LOG_LEVEL of 'warn'.
+      // Keys are prefix-stripped: for legacy accounts that prefix is the user's
+      // email, and this path serves exactly those accounts.
+      this._logger.log(
+        {
+          origin: 'S3Service.moveFile',
+          message: error.message,
+          data: {
+            sourceKey: stripStoragePrefix(sourceKey),
+            targetKey: stripStoragePrefix(targetKey),
+            copied,
+            errorName: error.name,
+          },
+        },
+        'error',
+      );
+      return false;
     }
   }
 
