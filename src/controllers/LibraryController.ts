@@ -24,6 +24,10 @@ import {
 // interpolates a Swift Bool (unchanged since 2023-02), Android's Retrofit
 // encodes a Kotlin Boolean, and the web app URL-encodes a JS boolean and
 // hard-codes `sign=true` on /last_played. There is no other spelling to accept.
+// Body keys POST / never writes: identifiers the handler passes separately,
+// and the storage path only the server assigns.
+const CLIENT_READONLY_FIELDS = new Set(['relativePath', 'originalFileName', 'uuid', 'source_path', 'sourcePath']);
+
 const isTrue = (value: unknown): boolean =>
   value === true || value === 'true' || value === '1';
 
@@ -142,8 +146,11 @@ export class LibraryController {
       const { relativePath, uuid } = req.body;
       const user = req.user;
 
+      // `source_path` is server-owned: putObject assigns it, and it decides
+      // which S3 object complete, delete and downloads touch. No client sends
+      // it, and accepting it would let a row point at another book's bytes.
       const updateFields = Object.keys(req.body).filter(
-        (key) => key !== 'relativePath' && key !== 'originalFileName' && key !== 'uuid',
+        (key) => !CLIENT_READONLY_FIELDS.has(key),
       );
 
       if (updateFields.length) {
