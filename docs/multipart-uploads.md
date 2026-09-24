@@ -37,7 +37,7 @@ All routes are under `/v1/library/upload`, require an active subscription and th
 
 | Route | Body / query | Success |
 |---|---|---|
-| `POST /start` | `{ uuid, fileSize, partSize }` | `{ status: "started", uploadId, partSize, partCount }`, or `{ status: "exists" }` when the object is already in S3 (the row is marked synced) |
+| `POST /start` | `{ uuid, fileSize, partSize }` | `{ status: "started", uploadId, partSize, partCount }`, or `{ status: "exists" }` when the object is already in S3 (the row is marked synced). Aborts any upload still open for the book first — one open upload per book — so call it only when you hold no `uploadId`; with one, resume through `GET /parts`. |
 | `POST /parts` | `{ uuid, uploadId, partNumbers }` (1–32 distinct part numbers; duplicates are ignored) | `{ parts: [{ partNumber, url, expiresAt }] }` |
 | `GET /parts` | `?uuid=&uploadId=` | `{ parts: [{ partNumber, size }] }` |
 | `POST /complete` | `{ uuid, uploadId, partCount, fileSize }` (`fileSize` read from the file on disk) | `{ synced: true }` |

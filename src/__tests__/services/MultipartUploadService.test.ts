@@ -52,6 +52,7 @@ describe('MultipartUploadService', () => {
       listParts: jest.fn(),
       completeMultipartUpload: jest.fn(async () => true),
       abortMultipartUpload: jest.fn(async () => true),
+      listMultipartUploads: jest.fn(async () => []),
       deleteFile: jest.fn(async () => true),
     };
     libraryDB = {
@@ -69,6 +70,47 @@ describe('MultipartUploadService', () => {
 
       expect(result).toEqual({ status: 'started', uploadId: 'up-1', partSize: 64 * MiB, partCount: 3 });
       expect(storage.createMultipartUpload).toHaveBeenCalledWith('prefix/root/20260101000000_Book.m4b');
+    });
+
+    it('keeps a book to one open upload: aborts what is left for exactly its key first', async () => {
+      const key = 'prefix/root/20260101000000_Book.m4b';
+      storage.listMultipartUploads.mockResolvedValueOnce([
+        { key, uploadId: 'stale-1' },
+        { key, uploadId: 'stale-2' },
+        // Same prefix, different key: not this book's.
+        { key: `${key}.bak`, uploadId: 'other' },
+      ]);
+
+      await service.startUpload(user, { uuid, fileSize: MiB, partSize: 64 * MiB });
+
+      expect(storage.listMultipartUploads).toHaveBeenCalledWith(key);
+      expect(storage.abortMultipartUpload.mock.calls).toEqual([
+        [key, 'stale-1'],
+        [key, 'stale-2'],
+      ]);
+      // Cleared before the new one opens, never after.
+      expect(storage.abortMultipartUpload.mock.invocationCallOrder[1]).toBeLessThan(
+        storage.createMultipartUpload.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('also clears leftovers when the file is already in S3', async () => {
+      storage.listMultipartUploads.mockResolvedValueOnce([{ key: 'prefix/root/20260101000000_Book.m4b', uploadId: 'stale' }]);
+      storage.fileExists.mockResolvedValueOnce(true);
+
+      await expect(service.startUpload(user, { uuid, fileSize: MiB, partSize: 64 * MiB })).resolves.toEqual({
+        status: 'exists',
+      });
+      expect(storage.abortMultipartUpload).toHaveBeenCalledWith('prefix/root/20260101000000_Book.m4b', 'stale');
+    });
+
+    it('still starts when listing open uploads fails', async () => {
+      storage.listMultipartUploads.mockResolvedValueOnce(null);
+
+      await expect(service.startUpload(user, { uuid, fileSize: MiB, partSize: 64 * MiB })).resolves.toMatchObject({
+        status: 'started',
+      });
+      expect(storage.abortMultipartUpload).not.toHaveBeenCalled();
     });
 
     it('falls back to the key for legacy rows without a source path', async () => {

@@ -681,6 +681,9 @@ export class LibraryService {
     if (!item || parseInt(`${item.type}`) !== parseInt(LibraryItemType.BOOK)) {
       return false;
     }
+    // Already synced: dropping the confirmation would change nothing, so skip
+    // the HEAD older clients' repeat confirmations would otherwise cost.
+    if (item.synced) return false;
     const storagePrefix = await this._prefix.getPrefix(user);
     const exists = await this._storage.fileExists({
       key: `${storagePrefix}/${item.source_path || item.key}`,

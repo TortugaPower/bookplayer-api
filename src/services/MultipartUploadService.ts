@@ -65,6 +65,12 @@ export class MultipartUploadService {
 
     const { item, key } = await this.resolveTarget(user, uuid);
 
+    // One open upload per book. A client only calls start without an uploadId
+    // (a fresh upload, a lost start response, a restart), so anything still
+    // open for this key is unreachable: left alone it would bill its parts for
+    // 7 days, and a client retrying start would pile them up.
+    await this.abortOpenUploads(key);
+
     // The bytes may already be there — a retry after a lost `complete`
     // response, or a book another device finished uploading. Heal the row
     // instead of uploading it twice.
@@ -187,6 +193,21 @@ export class MultipartUploadService {
     const aborted = await this._storage.abortMultipartUpload(key, params.uploadId);
     if (aborted === null) {
       throw new Error('Could not abort the multipart upload');
+    }
+  }
+
+  /**
+   * S3 is the state: it lists the uploads open for a key, so the server needs
+   * no table to keep a book to one. Best effort — a failed listing (logged by
+   * S3Service) must not block the upload; the lifecycle rule still reclaims.
+   */
+  private async abortOpenUploads(key: string): Promise<void> {
+    const open = await this._storage.listMultipartUploads(key);
+    for (const upload of open ?? []) {
+      // Listed by prefix: `a.m4b` also matches `a.m4b.bak`.
+      if (upload.key === key) {
+        await this._storage.abortMultipartUpload(key, upload.uploadId);
+      }
     }
   }
 

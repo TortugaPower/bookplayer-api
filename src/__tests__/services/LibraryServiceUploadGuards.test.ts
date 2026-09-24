@@ -211,6 +211,21 @@ describe('LibraryService.updateObject — synced guard for older clients', () =>
     expect(fileExistsMock).not.toHaveBeenCalled();
   });
 
+  it('skips the S3 check for a row that is already synced: dropping would change nothing', async () => {
+    const { trx, user, item } = await setup();
+    await trx('library_items').update({ synced: true }).where({ id_library_item: item.id_library_item });
+
+    await service.updateObject(
+      { ...user, subscriptions: [SubscriptionTierEnum.PRO] } as any,
+      'Book.m4b',
+      { synced: true } as any,
+      item.uuid,
+    );
+
+    expect(fileExistsMock).not.toHaveBeenCalled();
+    expect(await syncedOf(trx, item.id_library_item)).toBe(true);
+  });
+
   it('never checks S3 for updates that do not confirm an upload', async () => {
     const { user, item } = await setup();
 
