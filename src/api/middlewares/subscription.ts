@@ -2,6 +2,7 @@ import { IRequest, IResponse, INext } from '../../types/http';
 import { SubscriptionService } from '../../services/SubscriptionService';
 import { UserDB } from '../../services/db/UserDB';
 import { SubscriptionTier } from '../../types/user';
+import { ApiErrorCode } from '../../types/apiError';
 
 const subscriptionService = new SubscriptionService();
 const userDB = new UserDB();
@@ -21,7 +22,9 @@ export const checkSubscription = async (
     const externalId = user.external_id || (await userDB.getExternalIdByUserId(user.id_user));
     const subState = await subscriptionService.isActive(externalId);
     if (!subState?.active) {
-      return res.status(400).json({ message: 'You are not subscribed' });
+      return res
+        .status(400)
+        .json({ message: 'You are not subscribed', error: ApiErrorCode.NOT_SUBSCRIBED });
     }
     req.user.subscriptions = subState.subscriptions
     next();
@@ -59,6 +62,7 @@ export const requireSubscription = (allowedTypes: SubscriptionTier[]) => {
 
     res.status(403).json({
       message: `Requires one of: ${allowedTypes.join(', ')}`,
+      error: ApiErrorCode.TIER_REQUIRED,
     });
   };
 };

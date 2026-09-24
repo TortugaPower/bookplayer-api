@@ -26,6 +26,7 @@ import {
 } from '../utils';
 import { LibraryDB, externalResourceRowToApi } from './db/LibraryDB';
 import { StoragePrefixService } from './StoragePrefixService';
+import { ApiError, ApiErrorCode } from '../types/apiError';
 
 /**
  * A library read that could not be answered because the DB layer failed (it
@@ -38,6 +39,9 @@ export class LibraryLookupError extends Error {
     this.name = 'LibraryLookupError';
   }
 }
+
+/** `thumbnailPutRequest`'s answer for an item the user deleted: nothing to set. */
+export const ITEM_DELETED = Symbol('ITEM_DELETED');
 
 export class LibraryService {
   private readonly _logger = logger;
@@ -306,6 +310,31 @@ export class LibraryService {
     return rows;
   }
 
+  /**
+   * A request named an item that has no active row. If the user deleted it
+   * (on another device, say), returns true: the request's intent no longer
+   * applies, so the caller answers success without changing anything, and the
+   * client's next sync removes the item locally. Otherwise no row, active or
+   * deleted, has that uuid (or, without a valid uuid, that key): throws
+   * `item_not_found`, which the apps stop on and report, instead of retrying
+   * something that can never succeed as sent. The key is deliberately not a
+   * fallback for a uuid: an old deleted row at the same path can be a
+   * different item.
+   */
+  async confirmDeleted(
+    user: User,
+    ref: { uuid?: string; key?: string },
+    trx?: Knex.Transaction,
+  ): Promise<true> {
+    const name = isValidUUID(ref.uuid) ? ref.uuid : ref.key;
+    if (name) {
+      const deleted = await this._libraryDB.hasDeletedItem(user.id_user, ref, trx);
+      if (deleted === null) throw new LibraryLookupError();
+      if (deleted) return true;
+    }
+    throw new ApiError(ApiErrorCode.ITEM_NOT_FOUND, 404, `Item not found: "${name}"`);
+  }
+
   async getObject(
     user: User,
     path: string,
@@ -486,11 +515,10 @@ export class LibraryService {
     if (parseInt(`${existing.type}`) !== parseInt(`${incoming.type}`)) {
       // Same uuid on a different item type is corrupted client state — don't
       // guess at a move; surface it instead of the opaque insert failure.
-      throw Object.assign(
-        new Error(
-          `Upload uuid ${incoming.uuid} belongs to an existing item of a different type at key=${existing.key}`,
-        ),
-        { statusCode: 409 },
+      throw new ApiError(
+        ApiErrorCode.UUID_CONFLICT,
+        409,
+        `Upload uuid ${incoming.uuid} belongs to an existing item of a different type at key=${existing.key}`,
       );
     }
 
@@ -699,11 +727,13 @@ export class LibraryService {
 
       /// Verify destination folder if not moving to the library
       if (destinationPathFolder !== '') {
-        let destinationDB = await this._libraryDB.getLibrary(
-          user.id_user,
-          destinationPathFolder,
-          { exactly: true },
-          trx,
+        let destinationDB = this.requireLookup(
+          await this._libraryDB.getLibrary(
+            user.id_user,
+            destinationPathFolder,
+            { exactly: true },
+            trx,
+          ),
         );
 
         if (destinationDB.length === 0) {
@@ -743,11 +773,13 @@ export class LibraryService {
           throw Error('The destination is invalid');
         }
       }
-      const originObj = await this._libraryDB.getLibrary(
-        user.id_user,
-        origin,
-        { exactly: true },
-        trx,
+      const originObj = this.requireLookup(
+        await this._libraryDB.getLibrary(
+          user.id_user,
+          origin,
+          { exactly: true },
+          trx,
+        ),
       );
       if (originObj.length !== 1) {
         // Check if item already exists at destination (already moved)
@@ -757,11 +789,13 @@ export class LibraryService {
             ? originFilename
             : `${destinationPathFolder}/${originFilename}`;
 
-        const destinationObj = await this._libraryDB.getLibrary(
-          user.id_user,
-          expectedDestinationPath,
-          { exactly: true },
-          trx,
+        const destinationObj = this.requireLookup(
+          await this._libraryDB.getLibrary(
+            user.id_user,
+            expectedDestinationPath,
+            { exactly: true },
+            trx,
+          ),
         );
 
         if (destinationObj.length === 1) {
@@ -770,10 +804,12 @@ export class LibraryService {
           return [];
         }
 
-        // Item doesn't exist at origin or destination
-        throw Error(
-          `Item not found at origin "${origin}" or destination "${expectedDestinationPath}"`,
-        );
+        // Neither at the origin nor at the destination: deleted (nothing to
+        // move), or it never existed here (throws item_not_found). Roll back:
+        // the destination folder created above was only for this move.
+        await this.confirmDeleted(user, { key: origin }, trx);
+        await trx.rollback();
+        return [];
       }
       const dbMoved = await this._libraryDB.moveFiles(
         user.id_user,
@@ -793,6 +829,7 @@ export class LibraryService {
         message: err.message,
         data: { user, params },
       });
+      if (err instanceof ApiError || err instanceof LibraryLookupError) throw err;
       throw Error(err);
     }
   }
@@ -803,23 +840,36 @@ export class LibraryService {
   ): Promise<LibraryItemMovedDB[]> {
     const trx = await this.db.transaction();
     try {
-      const [originDB] = await this._libraryDB.getLibraryByUuid(
-        user.id_user,
-        params.origin,
-        null,
-        trx,
+      const [originDB] = this.requireLookup(
+        await this._libraryDB.getLibraryByUuid(
+          user.id_user,
+          params.origin,
+          null,
+          trx,
+        ),
       );
       const [destinationDB] = params.destination
-        ? await this._libraryDB.getLibraryByUuid(
-            user.id_user,
-            params.destination,
-            null,
-            trx,
+        ? this.requireLookup(
+            await this._libraryDB.getLibraryByUuid(
+              user.id_user,
+              params.destination,
+              null,
+              trx,
+            ),
           )
         : [null];
 
-      if (!originDB) {
-        throw Error(`Item not found: "${params.origin}"`);
+      // A missing origin or destination folder: deleted, so there is nothing
+      // to move or nowhere to move it; or never here (throws item_not_found).
+      // A named destination that is missing must not fall back to the root.
+      if (!originDB || (params.destination && !destinationDB)) {
+        await this.confirmDeleted(
+          user,
+          { uuid: !originDB ? params.origin : params.destination },
+          trx,
+        );
+        await trx.commit();
+        return [];
       }
 
       if (destinationDB) {
@@ -861,6 +911,7 @@ export class LibraryService {
         message: err.message,
         data: { user, params },
       });
+      if (err instanceof ApiError || err instanceof LibraryLookupError) throw err;
       throw Error(err);
     }
   }
@@ -871,14 +922,16 @@ export class LibraryService {
     const sanitizedFolderPath = sanitizeLibraryPath(folderPath);
     try {
       const storagePrefix = await this._prefix.getPrefix(user);
-      const folderDB = await this._libraryDB.getLibrary(
-        user.id_user,
-        sanitizedFolderPath,
-        { exactly: true },
-        trx,
+      const folderDB = this.requireLookup(
+        await this._libraryDB.getLibrary(
+          user.id_user,
+          sanitizedFolderPath,
+          { exactly: true },
+          trx,
+        ),
       );
       if (!folderDB[0]) {
-        // Folder no longer exists
+        // Folder no longer exists: removing it again is already done
         await trx.commit();
         return true;
       }
@@ -919,19 +972,23 @@ export class LibraryService {
         message: err.message,
         data: { user, folderPath },
       });
+      if (err instanceof LibraryLookupError) throw err;
       throw Error(err.message);
     }
   }
 
-  async putExternalResource(user: User, libraryItemUuid: string, externalResource: ExternalResource): Promise<ExternalResource> {
+  /** `null` when the item was deleted: there is nothing left to link. */
+  async putExternalResource(user: User, libraryItemUuid: string, externalResource: ExternalResource): Promise<ExternalResource | null> {
     const trx = await this.db.transaction();
     try {
-      const [libraryItem] = await this._libraryDB.getLibraryByUuid(user.id_user, libraryItemUuid, null, trx);
+      const [libraryItem] = this.requireLookup(
+        await this._libraryDB.getLibraryByUuid(user.id_user, libraryItemUuid, null, trx),
+      );
 
       if (!libraryItem) {
-        throw Error(
-          `Item not found: "${libraryItemUuid}"`,
-        );
+        await this.confirmDeleted(user, { uuid: libraryItemUuid }, trx);
+        await trx.rollback();
+        return null;
       }
 
       const existingExternalResource = await this._libraryDB.getExternalResource(libraryItem.id_library_item, externalResource.providerId, externalResource.providerName, trx)
@@ -968,23 +1025,26 @@ export class LibraryService {
     libraryItemUuid: string,
     providerId: string,
     providerName: string,
-  ): Promise<ExternalResource> {
+  ): Promise<ExternalResource | null> {
     const trx = await this.db.transaction();
     try {
-      const [libraryItem] = await this._libraryDB.getLibraryByUuid(user.id_user, libraryItemUuid, null, trx);
+      const [libraryItem] = this.requireLookup(
+        await this._libraryDB.getLibraryByUuid(user.id_user, libraryItemUuid, null, trx),
+      );
 
+      // Unlinking asks for "no link": with no item, or no such link, that
+      // already holds. Answer success (`null`) instead of an error the apps
+      // would retry forever.
       if (!libraryItem) {
-        throw Error(
-          `Item not found: "${libraryItemUuid}"`,
-        );
+        await trx.rollback();
+        return null;
       }
 
       const deletedRow = await this._libraryDB.softDeleteExternalResource(libraryItem.id_library_item, providerId, providerName, trx);
 
       if (!deletedRow) {
-        throw Error(
-          `ExternalResource not found: "${providerName}/${providerId}"`,
-        );
+        await trx.rollback();
+        return null;
       }
 
       await trx.commit();
@@ -1092,20 +1152,23 @@ export class LibraryService {
       thumbnail_name: string;
       uploaded?: boolean;
     },
-  ): Promise<string | boolean> {
+  ): Promise<string | boolean | typeof ITEM_DELETED> {
     try {
       const { relativePath, uuid, thumbnail_name, uploaded } = params;
       const cleanPath = relativePath.replace(`${user.email}/`, '');
-      const objectDB = isValidUUID(uuid)
-        ? await this._libraryDB.getLibraryByUuid(user.id_user, uuid, {
-          exactly: true,
-        })
-        : await this._libraryDB.getLibrary(user.id_user, cleanPath, {
-          exactly: true,
-        });
-      const itemDb = objectDB?.[0];
+      const objectDB = this.requireLookup(
+        isValidUUID(uuid)
+          ? await this._libraryDB.getLibraryByUuid(user.id_user, uuid, {
+            exactly: true,
+          })
+          : await this._libraryDB.getLibrary(user.id_user, cleanPath, {
+            exactly: true,
+          }),
+      );
+      const itemDb = objectDB[0];
       if (!itemDb) {
-        throw new Error('Item not exists');
+        await this.confirmDeleted(user, { uuid, key: cleanPath });
+        return ITEM_DELETED;
       }
       if (uploaded) {
         const idUpdated = await this._libraryDB.updateThumbnail({
@@ -1126,6 +1189,7 @@ export class LibraryService {
         message: err.message,
         data: { user, params },
       });
+      if (err instanceof ApiError || err instanceof LibraryLookupError) throw err;
       throw Error(err);
     }
   }

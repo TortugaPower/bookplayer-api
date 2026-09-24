@@ -3,6 +3,7 @@ import { logger } from '../../services/LoggerService';
 import { isValidUUID } from '../../utils';
 import { SyncAuditDB } from '../../services/db/SyncAuditDB';
 import { SyncOperationJobType } from '../../types/syncOperation';
+import { ApiErrorCode } from '../../types/apiError';
 
 const syncAuditDB = new SyncAuditDB();
 
@@ -87,6 +88,50 @@ export function extractMessage(payload: unknown): string | null {
   return typeof message === 'string' ? message.slice(0, 512) : null;
 }
 
+// The `error` code next to the message, when the response carries one.
+export function extractErrorCode(payload: unknown): string | null {
+  let body: unknown = payload;
+  if (typeof payload === 'string') {
+    try {
+      body = JSON.parse(payload);
+    } catch {
+      return null;
+    }
+  }
+  const code = body && typeof body === 'object' ? (body as Record<string, unknown>).error : null;
+  return typeof code === 'string' ? code : null;
+}
+
+// Account-level rejections come from apps that retry the same task every 5
+// seconds forever (a lapsed subscription whose queue never cleared). The first
+// one per window is worth a row; the rest would only bump that row's counter,
+// one DB write each. Kept per API process: with a few ECS tasks that is still
+// a handful of writes per user per window.
+const ACCOUNT_LEVEL_CODES = new Set<string>([
+  ApiErrorCode.NOT_SUBSCRIBED,
+  ApiErrorCode.TIER_REQUIRED,
+]);
+const ACCOUNT_REJECTION_WINDOW_MS = 10 * 60 * 1000;
+const MAX_THROTTLE_ENTRIES = 10_000;
+const lastAccountRejection = new Map<string, number>();
+
+export function shouldRecordAccountRejection(key: string, now = Date.now()): boolean {
+  const last = lastAccountRejection.get(key);
+  if (last !== undefined && now - last < ACCOUNT_REJECTION_WINDOW_MS) return false;
+  if (lastAccountRejection.size >= MAX_THROTTLE_ENTRIES) {
+    for (const [entry, at] of lastAccountRejection) {
+      if (now - at >= ACCOUNT_REJECTION_WINDOW_MS) lastAccountRejection.delete(entry);
+    }
+    if (lastAccountRejection.size >= MAX_THROTTLE_ENTRIES) lastAccountRejection.clear();
+  }
+  lastAccountRejection.set(key, now);
+  return true;
+}
+
+export function resetAccountRejectionThrottle(): void {
+  lastAccountRejection.clear();
+}
+
 // Store the request body for forensics, minus content with no forensic value:
 // bookmark note/title are user free-text (already persisted in the bookmarks
 // table), and an oversized body is replaced with a size marker to bound rows.
@@ -115,7 +160,9 @@ export function sanitizeParams(jobType: SyncOperationJobType, body: unknown): un
  *   thin wrappers over res.json/res.send (errors go out through res.send in the
  *   global error handler; successes through res.json).
  * - Logs nothing for reads (routes absent from JOB_TYPE_BY_ROUTE) or for
- *   playback-only `update`s.
+ *   playback-only `update`s, and at most one account-level rejection
+ *   (`not_subscribed`, `tier_required`) per user, job type and code every 10
+ *   minutes.
  * - Gated by SYNC_AUDIT_ENABLED=true.
  */
 export const recordSyncOperation = (
@@ -147,6 +194,16 @@ export const recordSyncOperation = (
 
       const status = res.statusCode;
       const outcome = status >= 200 && status < 400 ? 'applied' : 'error';
+      if (outcome === 'error') {
+        const code = extractErrorCode(res.locals.__syncAuditPayload);
+        if (
+          code &&
+          ACCOUNT_LEVEL_CODES.has(code) &&
+          !shouldRecordAccountRejection(`${req.user.id_user}:${jobType}:${code}`)
+        ) {
+          return;
+        }
+      }
       const body = req.body ?? {};
       const rawPath =
         pickString(body.relativePath) ??

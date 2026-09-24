@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { LibraryController } from '../../controllers/LibraryController';
-import { LibraryLookupError } from '../../services/LibraryService';
+import { ITEM_DELETED, LibraryLookupError } from '../../services/LibraryService';
+import { ApiError, ApiErrorCode } from '../../types/apiError';
 import { mockLoggerService } from '../setup';
 
 function makeRes() {
@@ -195,5 +196,179 @@ describe('LibraryController.getLastPlayedItem — error mapping mirrors the list
 
     expect(res.status).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith({ lastItemPlayed: null });
+  });
+});
+
+// A request naming an item with no active row: deleted → success with nothing
+// changed; never existed → 404 `item_not_found`; failed read → 500.
+describe('LibraryController — legacy routes naming a missing item', () => {
+  let libraryService: any;
+  let libraryDB: any;
+  let controller: LibraryController;
+  const uuid = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const notFound = new ApiError(ApiErrorCode.ITEM_NOT_FOUND, 404, `Item not found: "${uuid}"`);
+
+  beforeEach(() => {
+    libraryService = {
+      confirmDeleted: jest.fn(async () => true),
+      thumbnailPutRequest: jest.fn(),
+      renameLibraryObject: jest.fn(),
+      deleteFolderMoving: jest.fn(),
+      moveLibraryObjectByUuid: jest.fn(),
+      putExternalResource: jest.fn(),
+      deleteExternalResource: jest.fn(),
+    };
+    libraryDB = {
+      getLibraryByUuid: jest.fn(async () => []),
+      getLibrary: jest.fn(async () => []),
+      upsertBookmark: jest.fn(),
+      deactivateBookmark: jest.fn(),
+    };
+    controller = new LibraryController(libraryService, libraryDB);
+    (controller as any)._logger = mockLoggerService;
+    mockLoggerService.log.mockClear();
+  });
+
+  const request = (body: Record<string, unknown>) =>
+    ({ body, user: { id_user: 1, email: 'user@example.com' } }) as any;
+
+  describe('PUT /bookmark', () => {
+    it('answers success, and writes nothing, for a bookmark on a deleted book', async () => {
+      const res = makeRes();
+      await controller.upsertBookmark(request({ uuid, key: 'Book.m4b', time: 120, active: true }), res);
+
+      expect(libraryService.confirmDeleted).toHaveBeenCalledWith(expect.anything(), { uuid, key: 'Book.m4b' });
+      expect(res.json).toHaveBeenCalledWith({ bookmark: null });
+      expect(libraryDB.upsertBookmark).not.toHaveBeenCalled();
+    });
+
+    it('answers 404 item_not_found for a bookmark on a book that never existed', async () => {
+      libraryService.confirmDeleted.mockRejectedValue(notFound);
+      const res = makeRes();
+      await controller.upsertBookmark(request({ uuid, key: 'Book.m4b', time: 120, active: true }), res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ message: notFound.message, error: 'item_not_found' });
+    });
+
+    it('treats deleting a bookmark on a missing book as done, deleted or not', async () => {
+      const res = makeRes();
+      await controller.upsertBookmark(request({ uuid, key: 'Book.m4b', time: 120, active: false }), res);
+
+      expect(libraryService.confirmDeleted).not.toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith({ bookmark: null });
+    });
+
+    it('deletes by deactivating, and answers success for a bookmark the server never had', async () => {
+      libraryDB.getLibraryByUuid.mockResolvedValue([{ id_library_item: 9, title: 'Book', key: 'Book.m4b' }]);
+      libraryDB.deactivateBookmark.mockResolvedValue(undefined);
+      const res = makeRes();
+      await controller.upsertBookmark(request({ uuid, key: 'Book.m4b', time: 120, active: false }), res);
+
+      expect(libraryDB.deactivateBookmark).toHaveBeenCalled();
+      expect(libraryDB.upsertBookmark).not.toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith({ bookmark: null });
+    });
+
+    it('answers 500 when the item lookup fails', async () => {
+      libraryDB.getLibraryByUuid.mockResolvedValue(null);
+      const res = makeRes();
+      await controller.upsertBookmark(request({ uuid, key: 'Book.m4b', time: 120, active: true }), res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Internal error' });
+    });
+  });
+
+  it('POST /rename answers success for a deleted folder and 404 for one that never existed', async () => {
+    const res = makeRes();
+    await controller.renameLibraryObject(request({ uuid, relativePath: 'Series', newName: 'New' }), res);
+    expect(res.json).toHaveBeenCalledWith({ content: [] });
+    expect(libraryService.renameLibraryObject).not.toHaveBeenCalled();
+
+    libraryService.confirmDeleted.mockRejectedValue(notFound);
+    const res404 = makeRes();
+    await controller.renameLibraryObject(request({ uuid, relativePath: 'Series', newName: 'New' }), res404);
+    expect(res404.status).toHaveBeenCalledWith(404);
+  });
+
+  describe('DELETE /folder_in_out', () => {
+    it('treats a missing folder as already removed, deleted or never there', async () => {
+      const res = makeRes();
+      await controller.deleteFolderMoving(request({ uuid, relativePath: 'Series' }), res);
+
+      expect(res.json).toHaveBeenCalledWith({ success: true });
+      expect(libraryService.confirmDeleted).not.toHaveBeenCalled();
+      expect(libraryService.deleteFolderMoving).not.toHaveBeenCalled();
+    });
+
+    it('answers 500 when the folder lookup fails', async () => {
+      libraryDB.getLibraryByUuid.mockResolvedValue(null);
+      const res = makeRes();
+      await controller.deleteFolderMoving(request({ uuid, relativePath: 'Series' }), res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+    });
+  });
+
+  describe('POST /thumbnail_set', () => {
+    it('answers a null URL for a deleted book', async () => {
+      libraryService.thumbnailPutRequest.mockResolvedValue(ITEM_DELETED);
+      const res = makeRes();
+      await controller.itemThumbnailPutRequest(request({ uuid, relativePath: 'Book.m4b', thumbnail_name: 't.jpg' }), res);
+
+      expect(res.json).toHaveBeenCalledWith({ thumbnail_name: 't.jpg', thumbnail_url: null, uploaded: false });
+    });
+
+    it('answers 404 item_not_found for a book that never existed', async () => {
+      libraryService.thumbnailPutRequest.mockRejectedValue(notFound);
+      const res = makeRes();
+      await controller.itemThumbnailPutRequest(request({ uuid, relativePath: 'Book.m4b', thumbnail_name: 't.jpg' }), res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ message: notFound.message, error: 'item_not_found' });
+    });
+  });
+
+  describe('external resources', () => {
+    it('PUT /external answers an empty content for a deleted book, and 404 for one that never existed', async () => {
+      libraryService.putExternalResource.mockResolvedValueOnce(null);
+      const res = makeRes();
+      await controller.putExternalResource(request({ uuid, providerName: 'jellyfin', providerId: 'p1' }), res);
+      expect(res.json).toHaveBeenCalledWith({ content: {} });
+
+      libraryService.putExternalResource.mockRejectedValueOnce(notFound);
+      const res404 = makeRes();
+      await controller.putExternalResource(request({ uuid, providerName: 'jellyfin', providerId: 'p1' }), res404);
+      expect(res404.status).toHaveBeenCalledWith(404);
+    });
+
+    it('DELETE /external answers 500 when the lookup fails', async () => {
+      libraryService.deleteExternalResource.mockRejectedValue(new LibraryLookupError());
+      const res = makeRes();
+      await controller.deleteExternalResource(request({ uuid, providerName: 'jellyfin', providerId: 'p1' }), res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Internal error' });
+    });
+  });
+
+  it('POST /move maps a coded error to its status and a failed read to 500', async () => {
+    libraryService.moveLibraryObjectByUuid.mockRejectedValueOnce(notFound);
+    const res = makeRes();
+    await controller.moveLibraryObject(request({ origin: uuid, destination: '' }), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ message: notFound.message, error: 'item_not_found' });
+
+    libraryService.moveLibraryObjectByUuid.mockRejectedValueOnce(new LibraryLookupError());
+    const res500 = makeRes();
+    await controller.moveLibraryObject(request({ origin: uuid, destination: '' }), res500);
+    expect(res500.status).toHaveBeenCalledWith(500);
+
+    libraryService.moveLibraryObjectByUuid.mockRejectedValueOnce(new Error('The destination is invalid'));
+    const res400 = makeRes();
+    await controller.moveLibraryObject(request({ origin: uuid, destination: '' }), res400);
+    expect(res400.status).toHaveBeenCalledWith(400);
+    expect(res400.json).toHaveBeenCalledWith({ message: 'The destination is invalid' });
   });
 });

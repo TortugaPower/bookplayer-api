@@ -66,7 +66,7 @@ describe('checkSubscription middleware', () => {
     await checkSubscription(req, res, next);
     expect(mockIsActive).toHaveBeenCalledWith('ext-1');
     expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith({ message: 'You are not subscribed' });
+    expect(res.json).toHaveBeenCalledWith({ message: 'You are not subscribed', error: 'not_subscribed' });
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -154,7 +154,7 @@ describe('requireSubscription middleware', () => {
 
     expect(mockFetchLiveEntitlements).toHaveBeenCalledWith('ext-1');
     expect(res.status).toHaveBeenCalledWith(403);
-    expect(res.json).toHaveBeenCalledWith({ message: 'Requires one of: pro' });
+    expect(res.json).toHaveBeenCalledWith({ message: 'Requires one of: pro', error: 'tier_required' });
     expect(next).not.toHaveBeenCalled();
   });
 

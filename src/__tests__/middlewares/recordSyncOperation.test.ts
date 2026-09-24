@@ -17,7 +17,10 @@ import {
   jobTypeFor,
   isProgressOnlyUpdate,
   extractMessage,
+  extractErrorCode,
   sanitizeParams,
+  shouldRecordAccountRejection,
+  resetAccountRejectionThrottle,
 } from '../../api/middlewares/recordSyncOperation';
 import {
   SyncOperationJobType,
@@ -128,6 +131,36 @@ describe('recordSyncOperation helpers', () => {
     it('truncates to 512 chars', () => {
       const long = 'x'.repeat(600);
       expect(extractMessage(long)!.length).toBe(512);
+    });
+  });
+
+  describe('extractErrorCode', () => {
+    it('pulls .error from a stringified or object body', () => {
+      expect(extractErrorCode('{"message":"You are not subscribed","error":"not_subscribed"}')).toBe('not_subscribed');
+      expect(extractErrorCode({ message: 'x', error: 'item_not_found' })).toBe('item_not_found');
+    });
+
+    it('returns null without a code, or for a body that is not JSON', () => {
+      expect(extractErrorCode({ message: 'Invalid key' })).toBeNull();
+      expect(extractErrorCode('not json')).toBeNull();
+      expect(extractErrorCode(null)).toBeNull();
+    });
+  });
+
+  describe('shouldRecordAccountRejection', () => {
+    beforeEach(() => resetAccountRejectionThrottle());
+
+    it('records the first rejection per key and window, then skips until the window passes', () => {
+      const t0 = 1_000_000;
+      expect(shouldRecordAccountRejection('7:match_uuids:not_subscribed', t0)).toBe(true);
+      expect(shouldRecordAccountRejection('7:match_uuids:not_subscribed', t0 + 5_000)).toBe(false);
+      expect(shouldRecordAccountRejection('7:match_uuids:not_subscribed', t0 + 10 * 60 * 1000)).toBe(true);
+    });
+
+    it('keeps users and job types apart', () => {
+      expect(shouldRecordAccountRejection('7:match_uuids:not_subscribed', 0)).toBe(true);
+      expect(shouldRecordAccountRejection('8:match_uuids:not_subscribed', 0)).toBe(true);
+      expect(shouldRecordAccountRejection('7:move:not_subscribed', 0)).toBe(true);
     });
   });
 
@@ -275,6 +308,43 @@ describe('recordSyncOperation middleware', () => {
     expect(arg.outcome).toBe('error');
     expect(arg.error_message).toBe('Item not exists');
     expect(arg.item_uuid).toBe('336453c8-24e3-4298-9e8c-8b41f70ac4e7');
+  });
+
+  describe('account-level rejections', () => {
+    const rejected = (id_user: number, path = '/uuids', method = 'POST') => {
+      const req: any = { method, path, route: { path }, user: { id_user }, body: { items: {} } };
+      const res = makeRes();
+      recordSyncOperation(req, res, jest.fn());
+      res.statusCode = 400;
+      res.json({ message: 'You are not subscribed', error: 'not_subscribed' });
+      res.emitFinish();
+    };
+
+    beforeEach(() => resetAccountRejectionThrottle());
+
+    it('records one not_subscribed per user and job type, not one per retry', () => {
+      rejected(7);
+      rejected(7);
+      rejected(7);
+      expect(recordMock()).toHaveBeenCalledTimes(1);
+      expect((recordMock().mock.calls[0][0] as SyncOperationRecord).error_message).toBe('You are not subscribed');
+
+      rejected(8);
+      rejected(7, '/move');
+      expect(recordMock()).toHaveBeenCalledTimes(3);
+    });
+
+    it('still records every other error, coded or not', () => {
+      for (let i = 0; i < 2; i += 1) {
+        const req: any = { method: 'POST', path: '/move', route: { path: '/move' }, user: { id_user: 7 }, body: { origin: 'a', destination: 'b' } };
+        const res = makeRes();
+        recordSyncOperation(req, res, jest.fn());
+        res.statusCode = 404;
+        res.json({ message: 'Item not found: "a"', error: 'item_not_found' });
+        res.emitFinish();
+      }
+      expect(recordMock()).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('does not record reads', () => {
