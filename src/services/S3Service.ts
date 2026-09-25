@@ -11,6 +11,7 @@ import {
   PutBucketLifecycleConfigurationCommand,
   LifecycleRule,
   StorageClass,
+  Tier,
   TransitionStorageClass,
   CreateMultipartUploadCommand,
   UploadPartCommand,
@@ -79,6 +80,15 @@ const isNoSuchUpload = (error: { name?: string }) => error?.name === 'NoSuchUplo
 // order, or a non-final part under the 5 MiB minimum.
 const INVALID_PART_ERRORS = new Set(['InvalidPart', 'InvalidPartOrder', 'EntityTooSmall']);
 
+/** What a HEAD says about where an object's bytes are right now. */
+export type ObjectHead = {
+  /** undefined means STANDARD — S3 omits the header for it. */
+  storageClass: string | undefined;
+  /** Deep Archive / Glacier objects: is a temporary thawed copy being made, ready, or absent. */
+  restore: 'none' | 'ongoing' | 'ready';
+  contentLength: number | undefined;
+};
+
 export class S3Service {
   private readonly _logger = logger;
   private client = new S3({ region: process.env.S3_REGION });
@@ -144,6 +154,77 @@ export class S3Service {
         );
         return null;
       }
+    }
+  }
+
+  /**
+   * Storage class and restore status of one object. Same tri-state discipline
+   * as fileExists: 'missing' for a 404, null when the probe failed (403, 5xx,
+   * SDK), and callers that act on either must check for them explicitly.
+   */
+  async headObject(key: string): Promise<ObjectHead | 'missing' | null> {
+    try {
+      const data = await this.client.headObject({
+        Bucket: process.env.S3_BUCKET,
+        Key: key,
+      });
+      // e.g. `ongoing-request="true"` while thawing, or
+      // `ongoing-request="false", expiry-date="..."` once the copy is readable.
+      const header = data.Restore ?? '';
+      const restore = header.includes('ongoing-request="true"')
+        ? 'ongoing'
+        : header.includes('ongoing-request="false"')
+          ? 'ready'
+          : 'none';
+      return { storageClass: data.StorageClass, restore, contentLength: data.ContentLength };
+    } catch (error) {
+      if (error.$metadata?.httpStatusCode === 404) {
+        return 'missing';
+      }
+      this._logger.log(
+        {
+          origin: 'S3Service.headObject',
+          message: error.message,
+          data: { key: stripStoragePrefix(key), errorName: error.name },
+        },
+        'warn',
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Asks S3 to thaw a temporary copy of an archived object for `days` days.
+   * A restore already in flight counts as success. Deep Archive rejects the
+   * Expedited tier, so only Standard (~12 h) and Bulk (~48 h) are offered.
+   */
+  async restoreObject(
+    key: string,
+    params: { days: number; tier: 'Standard' | 'Bulk' },
+  ): Promise<boolean | null> {
+    try {
+      await this.client.restoreObject({
+        Bucket: process.env.S3_BUCKET,
+        Key: key,
+        RestoreRequest: {
+          Days: params.days,
+          GlacierJobParameters: { Tier: params.tier as Tier },
+        },
+      });
+      return true;
+    } catch (error) {
+      if (error.name === 'RestoreAlreadyInProgress' || error.$metadata?.httpStatusCode === 409) {
+        return true;
+      }
+      this._logger.log(
+        {
+          origin: 'S3Service.restoreObject',
+          message: error.message,
+          data: { key: stripStoragePrefix(key), errorName: error.name, tier: params.tier },
+        },
+        'warn',
+      );
+      return null;
     }
   }
 

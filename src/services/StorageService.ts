@@ -5,7 +5,7 @@ import {
   StorageOrigin,
 } from '../types/user';
 import { logger } from './LoggerService';
-import { S3Service } from './S3Service';
+import { S3Service, ObjectHead } from './S3Service';
 import { Readable } from 'stream';
 import { stripStoragePrefix } from '../utils';
 import {
@@ -47,6 +47,50 @@ export class StorageService {
           message: error.message,
           data: { key: stripStoragePrefix(params.key) },
         },
+        'warn',
+      );
+      return null;
+    }
+  }
+
+  async headObject(params: {
+    key: string;
+    origin?: StorageOrigin;
+  }): Promise<ObjectHead | 'missing' | null> {
+    try {
+      const { key, origin } = params;
+      switch (origin || StorageOrigin.S3) {
+        case StorageOrigin.S3:
+          return await this._s3Service.headObject(key);
+        default:
+          return null;
+      }
+    } catch (error) {
+      this._logger.log(
+        { origin: 'StorageService.headObject', message: error.message, data: { key: stripStoragePrefix(params.key) } },
+        'warn',
+      );
+      return null;
+    }
+  }
+
+  async restoreObject(params: {
+    key: string;
+    days: number;
+    tier: 'Standard' | 'Bulk';
+    origin?: StorageOrigin;
+  }): Promise<boolean | null> {
+    try {
+      const { key, days, tier, origin } = params;
+      switch (origin || StorageOrigin.S3) {
+        case StorageOrigin.S3:
+          return await this._s3Service.restoreObject(key, { days, tier });
+        default:
+          return null;
+      }
+    } catch (error) {
+      this._logger.log(
+        { origin: 'StorageService.restoreObject', message: error.message, data: { key: stripStoragePrefix(params.key) } },
         'warn',
       );
       return null;

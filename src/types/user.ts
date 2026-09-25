@@ -174,7 +174,15 @@ export interface LibraryItem {
   source_path?: string;
   uuid?: string;
   externalResources?: ExternalResource[] | null | undefined;
+  /**
+   * Only on the one item a client is about to play or download: whether its
+   * bytes are readable now, or being thawed out of Deep Archive (~12 h). Absent
+   * on listings and when the object could not be checked.
+   */
+  storageState?: StorageState;
 }
+
+export type StorageState = 'available' | 'restoring';
 
 // Providers that are servers a book's file comes from. The other kind — a
 // metadata service like Hardcover — links a book but never has a file, and its
