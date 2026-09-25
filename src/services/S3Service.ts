@@ -11,6 +11,7 @@ import {
   PutBucketLifecycleConfigurationCommand,
   LifecycleRule,
   StorageClass,
+  Tier,
   TransitionStorageClass,
   CreateMultipartUploadCommand,
   UploadPartCommand,
@@ -79,6 +80,15 @@ const isNoSuchUpload = (error: { name?: string }) => error?.name === 'NoSuchUplo
 // order, or a non-final part under the 5 MiB minimum.
 const INVALID_PART_ERRORS = new Set(['InvalidPart', 'InvalidPartOrder', 'EntityTooSmall']);
 
+/** What a HEAD says about where an object's bytes are right now. */
+export type ObjectHead = {
+  /** undefined means STANDARD — S3 omits the header for it. */
+  storageClass: string | undefined;
+  /** Deep Archive / Glacier objects: is a temporary thawed copy being made, ready, or absent. */
+  restore: 'none' | 'ongoing' | 'ready';
+  contentLength: number | undefined;
+};
+
 export class S3Service {
   private readonly _logger = logger;
   private client = new S3({ region: process.env.S3_REGION });
@@ -95,55 +105,99 @@ export class S3Service {
   });
 
   /**
-   * Tri-state on purpose: true/false are definitive, null means the probe
-   * could not determine it and the caller must not read that as "absent".
+   * Whether `key` is there: true, false on a 404, null when the probe could not
+   * tell (403, 5xx, SDK) — see headObject for why a 403 is not "absent".
+   * LibraryService.processMovedFiles depends on the distinction: only a
+   * definitive `false` from both the source and target probe lets it conclude
+   * a moved item's bytes are nowhere. Callers that act on "missing" must check
+   * `=== false`, never `!exists`.
+   */
+  async fileExists(key: string): Promise<boolean | null> {
+    const head = await this.headObject(key);
+    if (head === 'missing') return false;
+    return head === null ? null : true;
+  }
+
+  /**
+   * The one HEAD request. Storage class, restore status and size of an object,
+   * or 'missing' on a 404, or null when the probe could not determine anything
+   * (403, 5xx, SDK failure). Tri-state on purpose: true/false-style answers are
+   * definitive, null is not, and callers that act on either must check for it
+   * explicitly, never `!head`.
    *
    * A 403 is indeterminate, not absent. S3 masks a missing key as 403 only
    * when the caller lacks s3:ListBucket, and this role holds it (see
    * getDirectoryContent / calculateFolderSize, which call ListObjectsV2), so
    * a 403 here means a permission or KMS problem rather than a missing key.
-   *
-   * Callers that act on "missing" must check `=== false`, never `!exists`.
+   * Both failure branches log at warn: they drive the same caller decision
+   * and have to clear the production LOG_LEVEL.
    */
-  async fileExists(key: string): Promise<boolean | null> {
+  async headObject(key: string): Promise<ObjectHead | 'missing' | null> {
     try {
       const data = await this.client.headObject({
         Bucket: process.env.S3_BUCKET,
         Key: key,
       });
-
-      return data.$metadata.httpStatusCode === 200;
+      // e.g. `ongoing-request="true"` while thawing, or
+      // `ongoing-request="false", expiry-date="..."` once the copy is readable.
+      const header = data.Restore ?? '';
+      const restore = header.includes('ongoing-request="true"')
+        ? 'ongoing'
+        : header.includes('ongoing-request="false"')
+          ? 'ready'
+          : 'none';
+      return { storageClass: data.StorageClass, restore, contentLength: data.ContentLength };
     } catch (error) {
       if (error.$metadata?.httpStatusCode === 404) {
-        return false;
-      } else if (error.$metadata?.httpStatusCode === 403) {
-        // Indeterminate, not absent — see the tri-state note above. Returning
-        // false here would let a permission failure read as "the object is
-        // nowhere", which is how a caller ends up recording that nothing
-        // exists when in fact it could not look.
-        this._logger.log(
-          {
-            origin: 'S3Service.fileExists',
-            message: 'Existence probe denied (403); treating as indeterminate',
-            data: { key: stripStoragePrefix(key) },
-          },
-          'warn',
-        );
-        return null;
-      } else {
-        // Same level as the 403 branch: this is the wider indeterminate class
-        // (5xx, timeouts, SDK failures) and it drives the same caller
-        // decision, so it has to clear the production LOG_LEVEL of 'warn' too.
-        this._logger.log(
-          {
-            origin: 'S3Service.fileExists',
-            message: error.message,
-            data: { key: stripStoragePrefix(key), errorName: error.name },
-          },
-          'warn',
-        );
-        return null;
+        return 'missing';
       }
+      this._logger.log(
+        {
+          origin: 'S3Service.headObject',
+          message:
+            error.$metadata?.httpStatusCode === 403
+              ? 'Probe denied (403); treating as indeterminate'
+              : error.message,
+          data: { key: stripStoragePrefix(key), errorName: error.name },
+        },
+        'warn',
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Asks S3 to thaw a temporary copy of an archived object for `days` days.
+   * A restore already in flight counts as success. Deep Archive rejects the
+   * Expedited tier, so only Standard (~12 h) and Bulk (~48 h) are offered.
+   */
+  async restoreObject(
+    key: string,
+    params: { days: number; tier: 'Standard' | 'Bulk' },
+  ): Promise<boolean | null> {
+    try {
+      await this.client.restoreObject({
+        Bucket: process.env.S3_BUCKET,
+        Key: key,
+        RestoreRequest: {
+          Days: params.days,
+          GlacierJobParameters: { Tier: params.tier as Tier },
+        },
+      });
+      return true;
+    } catch (error) {
+      if (error.name === 'RestoreAlreadyInProgress' || error.$metadata?.httpStatusCode === 409) {
+        return true;
+      }
+      this._logger.log(
+        {
+          origin: 'S3Service.restoreObject',
+          message: error.message,
+          data: { key: stripStoragePrefix(key), errorName: error.name, tier: params.tier },
+        },
+        'warn',
+      );
+      return null;
     }
   }
 
@@ -512,15 +566,9 @@ export class S3Service {
   }
   /** Only a definite answer counts: a failed HEAD keeps the delete's old behaviour. */
   private async exceedsSingleCopyLimit(key: string): Promise<boolean> {
-    try {
-      const head = await this.client.headObject({
-        Bucket: process.env.S3_BUCKET,
-        Key: key,
-      });
-      return (head.ContentLength ?? 0) > MAX_SINGLE_COPY_SIZE;
-    } catch {
-      return false;
-    }
+    const head = await this.headObject(key);
+    if (head === null || head === 'missing') return false;
+    return (head.contentLength ?? 0) > MAX_SINGLE_COPY_SIZE;
   }
 
   async calculateFolderSize(folderKey: string): Promise<number> {

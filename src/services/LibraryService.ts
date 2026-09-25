@@ -26,6 +26,7 @@ import {
 } from '../utils';
 import { LibraryDB, externalResourceRowToApi } from './db/LibraryDB';
 import { StoragePrefixService } from './StoragePrefixService';
+import { GlacierRestoreService } from './GlacierRestoreService';
 import { ApiError, ApiErrorCode } from '../types/apiError';
 
 /**
@@ -51,6 +52,7 @@ export class LibraryService {
     private _storage: StorageService = new StorageService(),
     private _libraryDB: LibraryDB = new LibraryDB(),
     private _prefix: StoragePrefixService = new StoragePrefixService(),
+    private _glacier: GlacierRestoreService = new GlacierRestoreService(_storage, _libraryDB),
   ) {}
 
   async parseLibraryItemDb(
@@ -216,6 +218,28 @@ export class LibraryService {
       const storagePrefix = options.withPresign
         ? await this._prefix.getPrefix(user)
         : null;
+      // On-demand thaw (GlacierRestoreService): only when this request names
+      // ONE item the client is about to play or download — a path without a
+      // trailing slash that is not the root (`''` is the root listing, which has
+      // no slash either) resolving to a single row that is not a plain folder
+      // (a book, a bound book, or a legacy row with a NULL type — those get a
+      // URL too) — on the presigned branch every shipped app uses, for a PRO
+      // user (the only tier with S3 files). Listings never HEAD, even a root
+      // with one item.
+      const single = objectDB.length === 1 ? objectDB[0] : null;
+      const tapped =
+        single &&
+        cleanPath !== '' &&
+        !wantsContents &&
+        parseInt(`${single.type}`) !== parseInt(LibraryItemType.FOLDER) &&
+        storagePrefix &&
+        user.subscriptions?.includes(SubscriptionTierEnum.PRO) &&
+        !['2023-10-29', 'latest'].includes(options.appVersion)
+          ? single
+          : null;
+      const storageState = tapped
+        ? await this._glacier.ensureRetrievable(user, tapped, storagePrefix)
+        : undefined;
       for (let index = 0; index < objectDB.length; index++) {
         const itemDb = objectDB[index];
         let fileUrl: string = null;
@@ -273,7 +297,8 @@ export class LibraryService {
           url: fileUrl,
           thumbnail,
           synced: itemDb.synced,
-          externalResources: (externalsMp[itemDb.id_library_item] ?? []).map(externalResourceRowToApi)
+          externalResources: (externalsMp[itemDb.id_library_item] ?? []).map(externalResourceRowToApi),
+          storageState: itemDb === tapped ? storageState : undefined,
         };
         library.push(libObj);
       }
@@ -1115,6 +1140,10 @@ export class LibraryService {
             });
             item.url = url;
             item.expires_in = expires_in;
+            // No thaw hook here on purpose: this rides along with every root
+            // sync (the apps' hottest request). A frozen resume item fails its
+            // first play with a 403, and the player's URL refresh — a
+            // single-item request — is where GlacierRestoreService runs.
 
             if (itemDb.thumbnail) {
               const { url } = await this._storage.getPresignedUrl({

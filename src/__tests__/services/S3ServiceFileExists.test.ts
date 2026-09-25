@@ -55,6 +55,17 @@ describe('S3Service.fileExists — tri-state', () => {
     await expect(service.fileExists('prefix/root/a.m4b')).resolves.toBeNull();
   });
 
+  it('is a mapping over headObject, the one HEAD request', async () => {
+    const head = jest.spyOn(service, 'headObject');
+    head.mockResolvedValueOnce('missing');
+    await expect(service.fileExists('k')).resolves.toBe(false);
+    head.mockResolvedValueOnce(null);
+    await expect(service.fileExists('k')).resolves.toBeNull();
+    head.mockResolvedValueOnce({ storageClass: 'DEEP_ARCHIVE', restore: 'none', contentLength: 1 });
+    await expect(service.fileExists('k')).resolves.toBe(true);
+    expect(headObjectMock).not.toHaveBeenCalled();
+  });
+
   it('does not log the storage prefix, which can be the account email', async () => {
     headObjectMock.mockImplementation(async () => {
       throw Object.assign(new Error('Forbidden'), {
