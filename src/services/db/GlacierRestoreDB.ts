@@ -26,10 +26,14 @@ export class GlacierRestoreDB {
   private db = database;
 
   /**
-   * Records that a restore was requested for `key`. One row per (user, key):
-   * a finalized or failed row is re-opened instead of duplicated, and a row
-   * already `requested` is left alone, so repeated taps while a book thaws are
-   * idempotent. `null` means the write failed (logged), not "already there".
+   * Records that `key` is thawing. One row per (user, key): a finalized or
+   * failed row is re-opened instead of duplicated. When `issued` is true this
+   * call sent the RestoreObject, so `requested_at` and `attempts` move even on
+   * a row still `requested` — a copy whose window closed before it was
+   * finalized reads as a fresh request, not the stale one. When false (the
+   * object was already thawing) a `requested` row is left alone, so repeated
+   * taps while a book thaws are idempotent. `null` means the write failed
+   * (logged), not "already there".
    */
   async upsertRequested(
     params: {
@@ -39,11 +43,13 @@ export class GlacierRestoreDB {
       key: string;
       tier: string;
       days: number;
+      issued: boolean;
     },
     trx?: Knex.Transaction,
   ): Promise<boolean | null> {
     try {
       const db = trx || this.db;
+      const guard = params.issued ? '' : `where glacier_restore_requests.state <> 'requested'`;
       await db.raw(
         `
         insert into glacier_restore_requests
@@ -59,7 +65,7 @@ export class GlacierRestoreDB {
               finalized_at = null,
               last_error = null,
               updated_at = now()
-          where glacier_restore_requests.state <> 'requested'
+          ${guard}
         `,
         [params.user_id, params.library_item_id, params.kind, params.key, params.tier, params.days],
       );

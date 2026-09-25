@@ -28,6 +28,14 @@ import { LibraryItemDB, LibraryItemType, StorageState, User } from '../types/use
  */
 export const RESTORE_TIER = 'Standard' as const;
 export const RESTORE_DAYS = 30;
+/**
+ * How long a request waits for the tapped item's check (HEAD, RestoreObject,
+ * one insert — tens of milliseconds in-region) before answering without a
+ * state. The check keeps running in the background, so a slow S3 still gets
+ * the restore issued and recorded; only the response stops waiting for it.
+ */
+export const HOOK_BUDGET_MS = 2000;
+const TIMED_OUT = Symbol('TIMED_OUT');
 // Bound books are folders of files; CD rips run to a thousand tracks. A HEAD per
 // file is a fraction of a cent, so no product cap — only a sanity ceiling.
 const SIBLING_CEILING = 5000;
@@ -46,6 +54,7 @@ export class GlacierRestoreService {
    * start a walk; the second is pure duplicate HEADs, so it is skipped.
    */
   private _walking = new Set<string>();
+  private _budgetMs = HOOK_BUDGET_MS;
 
   constructor(
     private _storage: StorageService = new StorageService(),
@@ -56,8 +65,8 @@ export class GlacierRestoreService {
   /**
    * Make the one item a client is about to open retrievable. Returns the state
    * to report on that item, or undefined when the object could not be checked
-   * (missing, or the probe failed) — in which case nothing is reported and the
-   * URL goes out unchanged.
+   * (missing, the probe failed, or the check outran HOOK_BUDGET_MS) — in which
+   * case nothing is reported and the URL goes out unchanged.
    *
    * Background work — the item's artwork and, for a bound book, its sibling
    * files — starts only when THIS call found the object frozen and requested
@@ -65,6 +74,36 @@ export class GlacierRestoreService {
    * during a thaw (the object is already `ongoing`) do not re-walk the book.
    */
   async ensureRetrievable(
+    user: User,
+    item: LibraryItemDB,
+    storagePrefix: string,
+  ): Promise<StorageState | undefined> {
+    const work = this.checkTapped(user, item, storagePrefix);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const budget = new Promise<typeof TIMED_OUT>((resolve) => {
+      timer = setTimeout(() => resolve(TIMED_OUT), this._budgetMs);
+    });
+    try {
+      const result = await Promise.race([work, budget]);
+      if (result !== TIMED_OUT) return result;
+      // The URL path was local-only before this hook; a degraded S3 or DB must
+      // not turn a URL refresh into a hang. Let the check finish on its own.
+      this._logger.log(
+        {
+          origin: 'GlacierRestoreService.ensureRetrievable',
+          message: `Glacier check exceeded ${this._budgetMs} ms; answering without a state`,
+          data: { user_id: user.id_user, id_library_item: item.id_library_item },
+        },
+        'warn',
+      );
+      this.inBackground(work);
+      return undefined;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async checkTapped(
     user: User,
     item: LibraryItemDB,
     storagePrefix: string,
@@ -102,7 +141,7 @@ export class GlacierRestoreService {
       // The hook must never fail a request: the URL goes out as it always has.
       this._logger.log(
         {
-          origin: 'GlacierRestoreService.ensureRetrievable',
+          origin: 'GlacierRestoreService.checkTapped',
           message: err?.message ?? String(err),
           data: { user_id: user.id_user, id_library_item: item.id_library_item },
         },
@@ -163,14 +202,30 @@ export class GlacierRestoreService {
       if (requested === null) return { state: undefined, issued: false };
       issued = true;
     }
-    await this._restoreDB.upsertRequested({
+    const recorded = await this._restoreDB.upsertRequested({
       user_id: user.id_user,
       library_item_id: item.id_library_item ?? null,
       kind,
       key,
       tier: RESTORE_TIER,
       days: RESTORE_DAYS,
+      issued,
     });
+    if (recorded === null) {
+      // The thaw is real but the Lambda will never hear of it: the copy would
+      // silently refreeze when its window closes. Loud, so the row can be
+      // recreated by hand (or the object re-tapped) before then.
+      this._logger.log(
+        {
+          origin: 'GlacierRestoreService.ensureObject',
+          message: issued
+            ? 'Restore requested but not recorded; it will not be finalized'
+            : 'Thawing object seen but not recorded; it will not be finalized',
+          data: { user_id: user.id_user, id_library_item: item.id_library_item, kind },
+        },
+        'error',
+      );
+    }
     return { state: head.restore === 'ready' ? 'available' : 'restoring', issued };
   }
 

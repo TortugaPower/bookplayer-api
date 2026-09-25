@@ -354,6 +354,62 @@ describe('LibraryService — on-demand Glacier restore hook', () => {
     expect(row).toMatchObject({ state: 'requested', attempts: 2, finalized_at: null });
   });
 
+  it('a restore issued for a row still open (the thawed copy expired unfinalized) reads as a fresh request', async () => {
+    const user = await createTestUser(getTestTransaction());
+    await seed(user.id_user);
+    heads[objectKey('Solo.m4b')] = ARCHIVED_COLD;
+
+    await get(user, 'Solo.m4b');
+    await drain();
+    const [first] = await rows(user.id_user);
+    expect(first.attempts).toBe(1);
+
+    heads[objectKey('Solo.m4b')] = ARCHIVED_COLD; // window closed: S3 reads cold again
+    await get(user, 'Solo.m4b');
+    await drain();
+    const [second] = await rows(user.id_user);
+    expect(restoreObject).toHaveBeenCalledTimes(2);
+    expect(second.attempts).toBe(2);
+    expect(new Date(second.requested_at).getTime()).toBeGreaterThanOrEqual(new Date(first.requested_at).getTime());
+  });
+
+  it('a restore that could not be recorded is still reported as restoring, and logged at error', async () => {
+    const user = await createTestUser(getTestTransaction());
+    await seed(user.id_user);
+    heads[objectKey('Solo.m4b')] = ARCHIVED_COLD;
+    (service as any)._glacier._restoreDB.upsertRequested = jest.fn<any>(async (): Promise<null> => null);
+
+    const [item] = await get(user, 'Solo.m4b');
+    await drain();
+
+    expect(item.storageState).toBe('restoring');
+    expect(restoreObject).toHaveBeenCalledTimes(1);
+    const errors = (mockLoggerService.log.mock.calls as any[][]).filter((c) => c[1] === 'error');
+    expect(errors).toHaveLength(1);
+    expect(errors[0][0].origin).toBe('GlacierRestoreService.ensureObject');
+    expect(JSON.stringify(errors[0][0])).not.toContain(PREFIX);
+  });
+
+  it('a check that outruns its budget answers without a state, and still finishes in the background', async () => {
+    const user = await createTestUser(getTestTransaction());
+    await seed(user.id_user);
+    heads[objectKey('Solo.m4b')] = ARCHIVED_COLD;
+    (service as any)._glacier._budgetMs = 20;
+    headObject.mockImplementation(
+      ({ key }: { key: string }): Promise<ObjectHead | 'missing' | null> =>
+        new Promise((resolve) => setTimeout(() => resolve(key in heads ? heads[key] : WARM), 80)),
+    );
+
+    const [item] = await get(user, 'Solo.m4b');
+    expect(item.url).toContain('Solo.m4b');
+    expect(item.storageState).toBeUndefined();
+    expect(restoreObject).not.toHaveBeenCalled();
+
+    await drain();
+    expect(restoreObject).toHaveBeenCalledTimes(1);
+    expect(await rows(user.id_user)).toHaveLength(1);
+  });
+
   it('tapping one chapter of a bound book restores its siblings and artwork in the background', async () => {
     const user = await createTestUser(getTestTransaction());
     const { ch1, ch2, ch3 } = await seed(user.id_user);

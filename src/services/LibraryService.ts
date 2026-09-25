@@ -47,12 +47,12 @@ export const ITEM_DELETED = Symbol('ITEM_DELETED');
 export class LibraryService {
   private readonly _logger = logger;
   private db = database;
-  private _glacier = new GlacierRestoreService();
 
   constructor(
     private _storage: StorageService = new StorageService(),
     private _libraryDB: LibraryDB = new LibraryDB(),
     private _prefix: StoragePrefixService = new StoragePrefixService(),
+    private _glacier: GlacierRestoreService = new GlacierRestoreService(_storage, _libraryDB),
   ) {}
 
   async parseLibraryItemDb(
