@@ -410,13 +410,16 @@ describe('LibraryService — on-demand Glacier restore hook', () => {
     expect(await rows(user.id_user)).toHaveLength(1);
   });
 
-  it('tapping one chapter of a bound book restores its siblings and artwork in the background', async () => {
-    const user = await createTestUser(getTestTransaction());
+  it("tapping one chapter of a bound book restores its siblings and every chapter's artwork in the background", async () => {
+    const trx = getTestTransaction();
+    const user = await createTestUser(trx);
     const { ch1, ch2, ch3 } = await seed(user.id_user);
+    await trx('library_items').where({ id_library_item: ch2.id_library_item }).update({ thumbnail: 'ch2.jpg' });
     heads[objectKey('Series/01.mp3')] = ARCHIVED_COLD;
     heads[objectKey('Series/02.mp3')] = ARCHIVED_COLD;
     heads[objectKey('Series/03.mp3')] = ARCHIVED_THAWING; // already thawing: recorded, not re-requested
     heads[`${PREFIX}_thumbnail/cover.jpg`] = ARCHIVED_COLD;
+    heads[`${PREFIX}_thumbnail/ch2.jpg`] = ARCHIVED_COLD; // a sibling's own artwork
 
     const [item] = await get(user, 'Series/01.mp3');
     expect(item.storageState).toBe('restoring');
@@ -424,7 +427,12 @@ describe('LibraryService — on-demand Glacier restore hook', () => {
 
     const requestedKeys = restoreObject.mock.calls.map((c: any[]) => c[0].key).sort();
     expect(requestedKeys).toEqual(
-      [objectKey('Series/01.mp3'), objectKey('Series/02.mp3'), `${PREFIX}_thumbnail/cover.jpg`].sort(),
+      [
+        objectKey('Series/01.mp3'),
+        objectKey('Series/02.mp3'),
+        `${PREFIX}_thumbnail/cover.jpg`,
+        `${PREFIX}_thumbnail/ch2.jpg`,
+      ].sort(),
     );
     const saved = await rows(user.id_user);
     expect(saved.map((r: any) => [r.key, r.kind, r.library_item_id]).sort()).toEqual(
@@ -433,25 +441,34 @@ describe('LibraryService — on-demand Glacier restore hook', () => {
         [objectKey('Series/02.mp3'), 'object', ch2.id_library_item],
         [objectKey('Series/03.mp3'), 'object', ch3.id_library_item],
         [`${PREFIX}_thumbnail/cover.jpg`, 'thumbnail', ch1.id_library_item],
+        [`${PREFIX}_thumbnail/ch2.jpg`, 'thumbnail', ch2.id_library_item],
       ].sort(),
     );
     // Solo and Folder/a were never looked at.
     expect(headObject.mock.calls.some((c: any[]) => c[0].key === objectKey('Solo.m4b'))).toBe(false);
   });
 
-  it('a bound book resolved by uuid (no slash) restores its files', async () => {
+  it("a bound book resolved by uuid (no slash) restores its files and the probed file's artwork", async () => {
     const user = await createTestUser(getTestTransaction());
     const { series } = await seed(user.id_user);
     heads[objectKey('Series/01.mp3')] = ARCHIVED_COLD;
     heads[objectKey('Series/02.mp3')] = ARCHIVED_COLD;
     heads[objectKey('Series/03.mp3')] = ARCHIVED_COLD;
+    heads[`${PREFIX}_thumbnail/cover.jpg`] = ARCHIVED_COLD; // 01's artwork; 01 is the probe
 
     const [item] = await get(user, 'Series', series.uuid);
     await drain();
 
     expect(item.relativePath).toBe('Series');
     expect(item.storageState).toBeUndefined(); // a folder has no object of its own
-    expect(restoreObject).toHaveBeenCalledTimes(3);
+    expect(restoreObject.mock.calls.map((c: any[]) => c[0].key).sort()).toEqual(
+      [
+        objectKey('Series/01.mp3'),
+        objectKey('Series/02.mp3'),
+        objectKey('Series/03.mp3'),
+        `${PREFIX}_thumbnail/cover.jpg`,
+      ].sort(),
+    );
   });
 
   it('a container tap whose first file cannot be checked probes the next one, and each file is HEADed once', async () => {

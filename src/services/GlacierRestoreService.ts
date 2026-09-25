@@ -286,6 +286,13 @@ export class GlacierRestoreService {
       (child) => !isContainer(child) && child.id_library_item !== tapped?.id_library_item,
     );
     const keyOf = (file: LibraryItemDB) => `${storagePrefix}/${file.source_path || file.key}`;
+    // Every chapter carries its own artwork too (the app shows it in the
+    // book's chapter list), archived under the sibling `_thumbnail/` prefix.
+    const thawArtwork = async (file: LibraryItemDB) => {
+      if (file.thumbnail) {
+        await this.ensureObject(user, file, `${storagePrefix}_thumbnail/${file.thumbnail}`, 'thumbnail');
+      }
+    };
 
     let queue = files;
     if (!tapped) {
@@ -300,6 +307,7 @@ export class GlacierRestoreService {
         const outcome = await this.ensureObject(user, probe, keyOf(probe), 'object');
         if (outcome.issued) {
           issued = true;
+          await thawArtwork(probe);
           break;
         }
         if (outcome.state !== undefined) return; // warm, thawing or ready: not a fresh freeze
@@ -330,6 +338,7 @@ export class GlacierRestoreService {
       for (let next = queue.shift(); next; next = queue.shift()) {
         try {
           await this.ensureObject(user, next, keyOf(next), 'object');
+          await thawArtwork(next);
         } catch (err) {
           this._logger.log(
             {
