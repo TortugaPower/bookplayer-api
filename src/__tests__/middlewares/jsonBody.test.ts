@@ -27,6 +27,13 @@ describe('jsonBody', () => {
     expect(res.body).toEqual({ count: 27_000 });
   });
 
+  it('matches the route the way Express does: any case, trailing slash ignored', async () => {
+    const res = await request(makeApp()).post('/V1/Library/Status/').send(library);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ count: 27_000 });
+  });
+
   it('keeps every other route at 100 KB', async () => {
     const res = await request(makeApp()).post('/v1/user/login').send(library);
 

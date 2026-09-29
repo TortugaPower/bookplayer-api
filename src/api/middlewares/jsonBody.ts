@@ -10,7 +10,9 @@ const OWN_BODY_ROUTES = new Set(['/v1/library/status']);
 const defaultJsonBody = bodyParser.json();
 
 export function jsonBody(req: Request, res: Response, next: NextFunction): void {
-  if (OWN_BODY_ROUTES.has(req.path)) {
+  // Matched the way Express routes: case-insensitive, trailing slash ignored. Otherwise a
+  // spelling the route still accepts would be parsed here first, at 100 KB
+  if (OWN_BODY_ROUTES.has(req.path.toLowerCase().replace(/\/+$/, ''))) {
     next();
     return;
   }
