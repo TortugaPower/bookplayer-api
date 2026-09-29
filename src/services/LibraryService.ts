@@ -1358,7 +1358,7 @@ export class LibraryService {
       await this._libraryDB.getItemsByUuids(user.id_user, [...requested.keys()]),
     );
     const seen = new Set<string>();
-    const unsynced = new Set<string>();
+    const booksWithoutFile = new Set<string>();
     for (const row of rows) {
       const normalized = `${row.uuid}`.toLowerCase();
       seen.add(normalized);
@@ -1367,16 +1367,20 @@ export class LibraryService {
         parseInt(`${row.type}`) === parseInt(LibraryItemType.BOOK) &&
         row.synced !== true
       ) {
-        unsynced.add(normalized);
+        booksWithoutFile.add(normalized);
       }
     }
 
-    const answer = (keep: (normalized: string) => boolean) =>
-      [...requested].filter(([normalized]) => keep(normalized)).map(([, sent]) => sent);
-    return {
-      unknown: answer((normalized) => !seen.has(normalized)),
-      unsynced: answer((normalized) => unsynced.has(normalized)),
-    };
+    const unknown: string[] = [];
+    const unsynced: string[] = [];
+    for (const [normalized, sent] of requested) {
+      if (!seen.has(normalized)) {
+        unknown.push(sent);
+      } else if (booksWithoutFile.has(normalized)) {
+        unsynced.push(sent);
+      }
+    }
+    return { unknown, unsynced };
   }
 
   async processItemUUIDs(
