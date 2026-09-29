@@ -13,6 +13,7 @@ import { RestClientService } from './services/RestClientService';
 import { RedisService } from './services/RedisService';
 import { logger } from './services/LoggerService';
 import { checkVersion } from './api/middlewares/version';
+import { jsonBody } from './api/middlewares/jsonBody';
 
 export class Server {
   private readonly _logger = logger;
@@ -28,10 +29,9 @@ export class Server {
     await this._cache.connectCacheService();
 
     const app = express();
-    // 5 MB, not body-parser's 100 KB: POST /v1/library/status carries every
-    // uuid in the client's library (~39 bytes each), about 130k items. Book
-    // files go straight to S3, so nothing else sends large bodies.
-    app.use(bodyParser.json({ limit: '5mb' }));
+    // 100 KB, except the routes that parse their own larger body after their
+    // subscription check (POST /v1/library/status)
+    app.use(jsonBody);
     app.use(bodyParser.urlencoded({ extended: true }));
     app.use(compress());
     app.use(helmet());

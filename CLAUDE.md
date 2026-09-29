@@ -203,7 +203,7 @@ No composition file to update — each class self-instantiates its deps. `main.t
 ### 1. Middleware Pipeline (server.ts)
 
 ```typescript
-app.use(bodyParser.json({ limit: '5mb' }));  // Parse JSON (5 MB: POST /v1/library/status)
+app.use(jsonBody);                     // Parse JSON, 100 KB (POST /v1/library/status parses its own 5 MB body)
 app.use(compress());                   // Gzip compression
 app.use(helmet());                     // Security headers
 app.use(authMiddleware);              // JWT validation → sets req.user
@@ -386,7 +386,7 @@ All routes require auth + an active subscription (`checkSubscription`); most als
 | POST | `/upload/abort` | Abort; succeeds when the upload or row is already gone |
 | GET | `/keys` | Synced keys (**deprecated**: still served for shipped builds' first-sync / tier-change pass; new clients use `/status`) |
 | POST | `/uuids` | Match client uuids to rows |
-| POST | `/status` | The missing-items pass: of the client's uuids (the whole library, one body; hence the 5 MB JSON limit in `server.ts`), which no row has, active or deleted (`unknown`: register them), and which are active books with no file in S3 (`unsynced`: upload them by uuid). Contract in `docs/multipart-uploads.md` |
+| POST | `/status` | The missing-items pass: of the client's uuids (the whole library, one body, parsed by the route with a 5 MB limit after `checkSubscription`; `jsonBody` keeps every other route at 100 KB), which no row has, active or deleted (`unknown`: register them), and which are active books with no file in S3 (`unsynced`: upload them by uuid). Contract in `docs/multipart-uploads.md` |
 
 ### Storage Routes (`/v1/storage`)
 
