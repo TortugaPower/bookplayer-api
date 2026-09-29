@@ -15,6 +15,8 @@ import {
   completeUploadSchema,
   abortUploadSchema,
 } from '../validation/multipartUpload';
+import { libraryStatusSchema } from '../validation/libraryStatus';
+import { largeJsonBody } from './middlewares/jsonBody';
 
 const LibraryRouter = express.Router();
 const controller = new LibraryController();
@@ -102,6 +104,13 @@ LibraryRouter.get('/keys', checkSubscription, requireCloudData, (req, res, next)
 );
 LibraryRouter.post('/uuids', checkSubscription, requireCloudData, (req, res, next) =>
   controller.postLibraryUuids(req, res).catch(next),
+);
+// The missing-items pass: the body is the client's whole library (see
+// docs/multipart-uploads.md), parsed here with a 5 MB limit only once the caller
+// is known to be on a tier that can use it (server.ts leaves this one path to the
+// route). Hence the tier check before validation, unlike the routes above.
+LibraryRouter.post('/status', checkSubscription, requireCloudData, largeJsonBody, validateBody(libraryStatusSchema), (req, res, next) =>
+  controller.postLibraryStatus(req, res).catch(next),
 );
 
 export default LibraryRouter;

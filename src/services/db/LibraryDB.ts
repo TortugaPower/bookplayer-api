@@ -61,6 +61,48 @@ export class LibraryDB {
     }
   }
 
+  /**
+   * Every row of the user's, active or deleted, holding one of these uuids.
+   * Anything that isn't a uuid is skipped: the list becomes a Postgres array
+   * literal, cast to uuid[]. `null` means the query failed.
+   *
+   * The list is the client's whole library and has no size cap, so it goes in
+   * as ONE array parameter: `whereIn` binds a parameter per uuid, and Postgres
+   * refuses a query with more than 65,535. The active and deleted halves are
+   * separate branches so each is served by its partial index
+   * (`library_items_uuid_user_unique`, `library_items_uuid_user_inactive`), in
+   * one UNION ALL statement so both read the same snapshot: a row changing state
+   * between two statements would show up in neither.
+   */
+  async getItemsByUuids(
+    user_id: number,
+    uuids: string[],
+    trx?: Knex.Transaction,
+  ): Promise<Pick<LibraryItemDB, 'uuid' | 'active' | 'type' | 'synced'>[] | null> {
+    const valid = uuids.filter((uuid) => isValidUUID(uuid));
+    if (valid.length === 0) return [];
+    try {
+      const db = trx || this.db;
+      const uuidArray = `{${valid.join(',')}}`;
+      const half = (query: Knex.QueryBuilder, active: boolean) =>
+        query
+          .select('uuid', 'active', 'type', 'synced')
+          .from('library_items')
+          .where({ user_id, active })
+          .whereRaw('uuid = ANY(?::uuid[])', [uuidArray]);
+      return await half(db.queryBuilder(), true).unionAll(function (this: Knex.QueryBuilder) {
+        half(this, false);
+      }, true);
+    } catch (err) {
+      this._logger.log({
+        origin: 'LibraryDB.getItemsByUuids',
+        message: err.message,
+        data: { user_id, count: uuids.length },
+      });
+      return null;
+    }
+  }
+
   /** `null` means the query failed; `[]` means nothing matched. Callers that
    *  answer clients must not collapse the two (see LibraryService.requireLookup). */
   async getLibrary(

@@ -19,6 +19,7 @@ import {
   StartUploadBody,
   listPartsQuerySchema,
 } from '../validation/multipartUpload';
+import { LibraryStatusBody } from '../validation/libraryStatus';
 
 // Query-string flags arrive as strings; `?sign=false` must not read as true.
 // Strict on purpose. Every shipped client sends the literal `true`: iOS
@@ -428,6 +429,23 @@ export class LibraryController {
       return res.json({ content });
     } catch (err) {
       return this.sendLibraryError(res, err, 'LibraryController.renameLibraryObject', req);
+    }
+  }
+
+  public async postLibraryStatus(
+    req: IRequest,
+    res: IResponse,
+  ): Promise<IResponse> {
+    const { uuids } = req.body as LibraryStatusBody;
+    try {
+      const status = await this._libraryService.getItemsStatus(req.user, uuids);
+      return res.json(status);
+    } catch (err) {
+      // Identifiers only: the body is the user's whole library.
+      this._logger.log({ origin: 'LibraryController.postLibraryStatus', message: err.message, data: { user_id: req.user?.id_user, count: uuids.length } }, 'error');
+      // A failed read is retryable, and must never read as "nothing known".
+      res.status(500).json({ message: 'Internal error' });
+      return;
     }
   }
 

@@ -203,7 +203,7 @@ No composition file to update — each class self-instantiates its deps. `main.t
 ### 1. Middleware Pipeline (server.ts)
 
 ```typescript
-app.use(bodyParser.json());           // Parse JSON
+app.use(jsonBody);                     // Parse JSON, 100 KB (POST /v1/library/status parses its own 5 MB body)
 app.use(compress());                   // Gzip compression
 app.use(helmet());                     // Security headers
 app.use(authMiddleware);              // JWT validation → sets req.user
@@ -384,8 +384,9 @@ All routes require auth + an active subscription (`checkSubscription`); most als
 | POST / GET | `/upload/parts` | Presign part URLs (≤32 per request) / list the parts S3 holds, to resume |
 | POST | `/upload/complete` | Complete from S3's own part list and set `synced=true` (and `downloaded` on a media-server book's external resources) — the only confirmation a multipart upload gets; safe to retry |
 | POST | `/upload/abort` | Abort; succeeds when the upload or row is already gone |
-| GET | `/keys` | Synced identifiers |
+| GET | `/keys` | Synced keys (**deprecated**: still served for shipped builds' first-sync / tier-change pass; new clients use `/status`) |
 | POST | `/uuids` | Match client uuids to rows |
+| POST | `/status` | The missing-items pass: of the client's uuids (the whole library, one body, parsed by the route with a 5 MB limit after `checkSubscription` and `requireCloudData`; `jsonBody` keeps every other route at 100 KB), which no row has, active or deleted (`unknown`: register them), and which are active books with no file in S3 (`unsynced`: upload them by uuid). Contract in `docs/multipart-uploads.md` |
 
 ### Storage Routes (`/v1/storage`)
 
@@ -502,11 +503,11 @@ async DoSomething(): Promise<Result | null> {
 }
 ```
 
-**Exception — reads whose empty result clients treat as authoritative.** `LibraryService.getLibrary`
-and `getLastItemPlayed` throw `LibraryLookupError` when a DB read fails instead of returning `null`
-or `[]`: sync clients reconcile deletions (items, server links) against a listing, so a failed read
-must never look like an empty library. DB classes still return `null` on error; the service turns
-that `null` into the throw. `GET /` and `GET /last_played` map it to a 500 the clients retry — with
+**Exception — reads whose empty result clients treat as authoritative.** `LibraryService.getLibrary`,
+`getLastItemPlayed` and `getItemsStatus` throw `LibraryLookupError` when a DB read fails instead of returning `null`
+or `[]`: sync clients reconcile deletions (items, server links) against a listing, and register whatever the status
+read calls unknown, so a failed read must never look like an empty library. DB classes still return `null` on error; the service turns
+that `null` into the throw. `GET /`, `GET /last_played` and `POST /status` map it to a 500 the clients retry — with
 one deliberate exception: on the root listing the resume item is best-effort, so the controller logs
 a `getLastItemPlayed` failure and omits the `lastItemPlayed` key (absent = unavailable this time,
 `null` = nothing played yet) rather than failing a listing that has already succeeded. Use the same
