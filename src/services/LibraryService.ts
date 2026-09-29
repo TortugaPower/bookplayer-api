@@ -1328,6 +1328,57 @@ export class LibraryService {
     }
   }
 
+  /**
+   * The client's missing-items pass (docs/multipart-uploads.md): of the uuids in
+   * its local library, which the server has never seen (the client registers
+   * them) and which are active books with no file in S3 (a PRO client uploads
+   * them by uuid).
+   *
+   * A deleted row counts as seen, so a book deleted on another device isn't
+   * registered again. Each uuid is answered in the spelling the client sent
+   * (Postgres returns uuids lowercased; iOS generates them uppercase), and
+   * strings that aren't uuids are left out of both lists. A failed read throws
+   * `LibraryLookupError`: answered as "all unknown", it would have the client
+   * register its whole library again.
+   */
+  async getItemsStatus(
+    user: User,
+    uuids: string[],
+  ): Promise<{ unknown: string[]; unsynced: string[] }> {
+    const requested = new Map<string, string>();
+    for (const uuid of uuids) {
+      const normalized = uuid.toLowerCase();
+      if (isValidUUID(uuid) && !requested.has(normalized)) {
+        requested.set(normalized, uuid);
+      }
+    }
+    if (requested.size === 0) return { unknown: [], unsynced: [] };
+
+    const rows = this.requireLookup(
+      await this._libraryDB.getItemsByUuids(user.id_user, [...requested.keys()]),
+    );
+    const seen = new Set<string>();
+    const unsynced = new Set<string>();
+    for (const row of rows) {
+      const normalized = `${row.uuid}`.toLowerCase();
+      seen.add(normalized);
+      if (
+        row.active &&
+        parseInt(`${row.type}`) === parseInt(LibraryItemType.BOOK) &&
+        row.synced !== true
+      ) {
+        unsynced.add(normalized);
+      }
+    }
+
+    const answer = (keep: (normalized: string) => boolean) =>
+      [...requested].filter(([normalized]) => keep(normalized)).map(([, sent]) => sent);
+    return {
+      unknown: answer((normalized) => !seen.has(normalized)),
+      unsynced: answer((normalized) => unsynced.has(normalized)),
+    };
+  }
+
   async processItemUUIDs(
     user: User,
     updates: ItemMatchPayload[],

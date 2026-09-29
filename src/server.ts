@@ -28,7 +28,10 @@ export class Server {
     await this._cache.connectCacheService();
 
     const app = express();
-    app.use(bodyParser.json());
+    // 5 MB, not body-parser's 100 KB: POST /v1/library/status carries every
+    // uuid in the client's library (~39 bytes each), about 130k items. Book
+    // files go straight to S3, so nothing else sends large bodies.
+    app.use(bodyParser.json({ limit: '5mb' }));
     app.use(bodyParser.urlencoded({ extended: true }));
     app.use(compress());
     app.use(helmet());

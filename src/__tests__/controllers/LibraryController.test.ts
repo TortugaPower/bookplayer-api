@@ -372,3 +372,46 @@ describe('LibraryController — legacy routes naming a missing item', () => {
     expect(res400.json).toHaveBeenCalledWith({ message: 'The destination is invalid' });
   });
 });
+
+describe('LibraryController.postLibraryStatus', () => {
+  let libraryService: any;
+  let controller: LibraryController;
+  const uuids = ['2c2d0f44-1111-4111-8111-111111111111', '2c2d0f44-2222-4222-8222-222222222222'];
+
+  beforeEach(() => {
+    libraryService = { getItemsStatus: jest.fn() };
+    controller = new LibraryController(libraryService, {} as any);
+    (controller as any)._logger = mockLoggerService;
+    mockLoggerService.log.mockClear();
+  });
+
+  const request = () =>
+    ({ body: { uuids }, user: { id_user: 1, email: 'user@example.com' } }) as any;
+
+  it("answers the service's lists as they are", async () => {
+    libraryService.getItemsStatus.mockResolvedValue({ unknown: [uuids[0]], unsynced: [uuids[1]] });
+    const res = makeRes();
+
+    await controller.postLibraryStatus(request(), res);
+
+    expect(libraryService.getItemsStatus).toHaveBeenCalledWith(expect.objectContaining({ id_user: 1 }), uuids);
+    expect(res.json).toHaveBeenCalledWith({ unknown: [uuids[0]], unsynced: [uuids[1]] });
+  });
+
+  it('answers 500 on a failed read, logging a count rather than the library', async () => {
+    libraryService.getItemsStatus.mockRejectedValue(new LibraryLookupError());
+    const res = makeRes();
+
+    await controller.postLibraryStatus(request(), res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ message: 'Internal error' });
+    expect(mockLoggerService.log).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { user_id: 1, count: 2 } }),
+      'error',
+    );
+    const logged = JSON.stringify(mockLoggerService.log.mock.calls);
+    expect(logged).not.toContain(uuids[0]);
+    expect(logged).not.toContain('user@example.com');
+  });
+});

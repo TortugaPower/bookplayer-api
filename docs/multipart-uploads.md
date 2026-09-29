@@ -22,9 +22,12 @@ when S3 rejected the PUT, leaving rows that claim to be backed up with nothing i
   book is left alone — Hardcover has no file, and its `sync_status` is the client's own marker.
 - **`synced` means the file is in S3, on every tier.** `PUT /` creates rows unsynced, and `POST /` ignores
   `synced:true` for a book with no object. So `GET /keys`, which lists synced rows, is "books whose file is in S3":
-  a LITE account's books are left out of it on purpose, because LITE never uploads a file. Clients use `/keys` only
-  for the one-off "upload what the server is missing" pass (iOS: an install's first sync; Android: a tier change),
-  and should run that pass only on PRO.
+  a LITE account's books are left out of it on purpose, because LITE never uploads a file. **`/keys` is
+  deprecated**: shipped builds compare their local paths against it in a one-off "upload what the server is missing"
+  pass (iOS: an install's first sync; Android: a tier change), and it stays served for them. A path that is stale on
+  that device (the item was moved or renamed on another one) reads as missing, and re-uploading it there moves the
+  item back: `PUT /` treats a known uuid at a new key as a move. New clients use the
+  [missing-items pass](#the-missing-items-pass), which asks by uuid.
 - **One open upload per book.** `start` aborts whatever is still open for the book before opening a new one. Uploading
   the same book from two devices at once is unsupported: each device's `start` would cancel the other's upload. That
   is deliberate — a book's file is uploaded by the device it was imported on, and every other device downloads it.
@@ -73,3 +76,42 @@ and a 400 `RequestTimeout` or any 5xx means retry the part.
 `complete` is safe to repeat. If the upload is gone but the object exists (a previous attempt succeeded and its
 response was lost), it answers success and makes sure the row is synced. `start` does the same: if the object already
 exists, it answers `exists` instead of opening a second upload.
+
+## The missing-items pass
+
+`POST /v1/library/status` answers, for the uuids in a client's local library, what the server lacks. It exists for an
+account that signs in over a library built while signed out, whose sync lapsed and came back, or that moved from LITE
+to PRO: items added while sync was off (and uploads the lapse cleared from the queue) never reached the server, and
+books registered on LITE have no file.
+Open to PRO and LITE.
+
+| Body | Success |
+|---|---|
+| `{ uuids: [uuid…] }`: every item in the local library (books, folders, bound books), in one request | `{ unknown: [uuid…], unsynced: [uuid…] }` |
+
+- `unknown`: no row has the uuid, active or deleted. First send those items through `POST /uuids`
+  (`{ items: { "<key>": "<uuid>" } }`, at most 1,000 per request):
+  the server's row may already sit at that key under no uuid (a legacy row) or another one (the same file imported
+  on two devices), and `PUT /` at an occupied key answers with that row without storing the client's uuid, so the
+  item would come back `unknown` every run and its bookmarks and external resources would answer `item_not_found`.
+  `/uuids` sets the uuid on a legacy row and answers a conflict for the other case (adopt the server's uuid). Then
+  register each one like an import (`PUT /` at its local path, then its external resources and bookmarks), parents
+  before children. No row holds the uuid, so the `PUT` can't move anything, and a deleted item keeps its uuid, so a
+  book deleted on another device isn't registered again. On PRO the `PUT`'s answer then asks for the file as usual.
+  The one exception (accepted): an item from before the server had uuids (March 2026) that another device deleted
+  under its own uuid, or none, before this device's uuid was matched, reads as `unknown` and comes back. `/uuids`
+  only looks at active rows, so nothing tells it apart from a book imported on this device.
+- `unsynced`: an active book with no file in S3. PRO only: upload its file through `/upload/*`, which finds the book by
+  uuid wherever it now lives. Never re-register these: a `PUT /` at a stale path would move them. Skip books streamed
+  from a media server (their file arrives when they're downloaded), books with no local file, books over 10 GiB, and
+  books with an upload already queued. LITE ignores this list: LITE never uploads, so every book it registered is
+  on it.
+- Uuids come back spelled as they were sent, once each; strings that aren't uuids are left out of both lists. A
+  failed read is a 500, never an empty answer, which would read as "register everything".
+- The body is the whole library, so the JSON limit is 5 MB (about 130k uuids). Nothing is capped per request.
+- Run it as the registration step of the first sync (after sign-in, and on coming back from a lapse, which a
+  client treats as a first sync), on LITE → PRO, and weekly, and only when nothing is waiting in the client's own
+  sync queue: a queued import would otherwise come back `unknown` and be registered twice.
+- Until that first sync has run, no listing may delete local items it doesn't show (the first sync's own listing
+  included): they may be exactly the items the pass is about to register, such as books imported while sync was off.
+

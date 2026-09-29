@@ -15,6 +15,7 @@ import {
   completeUploadSchema,
   abortUploadSchema,
 } from '../validation/multipartUpload';
+import { libraryStatusSchema } from '../validation/libraryStatus';
 
 const LibraryRouter = express.Router();
 const controller = new LibraryController();
@@ -102,6 +103,11 @@ LibraryRouter.get('/keys', checkSubscription, requireCloudData, (req, res, next)
 );
 LibraryRouter.post('/uuids', checkSubscription, requireCloudData, (req, res, next) =>
   controller.postLibraryUuids(req, res).catch(next),
+);
+// The missing-items pass: the body is the client's whole library (see
+// docs/multipart-uploads.md), which is why server.ts raises the JSON limit.
+LibraryRouter.post('/status', checkSubscription, validateBody(libraryStatusSchema), requireCloudData, (req, res, next) =>
+  controller.postLibraryStatus(req, res).catch(next),
 );
 
 export default LibraryRouter;
