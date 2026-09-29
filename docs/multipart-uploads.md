@@ -109,7 +109,7 @@ Open to PRO and LITE.
 - Uuids come back spelled as they were sent, once each; strings that aren't uuids are left out of both lists. A
   failed read is a 500, never an empty answer, which would read as "register everything".
 - The body is the whole library, so this route's JSON limit is 5 MB (about 130k uuids), parsed only once the caller
-  is known to be subscribed; the rest of the API keeps 100 KB. Nothing is capped per request.
+  is known to be on PRO or LITE; the rest of the API keeps 100 KB. Nothing is capped per request.
 - Run it as the registration step of the first sync (after sign-in, and on coming back from a lapse, which a
   client treats as a first sync), on LITE → PRO, and weekly, and only when nothing is waiting in the client's own
   sync queue: a queued import would otherwise come back `unknown` and be registered twice.

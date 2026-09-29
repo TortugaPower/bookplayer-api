@@ -17,5 +17,5 @@ export function jsonBody(req: Request, res: Response, next: NextFunction): void 
   defaultJsonBody(req, res, next);
 }
 
-// For those routes, after their subscription check: about 130k uuids at ~39 bytes each
+// For those routes, after their subscription and tier checks: about 130k uuids at ~39 bytes each
 export const largeJsonBody = bodyParser.json({ limit: '5mb' });
