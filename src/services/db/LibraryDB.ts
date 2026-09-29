@@ -69,8 +69,10 @@ export class LibraryDB {
    * The list is the client's whole library and has no size cap, so it goes in
    * as ONE array parameter: `whereIn` binds a parameter per uuid, and Postgres
    * refuses a query with more than 65,535. The active and deleted halves are
-   * queried apart so each is served by its partial index
-   * (`library_items_uuid_user_unique`, `library_items_uuid_user_inactive`).
+   * separate branches so each is served by its partial index
+   * (`library_items_uuid_user_unique`, `library_items_uuid_user_inactive`), in
+   * one UNION ALL statement so both read the same snapshot: a row changing state
+   * between two statements would show up in neither.
    */
   async getItemsByUuids(
     user_id: number,
@@ -82,12 +84,15 @@ export class LibraryDB {
     try {
       const db = trx || this.db;
       const uuidArray = `{${valid.join(',')}}`;
-      const rows = (active: boolean) =>
-        db('library_items')
+      const half = (query: Knex.QueryBuilder, active: boolean) =>
+        query
           .select('uuid', 'active', 'type', 'synced')
+          .from('library_items')
           .where({ user_id, active })
           .whereRaw('uuid = ANY(?::uuid[])', [uuidArray]);
-      return [...(await rows(true)), ...(await rows(false))];
+      return await half(db.queryBuilder(), true).unionAll(function (this: Knex.QueryBuilder) {
+        half(this, false);
+      }, true);
     } catch (err) {
       this._logger.log({
         origin: 'LibraryDB.getItemsByUuids',
