@@ -51,9 +51,6 @@ import { stripStoragePrefix } from '../utils';
  */
 const WRITE_STORAGE_CLASS = StorageClass.INTELLIGENT_TIERING;
 
-// S3 refuses a single CopyObject from a source larger than this.
-const MAX_SINGLE_COPY_SIZE = 5 * 1024 * 1024 * 1024;
-
 // SigV4's ceiling. The effective lifetime is shorter in production: URLs signed
 // with the ECS task role's temporary credentials die when those rotate, which
 // is why clients request part URLs just before sending each window.
@@ -467,33 +464,11 @@ export class S3Service {
     }
   }
 
+  /// No support copy: copying the file to a `deleted_` prefix first made a
+  /// delete wait on a full server-side copy of the book (about a minute for
+  /// 3 GB), and the apps' serial sync queue waited with it.
   async deleteFile(sourceKey: string): Promise<boolean> {
     try {
-      /// Keep a copy for support purposes; `remove-deleted-items` expires the
-      /// `deleted_` prefix after 3 days. A week was the original intent — which
-      /// retention is right is still an open product question.
-      try {
-        await this.clientObject.send(
-          new CopyObjectCommand({
-            Bucket: process.env.S3_BUCKET,
-            Key: `deleted_${sourceKey}`,
-            CopySource: `${process.env.S3_BUCKET}/${sourceKey}`,
-            // Deliberately left in STANDARD: at 3 days this copy is gone well
-            // before Intelligent-Tiering could earn back its monitoring charge.
-          }),
-        );
-      } catch (copyError) {
-        // A single CopyObject stops at 5 GiB, and multipart uploads made books
-        // past that possible. Without this, the failed copy would skip the
-        // delete below and leave the book billed forever with no row pointing
-        // at it. Such books go without the 3-day support copy instead.
-        if (!(await this.exceedsSingleCopyLimit(sourceKey))) throw copyError;
-        this._logger.log({
-          origin: 'S3: deleteFile',
-          message: 'Deleting without a support copy: object exceeds the 5 GiB copy limit',
-          data: { key: stripStoragePrefix(sourceKey) },
-        }, 'warn');
-      }
       await this.clientObject.send(
         new DeleteObjectCommand({
           Bucket: process.env.S3_BUCKET,
@@ -510,19 +485,6 @@ export class S3Service {
       return null;
     }
   }
-  /** Only a definite answer counts: a failed HEAD keeps the delete's old behaviour. */
-  private async exceedsSingleCopyLimit(key: string): Promise<boolean> {
-    try {
-      const head = await this.client.headObject({
-        Bucket: process.env.S3_BUCKET,
-        Key: key,
-      });
-      return (head.ContentLength ?? 0) > MAX_SINGLE_COPY_SIZE;
-    } catch {
-      return false;
-    }
-  }
-
   async calculateFolderSize(folderKey: string): Promise<number> {
     try {
       let totalSize = 0;

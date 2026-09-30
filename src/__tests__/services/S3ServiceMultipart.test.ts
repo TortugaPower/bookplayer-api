@@ -224,59 +224,33 @@ describe('S3Service.getPresignedPartUrl — wire contract', () => {
 });
 
 /**
- * Multipart made books over 5 GiB possible, and a single CopyObject can't copy
- * them into the `deleted_` support prefix. The delete must still happen.
+ * A delete removes the object and nothing else: the `deleted_` support copy it
+ * used to make first held the request (and the apps' serial sync queue) for a
+ * full server-side copy of the book.
  */
-describe('S3Service.deleteFile — books beyond the 5 GiB copy limit', () => {
+describe('S3Service.deleteFile', () => {
   let service: S3Service;
   let sendMock: jest.Mock<(command: any) => Promise<any>>;
-  let headMock: jest.Mock<(input: any) => Promise<any>>;
-  const GiB = 1024 * 1024 * 1024;
 
   beforeEach(() => {
     process.env.S3_BUCKET = 'test-bucket';
     service = new S3Service();
     sendMock = jest.fn(async () => ({}));
-    headMock = jest.fn(async () => ({ ContentLength: 6 * GiB }));
     (service as any).clientObject = { send: sendMock };
-    (service as any).client = { headObject: headMock };
     (service as any)._logger = mockLoggerService;
     mockLoggerService.log.mockClear();
   });
 
-  const commandNames = () => sendMock.mock.calls.map((call) => call[0].constructor.name);
-
-  it('deletes a book too large to copy, without the support copy', async () => {
-    sendMock.mockRejectedValueOnce(s3Error('InvalidRequest', 400));
-
-    await expect(service.deleteFile('p/root/big.m4b')).resolves.toBe(true);
-
-    expect(commandNames()).toEqual(['CopyObjectCommand', 'DeleteObjectCommand']);
-    expect(sendMock.mock.calls[1][0].input.Key).toBe('p/root/big.m4b');
-  });
-
-  it('keeps the old behaviour for any other copy failure: nothing is deleted without its copy', async () => {
-    sendMock.mockRejectedValueOnce(s3Error('InternalError', 500));
-    headMock.mockResolvedValueOnce({ ContentLength: 3 * GiB });
-
-    await expect(service.deleteFile('p/root/book.m4b')).resolves.toBeNull();
-
-    expect(commandNames()).toEqual(['CopyObjectCommand']);
-  });
-
-  it('keeps the old behaviour when it cannot tell the size', async () => {
-    sendMock.mockRejectedValueOnce(s3Error('InvalidRequest', 400));
-    headMock.mockRejectedValueOnce(s3Error('NotFound', 404));
-
-    await expect(service.deleteFile('p/root/gone.m4b')).resolves.toBeNull();
-
-    expect(commandNames()).toEqual(['CopyObjectCommand']);
-  });
-
-  it('never looks at the size when the copy succeeds', async () => {
+  it('deletes the object with one request, and copies nothing', async () => {
     await expect(service.deleteFile('p/root/book.m4b')).resolves.toBe(true);
 
-    expect(headMock).not.toHaveBeenCalled();
-    expect(commandNames()).toEqual(['CopyObjectCommand', 'DeleteObjectCommand']);
+    expect(sendMock.mock.calls.map((call) => call[0].constructor.name)).toEqual(['DeleteObjectCommand']);
+    expect(sendMock.mock.calls[0][0].input).toEqual({ Bucket: 'test-bucket', Key: 'p/root/book.m4b' });
+  });
+
+  it('answers null when S3 refuses the delete', async () => {
+    sendMock.mockRejectedValueOnce(s3Error('InternalError', 500));
+
+    await expect(service.deleteFile('p/root/book.m4b')).resolves.toBeNull();
   });
 });
