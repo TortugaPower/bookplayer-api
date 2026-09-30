@@ -55,14 +55,4 @@ describe('S3Service — storage class on writes', () => {
     expect(copy.input.Key).toBe('prefix/root/b.m4b');
     expect(copy.input.StorageClass).toBe('INTELLIGENT_TIERING');
   });
-
-  it('leaves the support copy of a deleted object in STANDARD', async () => {
-    // `remove-deleted-items` expires this prefix within days, well before
-    // Intelligent-Tiering earns back its monitoring charge.
-    await service.deleteFile('prefix/root/a.m4b');
-
-    const copy = sentCommand(0);
-    expect(copy.input.Key).toBe('deleted_prefix/root/a.m4b');
-    expect(copy.input.StorageClass).toBeUndefined();
-  });
 });

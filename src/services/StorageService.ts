@@ -156,9 +156,6 @@ export class StorageService {
     origin?: StorageOrigin;
   }): Promise<boolean> {
     try {
-      /// Keep a copy for support purposes; S3Service.deleteFile writes it to
-      /// the `deleted_` prefix, which `remove-deleted-items` expires after 3
-      /// days.
       const { sourceKey, origin } = params;
       const storageOrigin = origin || StorageOrigin.S3;
       let deleted = false;
