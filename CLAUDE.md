@@ -668,6 +668,7 @@ describe('MyService', () => {
 | `REDIS_URL` | Redis connection URL |
 | `CORS_ORIGIN` | Allowed CORS origins |
 | `UPLOAD_PART_URL_TTL_SECONDS` | Development only (ignored when `NODE_ENV=production`): multipart part-URL lifetime (default and max 604800), to test expired URLs |
+| `WEBAUTHN_EXTRA_ORIGINS` | Development only (ignored when `NODE_ENV=production`): comma-separated origins a local web client completes passkey ceremonies from (e.g. `http://localhost:6767`, with `WEBAUTHN_RP_ID=localhost`), on top of `https://<WEBAUTHN_RP_ID>` and `ANDROID_RELEASE_HASH` |
 
 ## Common Tasks
 
