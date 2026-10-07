@@ -50,6 +50,9 @@ export const Envs = () => {
       .prop('APP_VERSION', S.string().required())
       .prop('WEBAUTHN_RP_ID', S.string())
       .prop('WEBAUTHN_RP_NAME', S.string())
+      // Development only (ignored when NODE_ENV=production): extra origins a local
+      // web client may complete passkey ceremonies from, comma-separated.
+      .prop('WEBAUTHN_EXTRA_ORIGINS', S.string())
       .prop('ANDROID_RELEASE_HASH', S.string().required()),
   };
   envSchema(scheme);
