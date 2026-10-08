@@ -44,6 +44,9 @@ export class Server {
         origin: true,
         credentials: true,
         exposedHeaders: ['Content-Range'],
+        // Lets the web app's browser reuse a preflight for the same URL instead
+        // of repeating it (the default is 5s); browsers cap it (Chrome at 2h)
+        maxAge: 86400,
       }),
     );
 
