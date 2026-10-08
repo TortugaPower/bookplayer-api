@@ -25,7 +25,9 @@ export const checkVersion = async (
       const origin = req.headers.origin
         .replace('https://', '')
         .replace('http://', '');
-      const cacheKey = `domain_app_version_${origin}`;
+      // v2: v1 keys were written without a TTL, so a domain removed from
+      // apple_clients stayed allowed until its key was deleted by hand.
+      const cacheKey = `domain_app_version_v2_${origin}`;
       let appVersion = (await cacheService.getObject(cacheKey)) as {
         version: string;
       };
@@ -41,7 +43,7 @@ export const checkVersion = async (
         appVersion = {
           version: client_domain.app_version,
         };
-        await cacheService.setObject(cacheKey, appVersion);
+        await cacheService.setObject(cacheKey, appVersion, 60 * 60);
       }
       req.app_version = appVersion.version;
     } else {

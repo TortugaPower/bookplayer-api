@@ -1,6 +1,5 @@
 import { UserServices } from '../services/UserServices';
 import { IRequest, IResponse } from '../types/http';
-import cookie from 'cookie';
 import { UserEventEnum } from '../types/user';
 import moment from 'moment-timezone';
 import { SubscriptionService } from '../services/SubscriptionService';
@@ -149,34 +148,12 @@ export class UserController {
       session: authData.external_id,
     });
 
-    if (
-      !!client_id &&
-      client_id.apple_id !== 'com.tortugapower.audiobookplayer.watchkitapp'
-    ) {
-      // is from web enable 2 weeks
-      const isProd = process.env.NODE_ENV === 'production';
-      res.setHeader(
-        'Set-Cookie',
-        cookie.serialize(process.env.SESSION_COOKIE_NAME, token, {
-          httpOnly: true,
-          maxAge: 60 * 60 * 24 * 7 * 2,
-          sameSite: isProd ? 'none' : null,
-          secure: isProd,
-          path: '/',
-        }),
-      );
-      return res.json({ email: user.email, token, revenuecat_id: user.external_id });
-    }
     return res.json({ email: user.email, token, revenuecat_id: user.external_id });
   }
 
-  public async logout(req: IRequest, res: IResponse): Promise<IResponse> {
-    await res.clearCookie(process.env.SESSION_COOKIE_NAME, {
-      path: '/',
-      httpOnly: true,
-      sameSite: 'none',
-      secure: true,
-    });
+  // Tokens are bearer-only, so there's nothing to clear server-side; kept for
+  // clients that still call it.
+  public async logout(_req: IRequest, res: IResponse): Promise<IResponse> {
     return res.send({
       logout: true,
     });

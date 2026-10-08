@@ -42,8 +42,11 @@ export class Server {
     app.use(
       cors({
         origin: true,
-        credentials: true,
         exposedHeaders: ['Content-Range'],
+        // Lets the web app's browser reuse a preflight for the same URL instead
+        // of repeating it (the default is 5s). 2h is Chrome's cap, and bounds how
+        // long a domain removed from apple_clients keeps working in a browser.
+        maxAge: 7200,
       }),
     );
 
