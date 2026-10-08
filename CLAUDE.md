@@ -215,7 +215,7 @@ app.use(handleError);                 // Global error handler
 ### 2. Auth Middleware
 
 The auth middleware (`src/api/middlewares/auth.ts`):
-- Extracts JWT from `Authorization: Bearer <token>` header or cookie
+- Extracts JWT from the `Authorization: Bearer <token>` header (there is no cookie session)
 - Verifies signature with `APP_SECRET`
 - Sets `req.user = { id_user, email, external_id, time }`
 - Non-blocking: continues even if token is invalid
