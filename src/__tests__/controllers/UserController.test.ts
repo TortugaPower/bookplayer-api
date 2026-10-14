@@ -142,7 +142,28 @@ describe('UserController.initLogin', () => {
     );
   });
 
-  it("keeps the provider's email in the token for a credential the account already has", async () => {
+  it("keeps the account's email in the token on later sign-ins with the linked credential", async () => {
+    userService.verifyToken.mockResolvedValue({ email: 'Jane.Doe@Example.com', sub: 'apple-sub' });
+    userService.getAuthMethodByExternalId.mockResolvedValue({
+      user_id: 7,
+      id_auth_method: 1,
+      email: 'jane.doe@example.com',
+    });
+    userService.getUser.mockResolvedValue({
+      id_user: 7,
+      email: 'jane.doe@example.com',
+      external_id: 'uuid-7',
+      session: 'apple-sub',
+    });
+
+    await appleLogin();
+
+    expect(userService.tokenUser).toHaveBeenCalledWith(
+      expect.objectContaining({ id_user: 7, email: 'jane.doe@example.com' }),
+    );
+  });
+
+  it("keeps the provider's email in the token when it changed altogether", async () => {
     userService.verifyToken.mockResolvedValue({ email: 'new@example.com', sub: 'apple-sub' });
     userService.getAuthMethodByExternalId.mockResolvedValue({
       user_id: 7,
