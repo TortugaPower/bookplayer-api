@@ -19,6 +19,31 @@ describe('UserServices - Duplicate Prevention', () => {
     mockLoggerService.log.mockClear();
   });
 
+  describe('GetUser', () => {
+    it('should find the account whatever the email casing', async () => {
+      const trx = getTestTransaction();
+
+      // Apple keeps the casing of the address; the other app's user types it lowercase
+      const user = await createTestUser(trx, { email: 'Jane.Doe@Example.com' });
+
+      const result = await service.getUser({ email: 'jane.doe@example.com' });
+
+      expect(result).toBeDefined();
+      expect(result.id_user).toBe(user.id_user);
+      expect(result.email).toBe('Jane.Doe@Example.com');
+    });
+
+    it('should not return an inactive account', async () => {
+      const trx = getTestTransaction();
+
+      await createTestUser(trx, { email: 'Gone@Example.com', active: false });
+
+      const result = await service.getUser({ email: 'gone@example.com' });
+
+      expect(result).toBeUndefined();
+    });
+  });
+
   describe('GetAuthMethodByExternalId', () => {
     it('should return auth method and user info when found', async () => {
       const trx = getTestTransaction();

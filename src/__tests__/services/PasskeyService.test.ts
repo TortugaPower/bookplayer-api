@@ -162,6 +162,17 @@ describe('PasskeyService', () => {
         expect(result!.external_id).toBe(user.external_id);
       });
 
+      it('should find the user whatever the email casing', async () => {
+        const trx = getTestTransaction();
+        const user = await createTestUser(trx, { email: 'Jane.Doe@Example.com' });
+
+        const result = await service.getUserByEmail('jane.doe@example.com');
+
+        expect(result).not.toBeNull();
+        expect(result!.id_user).toBe(user.id_user);
+        expect(result!.email).toBe('Jane.Doe@Example.com');
+      });
+
       it('should return null for non-existent email', async () => {
         const result = await service.getUserByEmail('nonexistent@example.com');
         expect(result).toBeNull();

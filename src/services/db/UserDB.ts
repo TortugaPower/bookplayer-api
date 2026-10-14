@@ -29,10 +29,11 @@ export class UserDB {
             db.raw('?', [session || '']),
           );
         })
-        .where({
-          email,
-          'usr.active': true,
-        })
+        // Apple keeps the address's casing (`Jane@example.com`) while a typed
+        // one is often lowercase; an exact match split one person into two
+        // accounts. users_lower_email_active_unique keeps it to one.
+        .whereRaw('lower(usr.email) = lower(?)', [email])
+        .where('usr.active', true)
         .first();
       return user;
     } catch (err) {

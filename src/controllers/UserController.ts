@@ -143,7 +143,14 @@ export class UserController {
 
     const token = await this._userService.tokenUser({
       id_user: user.id_user,
-      email: authData.email,
+      // This claim is the S3 prefix of an account that predates external_id
+      // storage. Accounts are found by email whatever its case, so the
+      // provider may spell it differently than the account: carry the
+      // account's. A provider email that changed altogether is kept, as before.
+      email:
+        authData.email.toLowerCase() === user.email.toLowerCase()
+          ? user.email
+          : authData.email,
       external_id: user.external_id,
       session: authData.external_id,
     });
