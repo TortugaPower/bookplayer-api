@@ -162,6 +162,30 @@ describe('PasskeyService', () => {
         expect(result!.external_id).toBe(user.external_id);
       });
 
+      it('should find the user whatever the email casing', async () => {
+        const trx = getTestTransaction();
+        const user = await createTestUser(trx, { email: 'Jane.Doe@Example.com' });
+
+        const result = await service.getUserByEmail('jane.doe@example.com');
+
+        expect(result).not.toBeNull();
+        expect(result!.id_user).toBe(user.id_user);
+        expect(result!.email).toBe('Jane.Doe@Example.com');
+      });
+
+      it('should prefer the exact spelling when two users differ only in case', async () => {
+        const trx = getTestTransaction();
+        const mixedCase = await createTestUser(trx, { email: 'Split@Example.com' });
+        const lowerCase = await createTestUser(trx, { email: 'split@example.com' });
+
+        expect((await service.getUserByEmail('Split@Example.com'))!.id_user).toBe(
+          mixedCase.id_user,
+        );
+        expect((await service.getUserByEmail('split@example.com'))!.id_user).toBe(
+          lowerCase.id_user,
+        );
+      });
+
       it('should return null for non-existent email', async () => {
         const result = await service.getUserByEmail('nonexistent@example.com');
         expect(result).toBeNull();

@@ -305,9 +305,12 @@ export class PasskeyDB {
   ): Promise<UserWithExternalId | null> {
     try {
       const db = trx || this.db;
+      // Case-insensitive, exact spelling first: see UserDB.getUser.
       const user = await db('users')
-        .where({ email, active: true })
+        .whereRaw('lower(email) = lower(?)', [email])
+        .where('active', true)
         .select('id_user', 'email', 'external_id', 'active')
+        .orderByRaw('email = ? DESC, id_user', [email])
         .first();
       return user || null;
     } catch (err) {

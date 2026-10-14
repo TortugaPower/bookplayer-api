@@ -99,3 +99,67 @@ describe('UserController.secondOnboarding', () => {
     expect(res.json).toHaveBeenCalledWith({});
   });
 });
+
+describe('UserController.initLogin', () => {
+  let userService: any;
+  let controller: UserController;
+
+  beforeEach(() => {
+    userService = {
+      verifyToken: jest.fn(),
+      getAuthMethodByExternalId: jest.fn(),
+      getUser: jest.fn(),
+      addNewUser: jest.fn(),
+      addAuthMethod: jest.fn(),
+      addNewDevice: jest.fn(),
+      tokenUser: jest.fn<() => Promise<string>>().mockResolvedValue('jwt'),
+    };
+    controller = new UserController(userService, {} as any);
+  });
+
+  const appleLogin = () =>
+    controller.initLogin({ body: { token_id: 'apple-token' }, headers: {} } as any, makeRes());
+
+  it("links Apple to an account whose email differs in case, and the token carries the account's email", async () => {
+    // The account was created by a passkey sign-up typed lowercase; Apple keeps the casing
+    userService.verifyToken.mockResolvedValue({ email: 'Jane.Doe@Example.com', sub: 'apple-sub' });
+    userService.getAuthMethodByExternalId.mockResolvedValue(null);
+    userService.getUser.mockResolvedValue({
+      id_user: 7,
+      email: 'jane.doe@example.com',
+      external_id: 'uuid-7',
+    });
+
+    await appleLogin();
+
+    expect(userService.addNewUser).not.toHaveBeenCalled();
+    expect(userService.addAuthMethod).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: 7, auth_type: 'apple', is_primary: false }),
+    );
+    // An email-prefixed account's files live under its own spelling
+    expect(userService.tokenUser).toHaveBeenCalledWith(
+      expect.objectContaining({ id_user: 7, email: 'jane.doe@example.com' }),
+    );
+  });
+
+  it("keeps the provider's email in the token for a credential the account already has", async () => {
+    userService.verifyToken.mockResolvedValue({ email: 'new@example.com', sub: 'apple-sub' });
+    userService.getAuthMethodByExternalId.mockResolvedValue({
+      user_id: 7,
+      id_auth_method: 1,
+      email: 'old@example.com',
+    });
+    userService.getUser.mockResolvedValue({
+      id_user: 7,
+      email: 'old@example.com',
+      external_id: 'uuid-7',
+      session: 'apple-sub',
+    });
+
+    await appleLogin();
+
+    expect(userService.tokenUser).toHaveBeenCalledWith(
+      expect.objectContaining({ id_user: 7, email: 'new@example.com' }),
+    );
+  });
+});

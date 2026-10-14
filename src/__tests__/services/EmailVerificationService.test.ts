@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { EmailVerificationService } from '../../services/EmailVerificationService';
+import { UserServices } from '../../services/UserServices';
 import {
   getTestTransaction,
   mockEmailService,
   mockLoggerService,
   mockUserService,
+  createTestUser,
   createTestVerificationCode,
 } from '../setup';
 import moment from 'moment';
@@ -113,6 +115,23 @@ describe('EmailVerificationService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Too many');
+      expect(mockEmailService.sendEmail).not.toHaveBeenCalled();
+    });
+
+    it('should refuse an email an account already has in another case', async () => {
+      const trx = getTestTransaction();
+      // An Apple sign-in stored the address with its casing
+      await createTestUser(trx, { email: 'Jane.Doe@Example.com' });
+      const userService = new UserServices();
+      (userService as any)._userDB.db = trx;
+      (userService as any)._userDB._logger = mockLoggerService;
+      (service as any)._userService = userService;
+
+      // A passkey sign-up on the other app, typed lowercase
+      const result = await service.sendVerificationCode('jane.doe@example.com');
+
+      expect(result.success).toBe(false);
+      expect(result.error_code).toBe('EMAIL_ALREADY_REGISTERED');
       expect(mockEmailService.sendEmail).not.toHaveBeenCalled();
     });
 
