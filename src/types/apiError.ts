@@ -15,6 +15,31 @@ export enum ApiErrorCode {
   ITEM_NOT_FOUND = 'item_not_found',
   // An upload's uuid already belongs to an item of a different type.
   UUID_CONFLICT = 'uuid_conflict',
+
+  // /v1/billing (web subscriptions through Stripe). Upper-case on the wire,
+  // unlike the codes above: the web client shares these names with the other
+  // TortugaPower APIs that sell through Stripe Checkout.
+  //
+  // The catalog (STRIPE_PLANS) has no such price_id.
+  PRICE_INVALID = 'PRICE_INVALID',
+  // success_url / cancel_url / return_url is not on BILLING_RETURN_ORIGINS.
+  RETURN_URL_NOT_ALLOWED = 'RETURN_URL_NOT_ALLOWED',
+  // Checkout refused: a live Stripe subscription, or an active pro/lite
+  // entitlement from a store, already covers this account.
+  ALREADY_SUBSCRIBED = 'ALREADY_SUBSCRIBED',
+  // Change-plan target is the plan the subscription is already on.
+  ALREADY_ON_PLAN = 'ALREADY_ON_PLAN',
+  // A Stripe customer exists, but no live subscription to change.
+  NO_SUBSCRIPTION = 'NO_SUBSCRIPTION',
+  // No Stripe customer for this account (never bought on the web; a store
+  // purchase is managed in that store).
+  BILLING_NO_CUSTOMER = 'BILLING_NO_CUSTOMER',
+  // An upgrade is waiting on the bank (3DS, slow payment); it applies itself
+  // once the charge clears.
+  UPGRADE_PAYMENT_PENDING = 'UPGRADE_PAYMENT_PENDING',
+  // Billing is not configured (no STRIPE_SECRET_KEY), or Stripe/RevenueCat
+  // could not confirm the account's state. Retry later.
+  BILLING_UNAVAILABLE = 'BILLING_UNAVAILABLE',
 }
 
 export class ApiError extends Error {

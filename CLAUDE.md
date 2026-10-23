@@ -327,7 +327,7 @@ try {
 npx knex migrate:make migration_name
 
 # Run migrations
-npx knex migrate:latest
+yarn db:migrate
 
 # Rollback
 npx knex migrate:rollback
@@ -396,6 +396,31 @@ All routes require auth + an active subscription (`checkSubscription`); most als
 | GET | `/url` | Get presigned URL | Yes |
 | POST | `/upload` | Upload file | Yes |
 
+
+### Billing Routes (`/v1/billing`)
+
+Web subscriptions through Stripe Checkout. Stripe is a store in RevenueCat (its Stripe app): the Checkout
+Session's `client_reference_id` (and `metadata.app_user_id` on the session and the subscription) is
+`users.external_id`, the RevenueCat App User ID every login returns as `revenuecat_id`, so the `pro` / `lite`
+entitlement lands on the customer the apps already use and arrives through the existing RevenueCat webhook.
+Nothing Stripe-side is stored here. The catalog is `STRIPE_PLANS`; no price id lives in code.
+
+| Method | Path | Purpose | Auth |
+|--------|------|---------|------|
+| GET | `/plans` | `{ plans: [{ price_id, plan_code, name, amount, currency, interval }] }` | No |
+| POST | `/checkout` | `{ price_id, success_url, cancel_url }` → `{ url, session_id }`. First purchase only | Yes |
+| POST | `/change-plan` | `{ price_id }` → `{ plan_code, effective: 'now'\|'period_end', effective_at }`. Up (Lite→Pro) now, prorated and invoiced; down at the period end through a subscription schedule | Yes |
+| POST | `/change-plan/preview` | Same body; the change priced by Stripe's invoice preview (`currency, lines, subtotal, tax, total, amount_due`, major units), charges nobody | Yes |
+| GET | `/portal?return_url=` | `{ url }` of a Customer Portal session | Yes |
+
+Errors are `{ message, error }` with upper-case codes (`ApiErrorCode`): `PRICE_INVALID` 400,
+`RETURN_URL_NOT_ALLOWED` 400 (not on `BILLING_RETURN_ORIGINS`), `ALREADY_SUBSCRIBED` 409 (a live Stripe
+subscription, or an active `pro`/`lite` entitlement from a store per RevenueCat), `ALREADY_ON_PLAN` 409,
+`NO_SUBSCRIPTION` 404, `BILLING_NO_CUSTOMER` 404 (never bought on the web), `UPGRADE_PAYMENT_PENDING` 402,
+`BILLING_UNAVAILABLE` 503 (no `STRIPE_SECRET_KEY`, or Stripe/RevenueCat couldn't confirm the state; checkout
+fails closed; outside production with `REVENUECAT_PROJECT_ID` or `REVENUECAT_API_V2_KEY` unset, checkout skips the
+store-entitlement check with a warning instead). Bad bodies are 422 `invalid_request`, no session 401, and the session routes share
+`billingRateLimiter` (10/min per account).
 
 ### Retention Routes (`/v1/retention`)
 
@@ -667,6 +692,11 @@ describe('MyService', () => {
 | `LOG_LEVEL` | debug / info / warn / error |
 | `REDIS_URL` | Redis connection URL |
 | `CORS_ORIGIN` | Allowed CORS origins |
+| `STRIPE_SECRET_KEY` | Enables `/v1/billing`; without it those routes answer 503 `BILLING_UNAVAILABLE` and the `stripe` package is never loaded |
+| `STRIPE_PLANS` | JSON array of `{ price_id, plan_code, name, amount, currency, interval }` (see `development.env.template`) |
+| `BILLING_RETURN_ORIGINS` | Comma-separated origins / schemes billing redirect URLs may use (`http://localhost` also allowed outside production) |
+| `STRIPE_PORTAL_CONFIGURATION_ID` | Optional Customer Portal configuration (`bpc_…`) |
+| `STRIPE_TIMEOUT_MS` | Optional per-call Stripe timeout, default 8000 |
 | `UPLOAD_PART_URL_TTL_SECONDS` | Development only (ignored when `NODE_ENV=production`): multipart part-URL lifetime (default and max 604800), to test expired URLs |
 | `WEBAUTHN_EXTRA_ORIGINS` | Development only (ignored when `NODE_ENV=production`): comma-separated origins a local web client completes passkey ceremonies from (e.g. `http://localhost:6767`, with `WEBAUTHN_RP_ID=localhost`), on top of `https://<WEBAUTHN_RP_ID>` and `ANDROID_RELEASE_HASH` |
 

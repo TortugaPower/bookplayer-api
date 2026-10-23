@@ -29,6 +29,17 @@ export class RevenueCatV2Client {
   ) {}
 
   async fetchActiveStatus(externalId: string): Promise<RCActiveStatus> {
+    // Unset, the URL is `projects//customers/…`, which RC also answers 404:
+    // indistinguishable from an unknown customer, so refuse before asking.
+    if (!process.env.REVENUECAT_PROJECT_ID || !process.env.REVENUECAT_API_V2_KEY) {
+      const err = new Error('REVENUECAT_PROJECT_ID / REVENUECAT_API_V2_KEY not set');
+      this._logger.log({
+        origin: 'RevenueCatV2Client.fetchActiveStatus',
+        message: err.message,
+        data: { externalId },
+      }, 'warn');
+      throw err;
+    }
     try {
       const data = (await this._restClient.callService({
         baseURL: process.env.REVENUECAT_API_V2,
@@ -79,6 +90,11 @@ export class RevenueCatV2Client {
 
       return { active, expiresMs: maxExpiresMs, entitlementIds: this._toLookupKeys(internalIds) };
     } catch (err) {
+      // An account that never opened an app (or bought anything) has no RC
+      // customer yet: a confirmed "no entitlements", not an outage.
+      if (err?.response?.status === 404 && err.response.data?.type === 'resource_missing') {
+        return { active: false, expiresMs: null, entitlementIds: [] };
+      }
       this._logger.log({
         origin: 'RevenueCatV2Client.fetchActiveStatus',
         message: err.message,

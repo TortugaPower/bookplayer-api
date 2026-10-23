@@ -117,6 +117,31 @@ export class UserDB {
     }
   }
 
+  // The account's canonical email and RevenueCat App User ID (external_id),
+  // read from the row rather than the JWT: a token's email is whatever the
+  // login provider reported, and billing has to resolve the same Stripe
+  // customer whichever way the user signed in.
+  async getActiveUserById(
+    user_id: number,
+    trx?: Knex.Transaction,
+  ): Promise<SubscriptionUser | null> {
+    try {
+      const db = trx || this.db;
+      const row = await db('users')
+        .select('id_user', 'email', 'external_id')
+        .where({ id_user: user_id, active: true })
+        .first();
+      return row || null;
+    } catch (err) {
+      this._logger.log({
+        origin: 'UserDB.getActiveUserById',
+        message: err.message,
+        data: { user_id },
+      });
+      return null;
+    }
+  }
+
   async getStorageConfig(
     user_id: number,
     trx?: Knex.Transaction,

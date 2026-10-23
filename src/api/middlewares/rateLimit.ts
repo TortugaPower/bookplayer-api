@@ -85,10 +85,29 @@ function createEmailVerificationRateLimiter(): RateLimitRequestHandler {
   });
 }
 
+// Billing session routes call Stripe (and can move money): 10 a minute per
+// account, or per IP for a request without one.
+function createBillingRateLimiter(): RateLimitRequestHandler {
+  return rateLimit({
+    ...baseOptions,
+    windowMs: 60 * 1000,
+    max: 10,
+    store: createRedisStore('billing'),
+    keyGenerator: (req: IRequest) =>
+      req.user?.id_user ? `user:${req.user.id_user}` : getClientIp(req),
+    handler: (_req: IRequest, res: IResponse) => {
+      res.status(429).json({
+        message: 'Too many billing requests, please try again later.',
+      });
+    },
+  });
+}
+
 // Rate limiters - initialized with memory store, upgraded to Redis if available
 export let globalRateLimiter: RateLimitRequestHandler = createGlobalRateLimiter();
 export let authRateLimiter: RateLimitRequestHandler = createAuthRateLimiter();
 export let emailVerificationRateLimiter: RateLimitRequestHandler = createEmailVerificationRateLimiter();
+export let billingRateLimiter: RateLimitRequestHandler = createBillingRateLimiter();
 
 // Initialize Redis connection and recreate rate limiters with Redis store
 export async function initRateLimitRedis(): Promise<void> {
@@ -114,6 +133,7 @@ export async function initRateLimitRedis(): Promise<void> {
     globalRateLimiter = createGlobalRateLimiter();
     authRateLimiter = createAuthRateLimiter();
     emailVerificationRateLimiter = createEmailVerificationRateLimiter();
+    billingRateLimiter = createBillingRateLimiter();
     console.log('Rate limiters upgraded to Redis store');
   } catch (err) {
     console.error('Rate limit Redis connection failed, using memory store:', err.message);

@@ -8,6 +8,8 @@ const ENV = {
   REVENUECAT_ENTITLEMENT_PRO: 'entla0aca3f4af',
   REVENUECAT_ENTITLEMENT_PLUS: 'entlb697e08b61',
   REVENUECAT_ENTITLEMENT_LITE: 'entl3df01b68f9',
+  REVENUECAT_PROJECT_ID: 'proj_test',
+  REVENUECAT_API_V2_KEY: 'sk_test',
 };
 const ORIGINAL_ENV = { ...process.env };
 
@@ -36,6 +38,44 @@ describe('RevenueCatV2Client.fetchActiveStatus', () => {
 
   afterAll(() => {
     process.env = { ...ORIGINAL_ENV };
+  });
+
+  // What axios rejects with for an HTTP error response.
+  const httpError = (status: number, data: object) =>
+    Object.assign(new Error(`Request failed with status code ${status}`), {
+      response: { status, data },
+    });
+
+  it('a customer RC has never seen (404 resource_missing) has no entitlements', async () => {
+    const { client } = makeClient();
+    (client as any)._restClient.callService = jest.fn(async () => {
+      throw httpError(404, { object: 'error', type: 'resource_missing' });
+    });
+
+    await expect(client.fetchActiveStatus('ext-new')).resolves.toEqual({
+      active: false,
+      expiresMs: null,
+      entitlementIds: [],
+    });
+  });
+
+  it('any other failure still throws, so callers fail closed', async () => {
+    const { client } = makeClient();
+    (client as any)._restClient.callService = jest.fn(async () => {
+      throw httpError(401, { object: 'error', type: 'authentication_error' });
+    });
+
+    await expect(client.fetchActiveStatus('ext-1')).rejects.toThrow('401');
+  });
+
+  it('refuses without asking RC when the project or key is unset (its 404 would read as "no customer")', async () => {
+    const { client, callService } = makeClient();
+    delete process.env.REVENUECAT_PROJECT_ID;
+
+    await expect(client.fetchActiveStatus('ext-1')).rejects.toThrow(
+      'REVENUECAT_PROJECT_ID',
+    );
+    expect(callService).not.toHaveBeenCalled();
   });
 
   it('translates internal entitlement ids to tier lookup keys via env map', async () => {

@@ -14,6 +14,7 @@
     "lint": "eslint src --ext .js,.ts",
     "build": "tsc -b",
     "setup_env": "node scripts/env.js",
+    "db:migrate": "knex migrate:latest --knexfile knexfile.ts",
     "prod": "NODE_ENV=production node dist/main.js"
   },
   "keywords": [
@@ -51,6 +52,7 @@
     "rate-limit-redis": "^4.3.1",
     "redis": "^4.3.0",
     "semver": "^7.7.2",
+    "stripe": "^22.6.2",
     "ts-node": "^10.5.0",
     "verify-apple-id-token": "^3.1.2",
     "winston": "^3.9.0",
