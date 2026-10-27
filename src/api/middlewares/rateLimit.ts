@@ -103,11 +103,35 @@ function createBillingRateLimiter(): RateLimitRequestHandler {
   });
 }
 
+// Tips need no account, and each one creates a Stripe Checkout Session on the
+// Stripe account paying users also check out on. Signed-out tips share ONE
+// bucket instead of one per IP: the IP comes from X-Forwarded-For, which a
+// caller can rewrite on every request, so a per-IP key could be sidestepped.
+// Signed-in tips skip it and keep billingRateLimiter's per-account limit.
+export function createAnonymousTipRateLimiter(
+  max = 20,
+): RateLimitRequestHandler {
+  return rateLimit({
+    ...baseOptions,
+    windowMs: 60 * 1000,
+    max,
+    store: createRedisStore('tip_anonymous'),
+    keyGenerator: () => 'anonymous',
+    skip: (req: IRequest) => Boolean(req.user?.id_user),
+    handler: (_req: IRequest, res: IResponse) => {
+      res.status(429).json({
+        message: 'Too many tips right now, please try again in a minute.',
+      });
+    },
+  });
+}
+
 // Rate limiters - initialized with memory store, upgraded to Redis if available
 export let globalRateLimiter: RateLimitRequestHandler = createGlobalRateLimiter();
 export let authRateLimiter: RateLimitRequestHandler = createAuthRateLimiter();
 export let emailVerificationRateLimiter: RateLimitRequestHandler = createEmailVerificationRateLimiter();
 export let billingRateLimiter: RateLimitRequestHandler = createBillingRateLimiter();
+export let anonymousTipRateLimiter: RateLimitRequestHandler = createAnonymousTipRateLimiter();
 
 // Initialize Redis connection and recreate rate limiters with Redis store
 export async function initRateLimitRedis(): Promise<void> {
@@ -134,6 +158,7 @@ export async function initRateLimitRedis(): Promise<void> {
     authRateLimiter = createAuthRateLimiter();
     emailVerificationRateLimiter = createEmailVerificationRateLimiter();
     billingRateLimiter = createBillingRateLimiter();
+    anonymousTipRateLimiter = createAnonymousTipRateLimiter();
     console.log('Rate limiters upgraded to Redis store');
   } catch (err) {
     console.error('Rate limit Redis connection failed, using memory store:', err.message);

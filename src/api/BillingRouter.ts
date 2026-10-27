@@ -1,6 +1,9 @@
 import express from 'express';
 import { BillingController } from '../controllers/BillingController';
-import { billingRateLimiter } from './middlewares/rateLimit';
+import {
+  anonymousTipRateLimiter,
+  billingRateLimiter,
+} from './middlewares/rateLimit';
 import { validateBody } from '../validation/validate';
 import { changePlanSchema, checkoutSchema } from '../validation/billing';
 
@@ -11,20 +14,24 @@ const controller = new BillingController();
 // memory-store limiter with a Redis one after this module has loaded.
 const sessionLimiter: express.RequestHandler = (req, res, next) =>
   billingRateLimiter(req, res, next);
+const anonymousTipLimiter: express.RequestHandler = (req, res, next) =>
+  anonymousTipRateLimiter(req, res, next);
 
 // The plan catalog is public: prices are public information.
 BillingRouter.get('/plans', (req, res, next) =>
   controller.listPlans(req, res).catch(next),
 );
 
-// Tips are public too, and so is buying one: no session needed. The limiter
-// keys on the account when there is one, else on the IP.
+// Tips are public too, and so is buying one: no session needed. Signed in,
+// the per-account limit applies; signed out, also one shared bucket for every
+// anonymous tipper (see createAnonymousTipRateLimiter).
 BillingRouter.get('/tips', (req, res, next) =>
   controller.listTips(req, res).catch(next),
 );
 BillingRouter.post(
   '/tip',
   sessionLimiter,
+  anonymousTipLimiter,
   validateBody(checkoutSchema),
   (req, res, next) => controller.createTip(req, res).catch(next),
 );
