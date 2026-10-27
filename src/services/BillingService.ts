@@ -237,15 +237,21 @@ export class BillingService {
     // letting Checkout create an untagged one: the tag is what lets
     // `_findCustomer` tell this account's customer from another account's on
     // the same email.
+    // Two first checkouts at once (two tabs, a double submit) both find no
+    // customer. The idempotency key gives them the same one, so the expiry
+    // below closes the other's open checkout.
     const customer =
       existing ??
-      (await stripe.createCustomer({
-        ...(account.email ? { email: account.email } : {}),
-        metadata: { app_user_id: account.external_id },
-      }));
+      (await stripe.createCustomer(
+        {
+          ...(account.email ? { email: account.email } : {}),
+          metadata: { app_user_id: account.external_id },
+        },
+        { idempotencyKey: `customer-create:${account.external_id}` },
+      ));
 
     // One payable checkout per customer: the guard above only ran for this one.
-    if (existing) await this._expireOpenCheckouts(stripe, existing.id);
+    await this._expireOpenCheckouts(stripe, customer.id);
 
     const metadata = {
       app_user_id: account.external_id,
@@ -363,6 +369,33 @@ export class BillingService {
       await this._resolveChange(account, input.priceId);
 
     if (isUpgrade) {
+      // Release a scheduled downgrade before upgrading, not after the upgrade
+      // is paid: a payment the bank clears later (3DS, a slow method) has no
+      // request left to release it, and at the period end the schedule would
+      // move them off the plan they paid for. The cost: if this upgrade is
+      // never paid, the downgrade they scheduled is gone too. If the release
+      // fails, nothing is charged.
+      if (subscription.schedule) {
+        try {
+          await stripe.releaseSchedule(subscription.schedule);
+        } catch (err) {
+          this._logger.log(
+            {
+              origin: 'BillingService.changePlan',
+              message: `could not release the scheduled downgrade before upgrading: ${err.message}`,
+              data: {
+                id_user: account.id_user,
+                schedule: subscription.schedule,
+              },
+            },
+            'error',
+          );
+          throw unavailable(
+            'Could not update your subscription. Try again in a moment.',
+          );
+        }
+      }
+
       const updated = await stripe.updateSubscription(subscription.id, {
         items: [{ id: item.id, price: target.price_id }],
         proration_behavior: 'always_invoice',
@@ -384,27 +417,6 @@ export class BillingService {
         );
       }
 
-      // Only once the upgrade is paid: a downgrade scheduled earlier would
-      // otherwise move them off the plan they just bought at the period end.
-      if (subscription.schedule) {
-        try {
-          await stripe.releaseSchedule(subscription.schedule);
-        } catch (err) {
-          // Paid and applied, so this is the lesser problem, and the next
-          // changePlan reaches `_releaseStaleSchedule` and clears it.
-          this._logger.log(
-            {
-              origin: 'BillingService.changePlan',
-              message: `could not release the pending schedule after upgrading: ${err.message}`,
-              data: {
-                id_user: account.id_user,
-                schedule: subscription.schedule,
-              },
-            },
-            'error',
-          );
-        }
-      }
       this._logger.log({
         origin: 'BillingService.changePlan',
         message: 'plan upgraded',

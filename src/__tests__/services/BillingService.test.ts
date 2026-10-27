@@ -152,14 +152,16 @@ function fakeStripe(
     released: [] as string[],
     previews: [] as StripeInvoicePreviewParams[],
     expired: [] as string[],
+    idempotencyKeys: [] as Array<string | undefined>,
     // What Stripe's search sees; tests empty it to model search lag.
     searchable: null as StripeCustomer[] | null,
     // The customer's open Checkout Sessions.
     openSessions: [] as Array<{ id: string; mode: string }>,
   };
   const client: StripeClient = {
-    async createCustomer(params) {
+    async createCustomer(params, options) {
       calls.customersCreated.push(params);
+      calls.idempotencyKeys.push(options?.idempotencyKey);
       return { id: 'cus_new', created: 2, metadata: params.metadata };
     },
     async listSubscriptions() {
@@ -676,6 +678,21 @@ describe('BillingService customer resolution and portal', () => {
     expect(b.calls.updates).toHaveLength(1);
   });
 
+  it('a first checkout creates the customer idempotently and still closes open checkouts', async () => {
+    // Two tabs at once: neither finds a customer; the shared key gives both
+    // the same one, so each checkout closes the other's.
+    const { client, calls } = fakeStripe([], []);
+    calls.openSessions = [{ id: 'cs_other_tab', mode: 'subscription' }];
+    await service(client).createCheckout(SESSION_USER, {
+      priceId: 'price_pro_year',
+      ...URLS,
+    });
+    expect(calls.idempotencyKeys).toEqual([
+      `customer-create:${ACCOUNT.external_id}`,
+    ]);
+    expect(calls.expired).toEqual(['cs_other_tab']);
+  });
+
   it('a checkout expires in 31 minutes and closes the customer’s earlier open checkouts', async () => {
     const { client, calls } = fakeStripe([CUSTOMER], []);
     calls.openSessions = [
@@ -1073,18 +1090,30 @@ describe('BillingService.changePlan', () => {
     ).toBe('503 BILLING_UNAVAILABLE');
   });
 
-  it('upgrading cancels a downgrade that was already scheduled', async () => {
+  it('upgrading releases a scheduled downgrade before charging', async () => {
     const { client, calls } = fakeStripe(
       [CUSTOMER],
       [subscription('price_lite_year', { schedule: 'sub_sched_pending' })],
     );
+    const order: string[] = [];
+    const release = client.releaseSchedule;
+    client.releaseSchedule = async (id) => {
+      order.push('release');
+      return release(id);
+    };
+    const update = client.updateSubscription;
+    client.updateSubscription = async (id, params) => {
+      order.push('upgrade');
+      return update(id, params);
+    };
     await service(client).changePlan(SESSION_USER, {
       priceId: 'price_pro_year',
     });
     expect(calls.released).toEqual(['sub_sched_pending']);
+    expect(order).toEqual(['release', 'upgrade']);
   });
 
-  it('an upgrade waiting on payment does not hand over the plan, nor drop the scheduled downgrade', async () => {
+  it('an upgrade waiting on payment does not hand over the plan, and its downgrade is already gone', async () => {
     const { client, calls } = fakeStripe(
       [CUSTOMER],
       [subscription('price_lite_year', { schedule: 'sub_sched_pending' })],
@@ -1098,10 +1127,12 @@ describe('BillingService.changePlan', () => {
         service(client).changePlan(SESSION_USER, { priceId: 'price_pro_year' }),
       ),
     ).toBe('402 UPGRADE_PAYMENT_PENDING');
-    expect(calls.released).toEqual([]);
+    // Released up front: when the bank clears it later, no schedule is left
+    // to move them back down at the period end.
+    expect(calls.released).toEqual(['sub_sched_pending']);
   });
 
-  it('an upgrade that went through still succeeds if releasing the old schedule fails', async () => {
+  it('if the scheduled downgrade cannot be released, nothing is charged', async () => {
     const { client, calls } = fakeStripe(
       [CUSTOMER],
       [subscription('price_lite_year', { schedule: 'sub_sched_stuck' })],
@@ -1109,11 +1140,12 @@ describe('BillingService.changePlan', () => {
     client.releaseSchedule = async () => {
       throw new Error('Stripe is having a moment');
     };
-    const result = await service(client).changePlan(SESSION_USER, {
-      priceId: 'price_pro_year',
-    });
-    expect(result.effective).toBe('now');
-    expect(calls.updates[0].params.proration_behavior).toBe('always_invoice');
+    expect(
+      await codeOf(() =>
+        service(client).changePlan(SESSION_USER, { priceId: 'price_pro_year' }),
+      ),
+    ).toBe('503 BILLING_UNAVAILABLE');
+    expect(calls.updates).toEqual([]);
   });
 
   it('an upgrade the bank cleared late does not revert at period end', async () => {

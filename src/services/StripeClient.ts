@@ -112,10 +112,12 @@ export interface StripeInvoicePreviewParams {
 }
 
 export interface StripeClient {
-  createCustomer(params: {
-    email?: string;
-    metadata: Record<string, string>;
-  }): Promise<StripeCustomer>;
+  // `idempotencyKey`: Stripe answers a repeat within 24 hours with the
+  // customer the first call created, instead of a second one.
+  createCustomer(
+    params: { email?: string; metadata: Record<string, string> },
+    options?: { idempotencyKey?: string },
+  ): Promise<StripeCustomer>;
   createCheckoutSession(
     params: StripeCheckoutSessionParams,
   ): Promise<{ id: string; url: string | null }>;
@@ -180,11 +182,16 @@ export class StripeSdkClient implements StripeClient {
     });
   }
 
-  async createCustomer(params: {
-    email?: string;
-    metadata: Record<string, string>;
-  }): Promise<StripeCustomer> {
-    return (await this._stripe.customers.create(params)) as StripeCustomer;
+  async createCustomer(
+    params: { email?: string; metadata: Record<string, string> },
+    options?: { idempotencyKey?: string },
+  ): Promise<StripeCustomer> {
+    return (await this._stripe.customers.create(
+      params,
+      options?.idempotencyKey
+        ? { idempotencyKey: options.idempotencyKey }
+        : undefined,
+    )) as StripeCustomer;
   }
 
   async createCheckoutSession(params: StripeCheckoutSessionParams) {
