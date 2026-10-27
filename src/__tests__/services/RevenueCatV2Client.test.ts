@@ -56,6 +56,7 @@ describe('RevenueCatV2Client.fetchActiveStatus', () => {
       active: false,
       expiresMs: null,
       entitlementIds: [],
+      found: false,
     });
   });
 

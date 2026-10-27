@@ -8,6 +8,7 @@ import {
   StripeClient,
   StripeCustomer,
   StripeInvoicePreview,
+  StripeSchedulePhase,
   StripeSubscription,
 } from './StripeClient';
 import { ApiError, ApiErrorCode } from '../types/apiError';
@@ -214,6 +215,7 @@ export class BillingService {
       ? this._skippedStoreCheck(account)
       : await this._subscriptionService.fetchLiveEntitlements(
           account.external_id,
+          { unknownCustomerIsInactive: true },
         );
     if (!rc) {
       throw unavailable(
@@ -430,11 +432,15 @@ export class BillingService {
     const periodEnd = periodEndOf(subscription);
 
     // Stripe unsets what an update omits, so the current phase is re-sent as
-    // it stands, start_date included.
+    // it stands: start_date, and the discount, metadata, tax rates and payment
+    // method `from_subscription` copied in. The new phase keeps the metadata
+    // (`app_user_id`); a discount bought for the current plan stays with it.
     const currentPhase = schedule.phases?.[0];
+    const kept = phaseSettings(currentPhase);
     await stripe.updateSchedule(schedule.id, {
       phases: [
         {
+          ...kept,
           items: [{ price: item.price.id, quantity: 1 }],
           ...(currentPhase?.start_date !== undefined
             ? { start_date: currentPhase.start_date }
@@ -444,6 +450,7 @@ export class BillingService {
         {
           items: [{ price: target.price_id, quantity: 1 }],
           proration_behavior: 'none',
+          ...(kept.metadata ? { metadata: kept.metadata } : {}),
         },
       ],
       end_behavior: 'release',
@@ -733,6 +740,15 @@ export class BillingService {
     id_user: number;
   }): Promise<SubscriptionUser> {
     const account = await this._userDB.getActiveUserById(sessionUser.id_user);
+    // null: the read failed, retry. undefined: no active account, and no
+    // retry will find one.
+    if (account === undefined) {
+      throw new ApiError(
+        ApiErrorCode.ACCOUNT_INACTIVE,
+        403,
+        'This account no longer exists. Sign in again.',
+      );
+    }
     if (!account?.external_id) {
       throw unavailable('Could not load the account. Try again in a moment.');
     }
@@ -851,6 +867,30 @@ export function parseTips(raw: unknown[]): BillingTip[] {
     'STRIPE_TIPS',
     'BillingService.parseTips',
   );
+}
+
+// The settings of a schedule phase that an update must re-send, as ids.
+function phaseSettings(
+  phase: StripeSchedulePhase | undefined,
+): Partial<StripeSchedulePhase> {
+  if (!phase) return {};
+  const id = (v: string | { id: string }) => (typeof v === 'string' ? v : v.id);
+  const discounts = (phase.discounts ?? [])
+    .map((d) =>
+      Object.fromEntries(Object.entries(d).filter(([, v]) => v != null)),
+    )
+    .filter((d) => Object.keys(d).length > 0);
+  const taxRates = (phase.default_tax_rates ?? []).map(id);
+  return {
+    ...(discounts.length ? { discounts } : {}),
+    ...(phase.metadata && Object.keys(phase.metadata).length
+      ? { metadata: phase.metadata }
+      : {}),
+    ...(taxRates.length ? { default_tax_rates: taxRates } : {}),
+    ...(phase.default_payment_method
+      ? { default_payment_method: id(phase.default_payment_method) }
+      : {}),
+  };
 }
 
 const isoOrNull = (unixSeconds: number | null): string | null =>

@@ -160,6 +160,20 @@ describe('BillingController', () => {
       expect.objectContaining({ error: 'BILLING_UNAVAILABLE' }),
     );
 
+    // A request Stripe refuses (an unknown price, a bad configuration) is
+    // ours to fix, not a reason to retry.
+    billing.previewChange.mockRejectedValue(
+      Object.assign(new Error('No such price'), {
+        type: 'StripeInvalidRequestError',
+      }),
+    );
+    const invalid = makeRes();
+    await controller.previewChangePlan(
+      { user: USER, body: { price_id: 'p' } },
+      invalid,
+    );
+    expect(invalid.status).toHaveBeenCalledWith(500);
+
     billing.previewChange.mockRejectedValue(new Error('bug'));
     const res500 = makeRes();
     await controller.previewChangePlan(

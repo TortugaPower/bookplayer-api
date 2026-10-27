@@ -8,6 +8,12 @@ import {
   portalQuerySchema,
 } from '../validation/billing';
 
+const TRANSIENT_STRIPE_ERRORS = new Set([
+  'StripeConnectionError',
+  'StripeAPIError',
+  'StripeRateLimitError',
+]);
+
 // /v1/billing: web subscriptions through Stripe. Bodies are validated at the
 // route (validateBody); every error answers `{ message, error }`.
 export class BillingController {
@@ -170,11 +176,12 @@ export class BillingController {
       },
       'error',
     );
-    // A Stripe SDK error (network, rate limit, a request Stripe refused) is
-    // Stripe's state, not a bug of ours: tell the client to try again.
+    // Stripe unreachable, failing or rate limiting us: retry later. Anything
+    // else Stripe refuses (an unknown price, a bad portal configuration, a key
+    // without permission) is our configuration, and stays a 500 to fix.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const type = (err as any)?.type;
-    if (typeof type === 'string' && type.startsWith('Stripe')) {
+    if (TRANSIENT_STRIPE_ERRORS.has(type)) {
       return res.status(503).json({
         message: 'Billing is temporarily unavailable. Try again in a moment.',
         error: ApiErrorCode.BILLING_UNAVAILABLE,

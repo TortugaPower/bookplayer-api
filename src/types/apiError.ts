@@ -40,6 +40,9 @@ export enum ApiErrorCode {
   // Billing is not configured (no STRIPE_SECRET_KEY), or Stripe/RevenueCat
   // could not confirm the account's state. Retry later.
   BILLING_UNAVAILABLE = 'BILLING_UNAVAILABLE',
+  // The session names an account that is gone or deactivated (a deleted
+  // account whose token is still valid). Retrying can't help: sign in again.
+  ACCOUNT_INACTIVE = 'ACCOUNT_INACTIVE',
 }
 
 export class ApiError extends Error {

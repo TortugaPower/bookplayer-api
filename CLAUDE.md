@@ -419,6 +419,7 @@ Errors are `{ message, error }` with upper-case codes (`ApiErrorCode`): `PRICE_I
 `RETURN_URL_NOT_ALLOWED` 400 (not on `BILLING_RETURN_ORIGINS`), `ALREADY_SUBSCRIBED` 409 (a live Stripe
 subscription, or an active `pro`/`lite` entitlement from a store per RevenueCat), `ALREADY_ON_PLAN` 409,
 `NO_SUBSCRIPTION` 404, `BILLING_NO_CUSTOMER` 404 (never bought on the web), `UPGRADE_PAYMENT_PENDING` 402,
+`ACCOUNT_INACTIVE` 403 (the session's account is gone or deactivated: sign in again),
 `BILLING_UNAVAILABLE` 503 (no `STRIPE_SECRET_KEY`, or Stripe/RevenueCat couldn't confirm the state; checkout
 fails closed; outside production with `REVENUECAT_PROJECT_ID` or `REVENUECAT_API_V2_KEY` unset, checkout skips the
 store-entitlement check with a warning instead). Bad bodies are 422 `invalid_request`, no session 401, and the session routes share

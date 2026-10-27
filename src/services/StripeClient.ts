@@ -70,6 +70,17 @@ export interface StripeSchedulePhase {
   start_date?: number | 'now';
   end_date?: number;
   proration_behavior?: 'create_prorations' | 'always_invoice' | 'none';
+  // Copied from the subscription by `from_subscription`. Stripe unsets any of
+  // these an update leaves out. Read back, tax rates and the payment method
+  // may be objects; they are sent as ids.
+  discounts?: Array<{
+    coupon?: string | null;
+    discount?: string | null;
+    promotion_code?: string | null;
+  }> | null;
+  metadata?: Record<string, string> | null;
+  default_tax_rates?: Array<string | { id: string }> | null;
+  default_payment_method?: string | { id: string } | null;
 }
 
 export interface StripeSubscriptionSchedule {

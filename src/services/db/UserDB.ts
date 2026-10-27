@@ -121,17 +121,18 @@ export class UserDB {
   // read from the row rather than the JWT: a token's email is whatever the
   // login provider reported, and billing has to resolve the same Stripe
   // customer whichever way the user signed in.
+  // undefined when no active user has the id; null when the read failed.
   async getActiveUserById(
     user_id: number,
     trx?: Knex.Transaction,
-  ): Promise<SubscriptionUser | null> {
+  ): Promise<SubscriptionUser | null | undefined> {
     try {
       const db = trx || this.db;
       const row = await db('users')
         .select('id_user', 'email', 'external_id')
         .where({ id_user: user_id, active: true })
         .first();
-      return row || null;
+      return row || undefined;
     } catch (err) {
       this._logger.log({
         origin: 'UserDB.getActiveUserById',

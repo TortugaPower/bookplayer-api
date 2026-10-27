@@ -233,7 +233,8 @@ function service(
     portalConfigurationId: string;
     skipStoreEntitlementCheck: boolean;
   }> = {},
-  account: typeof ACCOUNT | null = ACCOUNT,
+  // null: the read failed; 'missing': no active account.
+  account: typeof ACCOUNT | null | 'missing' = ACCOUNT,
 ): BillingService {
   const subscriptionService = {
     fetchLiveEntitlements: async (externalId: string) => {
@@ -241,7 +242,10 @@ function service(
       return rcState;
     },
   };
-  const userDB = { getActiveUserById: async () => account };
+  const userDB = {
+    getActiveUserById: async () =>
+      account === 'missing' ? undefined : account,
+  };
   const s = new BillingService(
     client,
     {
@@ -545,6 +549,7 @@ describe('BillingService.createCheckout', () => {
 
   it('an account that cannot be loaded is not sent to Checkout', async () => {
     const { client, calls } = fakeStripe([]);
+    // The read failed: retry.
     expect(
       await codeOf(() =>
         service(client, {}, null).createCheckout(SESSION_USER, {
@@ -553,6 +558,15 @@ describe('BillingService.createCheckout', () => {
         }),
       ),
     ).toBe('503 BILLING_UNAVAILABLE');
+    // No active account (deleted, token still valid): no retry can help.
+    expect(
+      await codeOf(() =>
+        service(client, {}, 'missing').createCheckout(SESSION_USER, {
+          priceId: 'price_pro_year',
+          ...URLS,
+        }),
+      ),
+    ).toBe('403 ACCOUNT_INACTIVE');
     expect(calls.checkout).toEqual([]);
   });
 });
@@ -959,6 +973,48 @@ describe('BillingService.changePlan', () => {
     expect(phases[0].end_date).toBe(PERIOD_END);
     // Same first price as the live item: their own downgrade, not stale.
     expect(calls.released).toEqual([]);
+  });
+
+  it("a downgrade keeps the current phase's discount and settings, and the metadata after", async () => {
+    const started = PERIOD_END - 365 * 86_400;
+    const { client, calls } = fakeStripe(
+      [CUSTOMER],
+      [subscription('price_pro_year', { schedule: 'sub_sched_promo' })],
+      {
+        sub_sched_promo: {
+          id: 'sub_sched_promo',
+          phases: [
+            {
+              items: [{ price: 'price_pro_year', quantity: 1 }],
+              start_date: started,
+              end_date: PERIOD_END,
+              // As Stripe reads them back: nulls, and objects for ids.
+              discounts: [
+                { coupon: null, discount: 'di_launch', promotion_code: null },
+              ],
+              metadata: { app_user_id: ACCOUNT.external_id },
+              default_tax_rates: [{ id: 'txr_1' }],
+              default_payment_method: { id: 'pm_1' },
+            },
+          ],
+        },
+      },
+    );
+    await service(client).changePlan(SESSION_USER, {
+      priceId: 'price_lite_year',
+    });
+
+    const [{ phases }] = calls.schedulePhases;
+    expect(phases[0]).toMatchObject({
+      discounts: [{ discount: 'di_launch' }],
+      metadata: { app_user_id: ACCOUNT.external_id },
+      default_tax_rates: ['txr_1'],
+      default_payment_method: 'pm_1',
+      start_date: started,
+      end_date: PERIOD_END,
+    });
+    expect(phases[1].metadata).toEqual({ app_user_id: ACCOUNT.external_id });
+    expect(phases[1].discounts).toBeUndefined();
   });
 
   it('reads the period end from the subscription item, as newer API versions report it', async () => {
