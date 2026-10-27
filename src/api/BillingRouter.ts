@@ -1,6 +1,7 @@
 import express from 'express';
 import { BillingController } from '../controllers/BillingController';
 import {
+  anonymousTipBackstopLimiter,
   anonymousTipRateLimiter,
   billingRateLimiter,
 } from './middlewares/rateLimit';
@@ -16,6 +17,8 @@ const sessionLimiter: express.RequestHandler = (req, res, next) =>
   billingRateLimiter(req, res, next);
 const anonymousTipLimiter: express.RequestHandler = (req, res, next) =>
   anonymousTipRateLimiter(req, res, next);
+const anonymousTipBackstop: express.RequestHandler = (req, res, next) =>
+  anonymousTipBackstopLimiter(req, res, next);
 
 // The plan catalog is public: prices are public information.
 BillingRouter.get('/plans', (req, res, next) =>
@@ -23,8 +26,8 @@ BillingRouter.get('/plans', (req, res, next) =>
 );
 
 // Tips are public too, and so is buying one: no session needed. Signed in,
-// the per-account limit applies; signed out, also one shared bucket for every
-// anonymous tipper (see createAnonymousTipRateLimiter).
+// the per-account limit applies; signed out, also a per-IP limit and a shared
+// backstop (see createAnonymousTipLimiter).
 BillingRouter.get('/tips', (req, res, next) =>
   controller.listTips(req, res).catch(next),
 );
@@ -32,6 +35,7 @@ BillingRouter.post(
   '/tip',
   sessionLimiter,
   anonymousTipLimiter,
+  anonymousTipBackstop,
   validateBody(checkoutSchema),
   (req, res, next) => controller.createTip(req, res).catch(next),
 );

@@ -423,8 +423,8 @@ subscription, or an active `pro`/`lite` entitlement from a store per RevenueCat)
 `BILLING_UNAVAILABLE` 503 (no `STRIPE_SECRET_KEY`, or Stripe/RevenueCat couldn't confirm the state; checkout
 fails closed; outside production with `REVENUECAT_PROJECT_ID` or `REVENUECAT_API_V2_KEY` unset, checkout skips the
 store-entitlement check with a warning instead). Bad bodies are 422 `invalid_request`, no session 401, and the session routes share
-`billingRateLimiter` (10/min per account). Signed-out tips also share one bucket of 20/min
-(`anonymousTipRateLimiter`), keyed on nothing a caller can rewrite.
+`billingRateLimiter` (10/min per account). Signed-out tips also get 5/min per IP
+(`anonymousTipRateLimiter`) and a shared 60/min backstop (`anonymousTipBackstopLimiter`).
 
 ### Retention Routes (`/v1/retention`)
 

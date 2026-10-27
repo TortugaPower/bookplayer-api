@@ -101,19 +101,22 @@ function createBillingRateLimiter(): RateLimitRequestHandler {
 }
 
 // Tips need no account, and each one creates a Stripe Checkout Session on the
-// Stripe account paying users also check out on. Signed-out tips share ONE
-// bucket instead of one per IP: the IP comes from X-Forwarded-For, which a
-// caller can rewrite on every request, so a per-IP key could be sidestepped.
-// Signed-in tips skip it and keep billingRateLimiter's per-account limit.
-export function createAnonymousTipRateLimiter(
-  max = 20,
+// Stripe account paying users also check out on. Signed-out tips get two
+// limits on top of billingRateLimiter: a low one per IP (getClientIp, which a
+// caller can't forge), and a higher one shared by every signed-out tipper, a
+// backstop for many addresses at once. Signed-in tips skip both and keep the
+// per-account limit.
+function createAnonymousTipLimiter(
+  scope: 'ip' | 'all',
+  max: number,
 ): RateLimitRequestHandler {
   return rateLimit({
     ...baseOptions,
     windowMs: 60 * 1000,
     max,
-    store: createRedisStore('tip_anonymous'),
-    keyGenerator: () => 'anonymous',
+    store: createRedisStore(`tip_anonymous_${scope}`),
+    keyGenerator: (req: IRequest) =>
+      scope === 'ip' ? `anon:${getClientIp(req)}` : 'anonymous',
     skip: (req: IRequest) => Boolean(req.user?.id_user),
     handler: (_req: IRequest, res: IResponse) => {
       res.status(429).json({
@@ -123,12 +126,18 @@ export function createAnonymousTipRateLimiter(
   });
 }
 
+export const createAnonymousTipRateLimiter = (max = 5) =>
+  createAnonymousTipLimiter('ip', max);
+export const createAnonymousTipBackstopLimiter = (max = 60) =>
+  createAnonymousTipLimiter('all', max);
+
 // Rate limiters - initialized with memory store, upgraded to Redis if available
 export let globalRateLimiter: RateLimitRequestHandler = createGlobalRateLimiter();
 export let authRateLimiter: RateLimitRequestHandler = createAuthRateLimiter();
 export let emailVerificationRateLimiter: RateLimitRequestHandler = createEmailVerificationRateLimiter();
 export let billingRateLimiter: RateLimitRequestHandler = createBillingRateLimiter();
 export let anonymousTipRateLimiter: RateLimitRequestHandler = createAnonymousTipRateLimiter();
+export let anonymousTipBackstopLimiter: RateLimitRequestHandler = createAnonymousTipBackstopLimiter();
 
 // Initialize Redis connection and recreate rate limiters with Redis store
 export async function initRateLimitRedis(): Promise<void> {
@@ -156,6 +165,7 @@ export async function initRateLimitRedis(): Promise<void> {
     emailVerificationRateLimiter = createEmailVerificationRateLimiter();
     billingRateLimiter = createBillingRateLimiter();
     anonymousTipRateLimiter = createAnonymousTipRateLimiter();
+    anonymousTipBackstopLimiter = createAnonymousTipBackstopLimiter();
     console.log('Rate limiters upgraded to Redis store');
   } catch (err) {
     console.error('Rate limit Redis connection failed, using memory store:', err.message);
