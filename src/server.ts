@@ -29,6 +29,12 @@ export class Server {
     await this._cache.connectCacheService();
 
     const app = express();
+    // The proxies in front of the API: in production the AWS load balancer
+    // (TRUST_PROXY_HOPS=1). req.ip is then the address that proxy saw, read
+    // from the right end of X-Forwarded-For, where a client can't write.
+    // Unset (local), req.ip is the socket's address.
+    const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS);
+    if (trustProxyHops > 0) app.set('trust proxy', trustProxyHops);
     // 100 KB, except the routes that parse their own larger body after their
     // subscription check (POST /v1/library/status)
     app.use(jsonBody);

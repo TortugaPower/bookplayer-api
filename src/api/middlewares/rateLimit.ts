@@ -5,13 +5,10 @@ import { IRequest, IResponse } from '../../types/http';
 
 let redisClient: ReturnType<typeof createClient> | null = null;
 
-// Helper to get client IP from request, handling proxies
-function getClientIp(req: IRequest): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (forwarded) {
-    const ip = Array.isArray(forwarded) ? forwarded[0] : forwarded.split(',')[0];
-    return ip.trim();
-  }
+// The client's address, as Express resolves it under `trust proxy` (see
+// server.ts). Never the first X-Forwarded-For entry: the client writes that
+// one, and rewriting it per request would give each request a fresh limit.
+export function getClientIp(req: IRequest): string {
   return req.ip || 'unknown';
 }
 

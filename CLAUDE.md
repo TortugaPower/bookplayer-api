@@ -696,6 +696,7 @@ describe('MyService', () => {
 | `LOG_LEVEL` | debug / info / warn / error |
 | `REDIS_URL` | Redis connection URL |
 | `CORS_ORIGIN` | Allowed CORS origins |
+| `TRUST_PROXY_HOPS` | Proxies in front of the API (`1` in production: the load balancer). Rate limits key on the client address the last trusted proxy saw; empty locally |
 | `STRIPE_SECRET_KEY` | Enables `/v1/billing`; without it those routes answer 503 `BILLING_UNAVAILABLE` and the `stripe` package is never loaded |
 | `STRIPE_PLANS` | JSON array of `{ price_id, plan_code, name, amount, currency, interval }` (see `development.env.template`) |
 | `STRIPE_TIPS` | JSON array of `{ price_id, tip_code, name, amount, currency }`, one-time prices (see `development.env.template`) |

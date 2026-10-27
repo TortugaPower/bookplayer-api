@@ -61,6 +61,8 @@ export const Envs = () => {
       // JSON array: [{ price_id, plan_code, name, amount, currency, interval }]
       .prop('STRIPE_PLANS', S.string())
       .prop('STRIPE_TIPS', S.string())
+      // Proxies in front of the API (production: 1, the load balancer).
+      .prop('TRUST_PROXY_HOPS', S.string())
       // Comma-separated origins (https://host) or schemes (bookplayer:) that
       // success/cancel/return URLs may point to.
       .prop('BILLING_RETURN_ORIGINS', S.string())

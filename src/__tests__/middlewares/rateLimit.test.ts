@@ -1,7 +1,10 @@
 import { describe, it, expect } from '@jest/globals';
 import express from 'express';
 import request from 'supertest';
-import { createAnonymousTipRateLimiter } from '../../api/middlewares/rateLimit';
+import {
+  createAnonymousTipRateLimiter,
+  getClientIp,
+} from '../../api/middlewares/rateLimit';
 
 function makeApp() {
   const app = express();
@@ -38,5 +41,29 @@ describe('createAnonymousTipRateLimiter', () => {
       expect(res.status).toBe(200);
     }
     expect((await request(app).post('/tip')).status).toBe(200);
+  });
+});
+
+describe('getClientIp', () => {
+  function ipApp(trustProxyHops?: number) {
+    const app = express();
+    if (trustProxyHops) app.set('trust proxy', trustProxyHops);
+    app.get('/ip', (req, res) => res.json({ ip: getClientIp(req as any) }));
+    return app;
+  }
+
+  it('behind the load balancer, takes the address it appended, not the one the client wrote', async () => {
+    const res = await request(ipApp(1))
+      .get('/ip')
+      .set('X-Forwarded-For', '198.51.100.7, 203.0.113.9');
+    expect(res.body.ip).toBe('203.0.113.9');
+  });
+
+  it('without a trusted proxy, ignores X-Forwarded-For entirely', async () => {
+    const res = await request(ipApp())
+      .get('/ip')
+      .set('X-Forwarded-For', '198.51.100.7');
+    expect(res.body.ip).not.toBe('198.51.100.7');
+    expect(res.body.ip).toMatch(/127\.0\.0\.1|::1/);
   });
 });
