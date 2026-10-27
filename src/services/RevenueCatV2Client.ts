@@ -8,6 +8,11 @@ export type RCActiveStatus = {
   // Tier lookup keys (`pro`/`plus`/`lite`), translated from RC's internal
   // entitlement object ids so they match webhooks and SubscriptionTierEnum.
   entitlementIds: string[];
+  // false: RevenueCat has no such customer (404). It has no entitlements,
+  // but callers decide whether that is an answer: billing reads it as "none";
+  // the subscription gate treats it as unconfirmed, because a purchase can
+  // still sit on an anonymous id the app hasn't logged in yet.
+  found?: boolean;
 };
 
 type RCEntitlement = {
@@ -23,12 +28,28 @@ type RCCustomerResponse = {
 
 export class RevenueCatV2Client {
   private readonly _logger = logger;
+  // The missing-credentials warning, logged once per process: it would
+  // otherwise repeat on every subscription check of a development server.
+  private static _warnedUnconfigured = false;
 
   constructor(
     private _restClient: RestClientService = new RestClientService(),
   ) {}
 
   async fetchActiveStatus(externalId: string): Promise<RCActiveStatus> {
+    // Unset, the URL is `projects//customers/…`, which RC also answers 404:
+    // indistinguishable from an unknown customer, so refuse before asking.
+    if (!process.env.REVENUECAT_PROJECT_ID || !process.env.REVENUECAT_API_V2_KEY) {
+      const err = new Error('REVENUECAT_PROJECT_ID / REVENUECAT_API_V2_KEY not set');
+      if (!RevenueCatV2Client._warnedUnconfigured) {
+        RevenueCatV2Client._warnedUnconfigured = true;
+        this._logger.log({
+          origin: 'RevenueCatV2Client.fetchActiveStatus',
+          message: err.message,
+        }, 'warn');
+      }
+      throw err;
+    }
     try {
       const data = (await this._restClient.callService({
         baseURL: process.env.REVENUECAT_API_V2,
@@ -77,8 +98,13 @@ export class RevenueCatV2Client {
         maxExpiresMs = null;
       }
 
-      return { active, expiresMs: maxExpiresMs, entitlementIds: this._toLookupKeys(internalIds) };
+      return { active, expiresMs: maxExpiresMs, entitlementIds: this._toLookupKeys(internalIds), found: true };
     } catch (err) {
+      // An account that never opened an app (or bought anything) has no RC
+      // customer yet. Not an outage; see `found` for what it means.
+      if (err?.response?.status === 404 && err.response.data?.type === 'resource_missing') {
+        return { active: false, expiresMs: null, entitlementIds: [], found: false };
+      }
       this._logger.log({
         origin: 'RevenueCatV2Client.fetchActiveStatus',
         message: err.message,

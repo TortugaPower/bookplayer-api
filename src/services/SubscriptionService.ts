@@ -103,7 +103,14 @@ export class SubscriptionService {
   // denying a paid action: a user who just upgraded (e.g. lite → pro) may have
   // stale local data (pro webhook not yet processed), so we confirm against RC
   // before gating them out. Returns null if RC is unreachable.
-  async fetchLiveEntitlements(externalId: string): Promise<SubscriptionState | null> {
+  // An unknown RC customer is null (unconfirmed) like an unreachable RC,
+  // unless `unknownCustomerIsInactive`: billing, which only asks whether the
+  // account already owns a plan, reads it as "no entitlements". Neither is
+  // cached, so the subscription gate never trusts a billing answer.
+  async fetchLiveEntitlements(
+    externalId: string,
+    options: { unknownCustomerIsInactive?: boolean } = {},
+  ): Promise<SubscriptionState | null> {
     if (!externalId) return null;
     // Throttle forced lookups: this runs on the deny path of
     // `requireSubscription`, so an active-but-wrong-tier user (e.g. `plus`
@@ -114,6 +121,11 @@ export class SubscriptionService {
     if (recent) return recent;
     try {
       const rc = await this._rcV2.fetchActiveStatus(externalId);
+      if (rc.found === false) {
+        return options.unknownCustomerIsInactive
+          ? { active: false, verified: 'rc', subscriptions: [] }
+          : null;
+      }
       const subState: SubscriptionState = {
         active: rc.active,
         verified: 'rc',
@@ -202,6 +214,9 @@ export class SubscriptionService {
     let rcEntitlements: string[] | null = null;
     try {
       const rc = await this._rcV2.fetchActiveStatus(externalId);
+      // No RC customer: unconfirmed, not a cached negative. The purchase may
+      // still be on an anonymous id the app hasn't logged in yet.
+      if (rc.found === false) throw new Error('RC has no such customer');
       rcActive = rc.active;
       rcExpiresMs = rc.expiresMs;
       rcEntitlements = rc.entitlementIds;

@@ -50,7 +50,24 @@ export const Envs = () => {
       .prop('APP_VERSION', S.string().required())
       .prop('WEBAUTHN_RP_ID', S.string())
       .prop('WEBAUTHN_RP_NAME', S.string())
-      .prop('ANDROID_RELEASE_HASH', S.string().required()),
+      // Development only (ignored when NODE_ENV=production): extra origins a local
+      // web client may complete passkey ceremonies from, comma-separated.
+      .prop('WEBAUTHN_EXTRA_ORIGINS', S.string())
+      .prop('ANDROID_RELEASE_HASH', S.string().required())
+      // Web billing (Stripe Checkout, linked to RevenueCat by its Stripe app).
+      // All optional: without STRIPE_SECRET_KEY the /v1/billing routes answer
+      // 503 BILLING_UNAVAILABLE and the rest of the API is unaffected.
+      .prop('STRIPE_SECRET_KEY', S.string())
+      // JSON array: [{ price_id, plan_code, name, amount, currency, interval }]
+      .prop('STRIPE_PLANS', S.string())
+      .prop('STRIPE_TIPS', S.string())
+      // Proxies in front of the API (production: 1, the load balancer).
+      .prop('TRUST_PROXY_HOPS', S.string())
+      // Comma-separated origins (https://host) or schemes (bookplayer:) that
+      // success/cancel/return URLs may point to.
+      .prop('BILLING_RETURN_ORIGINS', S.string())
+      .prop('STRIPE_PORTAL_CONFIGURATION_ID', S.string())
+      .prop('STRIPE_TIMEOUT_MS', S.string()),
   };
   envSchema(scheme);
 };

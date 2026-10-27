@@ -41,9 +41,18 @@ export class PasskeyService {
   // required at boot (config/envs.ts) and accepts a comma-separated list: with Play App
   // Signing the store build asserts with Google's app-signing cert while locally-signed
   // release builds assert with the upload cert — both need to be allowed.
+  // WEBAUTHN_EXTRA_ORIGINS (comma-separated, development only: ignored when
+  // NODE_ENV=production) adds the origins a local web client runs on, e.g.
+  // http://localhost:6767 with WEBAUTHN_RP_ID=localhost.
   private readonly expectedOrigins = [
     this.origin,
     ...this.androidReleaseHash!.split(',').map((hash) => hash.trim()).filter(Boolean),
+    ...(process.env.NODE_ENV === 'production'
+      ? []
+      : (process.env.WEBAUTHN_EXTRA_ORIGINS || '')
+          .split(',')
+          .map((origin) => origin.trim())
+          .filter(Boolean)),
   ];
   private readonly challengeTTL = 300;
 

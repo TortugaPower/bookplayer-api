@@ -284,6 +284,36 @@ describe('SubscriptionService.isActive', () => {
   });
 });
 
+describe('SubscriptionService.isActive with an unknown RC customer', () => {
+  it('is not a confirmed, cached "not subscribed"', async () => {
+    delete process.env.SUBSCRIPTION_CACHE_ENABLED;
+    const service = new SubscriptionService();
+    (service as any)._logger = mockLoggerService;
+    (service as any)._subscriptionDB.db = getTestTransaction();
+    (service as any)._subscriptionDB._logger = mockLoggerService;
+    (service as any)._userDB.db = getTestTransaction();
+    (service as any)._userDB._logger = mockLoggerService;
+    const cache = makeCacheMock();
+    (service as any)._cache = cache;
+    const rcMock = makeRcMock({ active: false, expiresMs: null });
+    (rcMock.fetchActiveStatus as any).mockResolvedValue({
+      active: false,
+      expiresMs: null,
+      entitlementIds: [],
+      found: false,
+    });
+    (service as any)._rcV2 = rcMock;
+    const externalId = randomUUID();
+
+    const result = await service.isActive(externalId);
+
+    expect(result?.active).toBe(false);
+    // 'local': checkSubscription then answers without the stop code.
+    expect(result?.verified).toBe('local');
+    expect(cache.store.has(`sub:v2:${externalId}`)).toBe(false);
+  });
+});
+
 describe('SubscriptionService.invalidateCache', () => {
   it('deletes the cache entry', async () => {
     const service = new SubscriptionService();
@@ -369,6 +399,27 @@ describe('SubscriptionService.fetchLiveEntitlements', () => {
     await service.fetchLiveEntitlements(externalId);
 
     expect(rcMock.fetchActiveStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('an RC customer that does not exist is unconfirmed, unless billing asks', async () => {
+    const externalId = randomUUID();
+    const rcMock = makeRcMock({ active: false, expiresMs: null });
+    (rcMock.fetchActiveStatus as any).mockResolvedValue({
+      active: false,
+      expiresMs: null,
+      entitlementIds: [],
+      found: false,
+    });
+    (service as any)._rcV2 = rcMock;
+
+    // The library gate: unconfirmed (no not_subscribed code), as if RC were down.
+    expect(await service.fetchLiveEntitlements(externalId)).toBeNull();
+    // Billing: no customer means no plan to sell twice.
+    expect(
+      await service.fetchLiveEntitlements(externalId, { unknownCustomerIsInactive: true }),
+    ).toEqual({ active: false, verified: 'rc', subscriptions: [] });
+    // Neither answer is cached for the gate to trust later.
+    expect(cache.setObject).not.toHaveBeenCalled();
   });
 
   it('returns null and does not cache when RC is unreachable', async () => {

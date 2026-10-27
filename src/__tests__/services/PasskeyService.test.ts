@@ -599,9 +599,43 @@ describe('PasskeyService', () => {
 
   describe('expectedOrigins', () => {
     const originalHash = process.env.ANDROID_RELEASE_HASH;
+    const originalExtra = process.env.WEBAUTHN_EXTRA_ORIGINS;
+    const originalNodeEnv = process.env.NODE_ENV;
+
+    beforeEach(() => {
+      // Tests load the developer's .development.env; don't let its value leak in.
+      delete process.env.WEBAUTHN_EXTRA_ORIGINS;
+    });
 
     afterEach(() => {
       process.env.ANDROID_RELEASE_HASH = originalHash;
+      if (originalExtra === undefined) delete process.env.WEBAUTHN_EXTRA_ORIGINS;
+      else process.env.WEBAUTHN_EXTRA_ORIGINS = originalExtra;
+      process.env.NODE_ENV = originalNodeEnv;
+    });
+
+    it('should append WEBAUTHN_EXTRA_ORIGINS outside production', () => {
+      process.env.ANDROID_RELEASE_HASH = 'android:apk-key-hash:playSigningHash';
+      process.env.WEBAUTHN_EXTRA_ORIGINS = 'http://localhost:6767, http://localhost:3000,';
+      process.env.NODE_ENV = 'development';
+      const svc = new PasskeyService();
+      expect((svc as any).expectedOrigins).toEqual([
+        `https://${process.env.WEBAUTHN_RP_ID}`,
+        'android:apk-key-hash:playSigningHash',
+        'http://localhost:6767',
+        'http://localhost:3000',
+      ]);
+    });
+
+    it('should ignore WEBAUTHN_EXTRA_ORIGINS in production', () => {
+      process.env.ANDROID_RELEASE_HASH = 'android:apk-key-hash:playSigningHash';
+      process.env.WEBAUTHN_EXTRA_ORIGINS = 'http://localhost:6767';
+      process.env.NODE_ENV = 'production';
+      const svc = new PasskeyService();
+      expect((svc as any).expectedOrigins).toEqual([
+        `https://${process.env.WEBAUTHN_RP_ID}`,
+        'android:apk-key-hash:playSigningHash',
+      ]);
     });
 
     it('should allow the web origin plus a single android hash', () => {
