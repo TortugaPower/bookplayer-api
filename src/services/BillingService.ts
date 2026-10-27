@@ -66,6 +66,11 @@ const BLOCKING_ENTITLEMENTS: string[] = [
 // subscription the customer is still on and must not be sold a second time.
 const DEAD_STATUSES = new Set(['canceled', 'incomplete_expired']);
 
+// A Checkout Session stays payable for 24 hours by default, so a second tab,
+// or a store purchase in between, could still complete. Stripe's minimum is 30
+// minutes; one more covers clock skew.
+const CHECKOUT_TTL_SECONDS = 31 * 60;
+
 // Which way a plan change goes. The tier decides first, so Lite yearly -> Pro
 // monthly is an upgrade although it costs less per charge. Within a tier, a
 // longer interval is the upgrade (monthly -> yearly is paid now); only two
@@ -186,12 +191,14 @@ export class BillingService {
       );
     });
     if (existing) {
-      const live = await this._liveSubscription(existing.id).catch((err) => {
-        this._logStripeFailure('BillingService.createCheckout', account, err);
-        throw unavailable(
-          'Could not confirm your subscription status. Try again in a moment.',
-        );
-      });
+      const live = await this._liveSubscription(existing.id, account).catch(
+        (err) => {
+          this._logStripeFailure('BillingService.createCheckout', account, err);
+          throw unavailable(
+            'Could not confirm your subscription status. Try again in a moment.',
+          );
+        },
+      );
       if (live) {
         throw new ApiError(
           ApiErrorCode.ALREADY_SUBSCRIBED,
@@ -235,12 +242,16 @@ export class BillingService {
         metadata: { app_user_id: account.external_id },
       }));
 
+    // One payable checkout per customer: the guard above only ran for this one.
+    if (existing) await this._expireOpenCheckouts(stripe, existing.id);
+
     const metadata = {
       app_user_id: account.external_id,
       plan_code: plan.plan_code,
     };
     const session = await stripe.createCheckoutSession({
       mode: 'subscription',
+      expires_at: Math.floor(Date.now() / 1000) + CHECKOUT_TTL_SECONDS,
       line_items: [{ price: plan.price_id, quantity: 1 }],
       // RevenueCat's Stripe app maps the purchase to this App User ID.
       client_reference_id: account.external_id,
@@ -560,7 +571,7 @@ export class BillingService {
         'No web subscription for this account. Store purchases are managed in that store.',
       );
     }
-    const subscription = await this._liveSubscription(customer.id);
+    const subscription = await this._liveSubscription(customer.id, account);
     if (!subscription) {
       throw new ApiError(
         ApiErrorCode.NO_SUBSCRIPTION,
@@ -597,8 +608,18 @@ export class BillingService {
   ): Promise<StripeSubscription | null> {
     try {
       const customer = await this._findCustomer(account);
-      return customer ? await this._liveSubscription(customer.id) : null;
-    } catch {
+      return customer
+        ? await this._liveSubscription(customer.id, account)
+        : null;
+    } catch (err) {
+      this._logger.log(
+        {
+          origin: 'BillingService._liveSubscriptionFor',
+          message: err?.message,
+          data: { id_user: account.id_user },
+        },
+        'warn',
+      );
       return null;
     }
   }
@@ -639,36 +660,68 @@ export class BillingService {
     }
   }
 
+  // The customer's BookPlayer subscription that isn't over: tagged with the
+  // account's App User ID (every one our Checkout creates), or on a catalog
+  // price. A subscription to another product on the same Stripe account is
+  // never changed, nor counted as owning a plan. A price later retired from
+  // the catalog still counts through the tag.
   private async _liveSubscription(
     customerId: string,
+    account: SubscriptionUser,
   ): Promise<StripeSubscription | null> {
     const subscriptions = await this._requireStripe().listSubscriptions(
       customerId,
     );
-    return subscriptions.find((s) => !DEAD_STATUSES.has(s.status)) ?? null;
+    return (
+      subscriptions.find(
+        (s) =>
+          !DEAD_STATUSES.has(s.status) &&
+          (s.metadata?.app_user_id === account.external_id ||
+            s.items.data.some((i) => this.findPlan(i.price.id))),
+      ) ?? null
+    );
   }
 
-  // The account's Stripe customer among those sharing its email: one tagged
-  // with its App User ID first, then one with a subscription, then the
-  // newest. A customer tagged with a different App User ID belongs to another
-  // account (e.g. a deleted one on the same email) and is never used.
+  // Expire the customer's other open subscription checkouts. Tips have no
+  // customer and are never touched.
+  private async _expireOpenCheckouts(
+    stripe: StripeClient,
+    customerId: string,
+  ): Promise<void> {
+    const open = await stripe.listOpenCheckoutSessions(customerId);
+    for (const session of open) {
+      if (session.mode === 'subscription') {
+        await stripe.expireCheckoutSession(session.id);
+      }
+    }
+  }
+
+  // The account's Stripe customer: one tagged with its App User ID, which
+  // every customer this service creates carries. Found by the tag, so an
+  // email changed in the Customer Portal doesn't lose it, and by email too,
+  // because search lags a just-created customer by up to a minute. An
+  // untagged customer on the same email (a Payment Link, the Dashboard,
+  // another product) is never adopted, nor one tagged for another account.
   private async _findCustomer(
     account: SubscriptionUser,
   ): Promise<StripeCustomer | null> {
-    if (!account.email) return null;
-    const candidates = (
-      await this._requireStripe().listCustomersByEmail(account.email)
-    ).filter(
-      (c) =>
-        !c.metadata?.app_user_id ||
-        c.metadata.app_user_id === account.external_id,
+    const stripe = this._requireStripe();
+    const [byTag, byEmail] = await Promise.all([
+      stripe.searchCustomersByAppUserId(account.external_id),
+      account.email ? stripe.listCustomersByEmail(account.email) : [],
+    ]);
+    const mine = new Map<string, StripeCustomer>();
+    for (const c of [...byTag, ...byEmail]) {
+      if (c.metadata?.app_user_id === account.external_id && !mine.has(c.id)) {
+        mine.set(c.id, c);
+      }
+    }
+    if (mine.size === 0) return null;
+    // Two only if two checkouts raced to create one: prefer the one with a
+    // subscription, then the newest.
+    const newestFirst = [...mine.values()].sort(
+      (a, b) => b.created - a.created,
     );
-    if (candidates.length === 0) return null;
-    const tagged = candidates.find(
-      (c) => c.metadata?.app_user_id === account.external_id,
-    );
-    if (tagged) return tagged;
-    const newestFirst = [...candidates].sort((a, b) => b.created - a.created);
     return (
       newestFirst.find((c) => (c.subscriptions?.data?.length ?? 0) > 0) ??
       newestFirst[0]

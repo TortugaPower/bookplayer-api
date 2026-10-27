@@ -151,6 +151,11 @@ function fakeStripe(
     }>,
     released: [] as string[],
     previews: [] as StripeInvoicePreviewParams[],
+    expired: [] as string[],
+    // What Stripe's search sees; tests empty it to model search lag.
+    searchable: null as StripeCustomer[] | null,
+    // The customer's open Checkout Sessions.
+    openSessions: [] as Array<{ id: string; mode: string }>,
   };
   const client: StripeClient = {
     async createCustomer(params) {
@@ -201,6 +206,17 @@ function fakeStripe(
     async listCustomersByEmail(email) {
       calls.lookups.push(email);
       return customers;
+    },
+    async searchCustomersByAppUserId(appUserId) {
+      return (calls.searchable ?? customers).filter(
+        (c) => c.metadata?.app_user_id === appUserId,
+      );
+    },
+    async listOpenCheckoutSessions() {
+      return calls.openSessions;
+    },
+    async expireCheckoutSession(id) {
+      calls.expired.push(id);
     },
   };
   return { client, calls };
@@ -542,7 +558,7 @@ describe('BillingService.createCheckout', () => {
 });
 
 describe('BillingService customer resolution and portal', () => {
-  it('picks the right customer (tagged > subscribed > newest) and passes the portal configuration', async () => {
+  it('uses only a customer tagged with the account, and passes the portal configuration', async () => {
     const customers: StripeCustomer[] = [
       { id: 'cus_newest', email: ACCOUNT.email, created: 300 },
       {
@@ -571,20 +587,96 @@ describe('BillingService customer resolution and portal', () => {
       configuration: 'bpc_123',
     });
 
+    // Untagged customers on the same email (a Payment Link, the Dashboard,
+    // another product) are never adopted, subscribed or not.
     const noTag = fakeStripe(customers.filter((c) => c.id !== 'cus_tagged'));
-    await service(noTag.client).createPortal(SESSION_USER, {
-      returnUrl: 'https://web.bookplayer.test/a',
-    });
-    expect(noTag.calls.portal[0].customer).toBe('cus_subscribed');
+    expect(
+      await codeOf(() =>
+        service(noTag.client).createPortal(SESSION_USER, {
+          returnUrl: 'https://web.bookplayer.test/a',
+        }),
+      ),
+    ).toBe('404 BILLING_NO_CUSTOMER');
+  });
 
-    const plain = fakeStripe([
-      customers[0],
-      { id: 'cus_older', email: ACCOUNT.email, created: 50 },
-    ]);
-    await service(plain.client).createPortal(SESSION_USER, {
+  it('finds the customer by its tag after the email changed, and by email while search lags', async () => {
+    const renamed: StripeCustomer = {
+      ...CUSTOMER,
+      email: 'changed-in-portal@example.com',
+    };
+    // listCustomersByEmail(account email) no longer returns it.
+    const byTag = fakeStripe([renamed]);
+    byTag.client.listCustomersByEmail = async () => [];
+    await service(byTag.client).createPortal(SESSION_USER, {
       returnUrl: 'https://web.bookplayer.test/a',
     });
-    expect(plain.calls.portal[0].customer).toBe('cus_newest');
+    expect(byTag.calls.portal[0].customer).toBe('cus_1');
+
+    // Just created: search doesn't see it yet, the email list does.
+    const fresh = fakeStripe([CUSTOMER], [subscription('price_pro_year')]);
+    fresh.calls.searchable = [];
+    expect(
+      await codeOf(() =>
+        service(fresh.client).createCheckout(SESSION_USER, {
+          priceId: 'price_lite_year',
+          ...URLS,
+        }),
+      ),
+    ).toBe('409 ALREADY_SUBSCRIBED');
+  });
+
+  it("ignores another product's subscription on the customer, but not a retired BookPlayer price", async () => {
+    const otherProduct = subscription('price_facturita');
+    const a = fakeStripe([CUSTOMER], [otherProduct]);
+    await service(a.client).createCheckout(SESSION_USER, {
+      priceId: 'price_pro_year',
+      ...URLS,
+    });
+    expect(a.calls.checkout).toHaveLength(1);
+    expect(
+      await codeOf(() =>
+        service(a.client).changePlan(SESSION_USER, {
+          priceId: 'price_pro_year',
+        }),
+      ),
+    ).toBe('404 NO_SUBSCRIPTION');
+    expect(a.calls.updates).toEqual([]);
+
+    // A price since dropped from STRIPE_PLANS still owns the plan: no second
+    // subscription, and it can still be changed.
+    const retired = subscription('price_pro_2025', {
+      metadata: { app_user_id: ACCOUNT.external_id },
+    });
+    const b = fakeStripe([CUSTOMER], [retired]);
+    expect(
+      await codeOf(() =>
+        service(b.client).createCheckout(SESSION_USER, {
+          priceId: 'price_pro_year',
+          ...URLS,
+        }),
+      ),
+    ).toBe('409 ALREADY_SUBSCRIBED');
+    await service(b.client).changePlan(SESSION_USER, {
+      priceId: 'price_pro_year',
+    });
+    expect(b.calls.updates).toHaveLength(1);
+  });
+
+  it('a checkout expires in 31 minutes and closes the customer’s earlier open checkouts', async () => {
+    const { client, calls } = fakeStripe([CUSTOMER], []);
+    calls.openSessions = [
+      { id: 'cs_old_tab', mode: 'subscription' },
+      { id: 'cs_tip', mode: 'payment' },
+    ];
+    const before = Math.floor(Date.now() / 1000);
+    await service(client).createCheckout(SESSION_USER, {
+      priceId: 'price_pro_year',
+      ...URLS,
+    });
+    expect(calls.expired).toEqual(['cs_old_tab']);
+    const expiresAt = calls.checkout[0].expires_at as number;
+    expect(expiresAt - before).toBeGreaterThanOrEqual(31 * 60);
+    expect(expiresAt - before).toBeLessThan(32 * 60);
   });
 
   it("never uses a customer tagged with another account's App User ID", async () => {

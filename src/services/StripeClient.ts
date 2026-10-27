@@ -17,6 +17,8 @@ export interface StripeCheckoutSessionParams {
   allow_promotion_codes?: boolean;
   // `donate` labels the pay button "Donate".
   submit_type?: 'donate';
+  // Unix seconds; Stripe accepts 30 minutes to 24 hours (the default).
+  expires_at?: number;
   metadata?: Record<string, string>;
   subscription_data?: { metadata?: Record<string, string> };
   payment_intent_data?: { metadata?: Record<string, string> };
@@ -34,6 +36,8 @@ export interface StripeCustomer {
 export interface StripeSubscription {
   id: string;
   status: string;
+  // `app_user_id` on every subscription this API's Checkout creates.
+  metadata?: Record<string, string>;
   // Set when a change is waiting on a payment that has not gone through.
   pending_update?: unknown | null;
   // Unix seconds. Only on API versions before `2025-03-31.basil`; the period
@@ -110,6 +114,13 @@ export interface StripeClient {
     configuration?: string;
   }): Promise<{ url: string }>;
   listCustomersByEmail(email: string): Promise<StripeCustomer[]>;
+  // Customers tagged `metadata.app_user_id`, through Stripe's search, which
+  // can lag a just-created customer by up to a minute.
+  searchCustomersByAppUserId(appUserId: string): Promise<StripeCustomer[]>;
+  listOpenCheckoutSessions(
+    customerId: string,
+  ): Promise<Array<{ id: string; mode: string }>>;
+  expireCheckoutSession(id: string): Promise<void>;
   listSubscriptions(customerId: string): Promise<StripeSubscription[]>;
   updateSubscription(
     id: string,
@@ -189,6 +200,34 @@ export class StripeSdkClient implements StripeClient {
       expand: ['data.subscriptions'],
     });
     return (res.data ?? []) as StripeCustomer[];
+  }
+
+  async searchCustomersByAppUserId(
+    appUserId: string,
+  ): Promise<StripeCustomer[]> {
+    const value = appUserId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const res = await this._stripe.customers.search({
+      query: `metadata['app_user_id']:'${value}'`,
+      limit: 10,
+      expand: ['data.subscriptions'],
+    });
+    return (res.data ?? []) as StripeCustomer[];
+  }
+
+  async listOpenCheckoutSessions(customerId: string) {
+    const res = await this._stripe.checkout.sessions.list({
+      customer: customerId,
+      status: 'open',
+      limit: 20,
+    });
+    return (res.data ?? []).map((s: { id: string; mode: string }) => ({
+      id: s.id,
+      mode: s.mode,
+    }));
+  }
+
+  async expireCheckoutSession(id: string): Promise<void> {
+    await this._stripe.checkout.sessions.expire(id);
   }
 
   async listSubscriptions(customerId: string): Promise<StripeSubscription[]> {
