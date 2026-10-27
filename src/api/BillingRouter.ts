@@ -17,6 +17,18 @@ BillingRouter.get('/plans', (req, res, next) =>
   controller.listPlans(req, res).catch(next),
 );
 
+// Tips are public too, and so is buying one: no session needed. The limiter
+// keys on the account when there is one, else on the IP.
+BillingRouter.get('/tips', (req, res, next) =>
+  controller.listTips(req, res).catch(next),
+);
+BillingRouter.post(
+  '/tip',
+  sessionLimiter,
+  validateBody(checkoutSchema),
+  (req, res, next) => controller.createTip(req, res).catch(next),
+);
+
 // Everything else acts on the caller's Stripe customer (auth checked in the
 // controller, 401 without a session) and calls Stripe, hence the limiter.
 BillingRouter.post(

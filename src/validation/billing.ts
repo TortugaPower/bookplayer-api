@@ -43,3 +43,17 @@ export const billingPlanSchema = z.object({
   interval: z.enum(['day', 'week', 'month', 'year']),
 });
 export type BillingPlan = z.infer<typeof billingPlanSchema>;
+
+// One tip in STRIPE_TIPS, as GET /billing/tips returns it: a one-time price.
+// `tip_code` matches the iOS tip jar (`kind`, `excellent`, `incredible`).
+export const billingTipSchema = z.object({
+  price_id: z.string().min(1),
+  tip_code: z.string().min(1),
+  name: z.string().min(1),
+  amount: z.number().nonnegative(),
+  currency: z
+    .string()
+    .length(3)
+    .transform((c) => c.toUpperCase()),
+});
+export type BillingTip = z.infer<typeof billingTipSchema>;

@@ -48,6 +48,11 @@ describe('BillingController', () => {
       createPortal: jest.fn(async () => ({
         url: 'https://billing.stripe.com/p/session/bps_1',
       })),
+      listTips: jest.fn().mockReturnValue([{ price_id: 'price_tip_kind' }]),
+      createTip: jest.fn(async () => ({
+        url: 'https://checkout.stripe.com/c/pay/cs_tip',
+        sessionId: 'cs_tip',
+      })),
     };
     controller = new BillingController(billing);
     (controller as any)._logger = mockLoggerService;
@@ -76,6 +81,36 @@ describe('BillingController', () => {
       url: 'https://checkout.stripe.com/c/pay/cs_1',
       session_id: 'cs_1',
     });
+  });
+
+  it('tips need no session: listed and bought anonymously, attributed when signed in', async () => {
+    const list = makeRes();
+    await controller.listTips({}, list);
+    expect(list.json).toHaveBeenCalledWith({
+      tips: [{ price_id: 'price_tip_kind' }],
+    });
+
+    const body = {
+      price_id: 'price_tip_kind',
+      success_url: 'https://a.test/thanks',
+      cancel_url: 'https://a.test/no',
+    };
+    const input = {
+      priceId: 'price_tip_kind',
+      successUrl: 'https://a.test/thanks',
+      cancelUrl: 'https://a.test/no',
+    };
+    const anon = makeRes();
+    await controller.createTip({ body }, anon);
+    expect(anon.status).not.toHaveBeenCalled();
+    expect(billing.createTip).toHaveBeenLastCalledWith(null, input);
+    expect(anon.json).toHaveBeenCalledWith({
+      url: 'https://checkout.stripe.com/c/pay/cs_tip',
+      session_id: 'cs_tip',
+    });
+
+    await controller.createTip({ user: USER, body }, makeRes());
+    expect(billing.createTip).toHaveBeenLastCalledWith(USER, input);
   });
 
   it('every session route needs a logged-in user (401)', async () => {

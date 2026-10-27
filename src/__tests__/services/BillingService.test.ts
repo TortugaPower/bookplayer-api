@@ -4,6 +4,7 @@ import {
   billingConfigFromEnv,
   isPlanUpgrade,
   parsePlans,
+  parseTips,
 } from '../../services/BillingService';
 import {
   StripeCheckoutSessionParams,
@@ -53,6 +54,17 @@ const PLANS = [
     interval: 'month',
   },
   { price_id: 'broken', name: 'missing fields' },
+];
+
+const TIPS = [
+  {
+    price_id: 'price_tip_kind',
+    tip_code: 'kind',
+    name: 'Kind tip',
+    amount: 1.99,
+    currency: 'usd',
+  },
+  { price_id: 'price_tip_broken', tip_code: 'nameless' },
 ];
 
 // Stripe speaks minor units; the catalog speaks major ones.
@@ -218,6 +230,7 @@ function service(
     client,
     {
       plans: PLANS,
+      tips: TIPS,
       returnOrigins: extra.returnOrigins ?? [
         'https://web.bookplayer.test',
         'bookplayer:',
@@ -645,6 +658,99 @@ describe('isPlanUpgrade', () => {
     expect(isPlanUpgrade(lite, family)).toBe(true);
     expect(isPlanUpgrade(family, lite)).toBe(false);
     expect(isPlanUpgrade(family, { ...family, interval: 'year' })).toBe(true);
+  });
+});
+
+describe('BillingService.createTip', () => {
+  const TIP = {
+    priceId: 'price_tip_kind',
+    successUrl: 'https://web.bookplayer.test/thanks',
+    cancelUrl: 'https://web.bookplayer.test/support',
+  };
+
+  it('parses STRIPE_TIPS like the plans: invalid entries dropped, currency upper-cased', () => {
+    const tips = parseTips(TIPS);
+    expect(tips).toEqual([
+      {
+        price_id: 'price_tip_kind',
+        tip_code: 'kind',
+        name: 'Kind tip',
+        amount: 1.99,
+        currency: 'USD',
+      },
+    ]);
+    expect(
+      billingConfigFromEnv({ STRIPE_TIPS: JSON.stringify(TIPS) }).tips,
+    ).toHaveLength(2);
+    expect(billingConfigFromEnv({}).tips).toEqual([]);
+  });
+
+  it('anyone can tip: a one-time donate Checkout with no customer and no account', async () => {
+    const { client, calls } = fakeStripe([], []);
+    const result = await service(client).createTip(null, TIP);
+
+    expect(result.url).toBeTruthy();
+    expect(calls.checkout).toEqual([
+      {
+        mode: 'payment',
+        submit_type: 'donate',
+        line_items: [{ price: 'price_tip_kind', quantity: 1 }],
+        success_url: TIP.successUrl,
+        cancel_url: TIP.cancelUrl,
+        metadata: { tip_code: 'kind' },
+        payment_intent_data: { metadata: { tip_code: 'kind' } },
+      },
+    ]);
+    expect(calls.customersCreated).toEqual([]);
+  });
+
+  it('a signed-in subscriber can tip too, attributed to their App User ID', async () => {
+    rcState = { active: true, verified: 'rc', subscriptions: ['pro'] };
+    const { client, calls } = fakeStripe(
+      [CUSTOMER],
+      [subscription('price_pro_year')],
+    );
+    await service(client).createTip(SESSION_USER, TIP);
+
+    const metadata = { tip_code: 'kind', app_user_id: ACCOUNT.external_id };
+    expect(calls.checkout[0]).toMatchObject({
+      mode: 'payment',
+      client_reference_id: ACCOUNT.external_id,
+      // Checkout doesn't ask them for an email it already knows.
+      customer_email: ACCOUNT.email,
+      metadata,
+      payment_intent_data: { metadata },
+    });
+    // None of checkout's purchase guards: a tip buys nothing.
+    expect(rcLookups).toEqual([]);
+    expect(calls.customersCreated).toEqual([]);
+  });
+
+  it('an account that cannot be loaded still tips, unattributed', async () => {
+    const { client, calls } = fakeStripe([], []);
+    await service(client, {}, null).createTip(SESSION_USER, TIP);
+    expect(calls.checkout[0].client_reference_id).toBeUndefined();
+    expect(calls.checkout[0].metadata).toEqual({ tip_code: 'kind' });
+  });
+
+  it('only tip prices, only allowed return URLs, and only with Stripe configured', async () => {
+    const { client } = fakeStripe([], []);
+    expect(
+      await codeOf(() =>
+        service(client).createTip(null, { ...TIP, priceId: 'price_pro_year' }),
+      ),
+    ).toBe('400 PRICE_INVALID');
+    expect(
+      await codeOf(() =>
+        service(client).createTip(null, {
+          ...TIP,
+          successUrl: 'https://evil.test/thanks',
+        }),
+      ),
+    ).toBe('400 RETURN_URL_NOT_ALLOWED');
+    expect(await codeOf(() => service(null).createTip(null, TIP))).toBe(
+      '503 BILLING_UNAVAILABLE',
+    );
   });
 });
 

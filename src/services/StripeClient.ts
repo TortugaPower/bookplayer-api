@@ -3,15 +3,23 @@
 // every non-billing route works) without STRIPE_SECRET_KEY set.
 
 export interface StripeCheckoutSessionParams {
-  mode: 'subscription';
+  // `payment` is a one-time charge (a tip); `subscription` everything else.
+  mode: 'subscription' | 'payment';
   line_items: Array<{ price: string; quantity: number }>;
-  client_reference_id: string;
-  customer: string;
+  // Both absent for a tip from someone who is not signed in.
+  client_reference_id?: string;
+  customer?: string;
+  // Prefills (and fixes) the email Checkout asks for when there is no
+  // customer, without creating one.
+  customer_email?: string;
   success_url: string;
   cancel_url: string;
   allow_promotion_codes?: boolean;
+  // `donate` labels the pay button "Donate".
+  submit_type?: 'donate';
   metadata?: Record<string, string>;
   subscription_data?: { metadata?: Record<string, string> };
+  payment_intent_data?: { metadata?: Record<string, string> };
 }
 
 export interface StripeCustomer {

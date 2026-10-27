@@ -44,6 +44,35 @@ export class BillingController {
     }
   }
 
+  // GET /tips: the tip catalog (STRIPE_TIPS). Public.
+  public async listTips(_req: IRequest, res: IResponse): Promise<IResponse> {
+    return res.json({ tips: this._billingService.listTips() });
+  }
+
+  // POST /tip { price_id, success_url, cancel_url } -> { url, session_id }.
+  // No session needed: anyone may tip; a signed-in tipper is attributed.
+  public async createTip(req: IRequest, res: IResponse): Promise<IResponse> {
+    try {
+      const body = req.body as CheckoutBody;
+      const result = await this._billingService.createTip(
+        req.user?.id_user ? req.user : null,
+        {
+          priceId: body.price_id,
+          successUrl: body.success_url,
+          cancelUrl: body.cancel_url,
+        },
+      );
+      return res.json({ url: result.url, session_id: result.sessionId });
+    } catch (err) {
+      return this.sendBillingError(
+        res,
+        err,
+        'BillingController.createTip',
+        req,
+      );
+    }
+  }
+
   // POST /change-plan { price_id } -> { plan_code, effective, effective_at }
   public async changePlan(req: IRequest, res: IResponse): Promise<IResponse> {
     if (!req.user?.id_user) return this.unauthenticated(res);

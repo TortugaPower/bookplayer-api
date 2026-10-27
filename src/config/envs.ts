@@ -60,6 +60,7 @@ export const Envs = () => {
       .prop('STRIPE_SECRET_KEY', S.string())
       // JSON array: [{ price_id, plan_code, name, amount, currency, interval }]
       .prop('STRIPE_PLANS', S.string())
+      .prop('STRIPE_TIPS', S.string())
       // Comma-separated origins (https://host) or schemes (bookplayer:) that
       // success/cancel/return URLs may point to.
       .prop('BILLING_RETURN_ORIGINS', S.string())

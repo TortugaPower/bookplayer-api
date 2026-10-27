@@ -412,6 +412,8 @@ Nothing Stripe-side is stored here. The catalog is `STRIPE_PLANS`; no price id l
 | POST | `/change-plan` | `{ price_id }` → `{ plan_code, effective: 'now'\|'period_end', effective_at }`. Up (Lite→Pro) now, prorated and invoiced; down at the period end through a subscription schedule | Yes |
 | POST | `/change-plan/preview` | Same body; the change priced by Stripe's invoice preview (`currency, lines, subtotal, tax, total, amount_due`, major units), charges nobody | Yes |
 | GET | `/portal?return_url=` | `{ url }` of a Customer Portal session | Yes |
+| GET | `/tips` | `{ tips: [{ price_id, tip_code, name, amount, currency }] }` | No |
+| POST | `/tip` | `{ price_id, success_url, cancel_url }` → `{ url, session_id }`: a one-time Checkout (`mode: payment`, "Donate" button) for a `STRIPE_TIPS` price. Anyone may tip, on any plan; a signed-in tipper's `external_id` goes on the session as `client_reference_id` / `metadata.app_user_id`. No Stripe customer is created | Optional |
 
 Errors are `{ message, error }` with upper-case codes (`ApiErrorCode`): `PRICE_INVALID` 400,
 `RETURN_URL_NOT_ALLOWED` 400 (not on `BILLING_RETURN_ORIGINS`), `ALREADY_SUBSCRIBED` 409 (a live Stripe
@@ -694,6 +696,7 @@ describe('MyService', () => {
 | `CORS_ORIGIN` | Allowed CORS origins |
 | `STRIPE_SECRET_KEY` | Enables `/v1/billing`; without it those routes answer 503 `BILLING_UNAVAILABLE` and the `stripe` package is never loaded |
 | `STRIPE_PLANS` | JSON array of `{ price_id, plan_code, name, amount, currency, interval }` (see `development.env.template`) |
+| `STRIPE_TIPS` | JSON array of `{ price_id, tip_code, name, amount, currency }`, one-time prices (see `development.env.template`) |
 | `BILLING_RETURN_ORIGINS` | Comma-separated origins / schemes billing redirect URLs may use (`http://localhost` also allowed outside production) |
 | `STRIPE_PORTAL_CONFIGURATION_ID` | Optional Customer Portal configuration (`bpc_…`) |
 | `STRIPE_TIMEOUT_MS` | Optional per-call Stripe timeout, default 8000 |

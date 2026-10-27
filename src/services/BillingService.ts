@@ -1,3 +1,4 @@
+import { ZodType, ZodTypeDef } from 'zod';
 import { logger } from './LoggerService';
 import { SubscriptionService } from './SubscriptionService';
 import { UserDB } from './db/UserDB';
@@ -15,11 +16,18 @@ import {
   SubscriptionTierEnum,
   SubscriptionUser,
 } from '../types/user';
-import { BillingPlan, billingPlanSchema } from '../validation/billing';
+import {
+  BillingPlan,
+  billingPlanSchema,
+  BillingTip,
+  billingTipSchema,
+} from '../validation/billing';
 
 export interface BillingConfig {
   // STRIPE_PLANS, parsed; invalid entries are dropped with a warning.
   plans: unknown[];
+  // STRIPE_TIPS, the same way. Optional: no tips, an empty catalog.
+  tips?: unknown[];
   // BILLING_RETURN_ORIGINS: allowed origins (`https://web.bookplayer.app`) or
   // schemes (`bookplayer:`) for success/cancel/return URLs.
   returnOrigins: string[];
@@ -104,6 +112,7 @@ const unavailable = (message: string) =>
 export class BillingService {
   private readonly _logger = logger;
   private readonly _plans: BillingPlan[];
+  private readonly _tips: BillingTip[];
   private readonly _allowedOrigins = new Set<string>();
   private readonly _allowedSchemes = new Set<string>();
 
@@ -114,6 +123,7 @@ export class BillingService {
     private _userDB: UserDB = new UserDB(),
   ) {
     this._plans = parsePlans(_config.plans);
+    this._tips = parseTips(_config.tips ?? []);
     for (const entry of _config.returnOrigins) {
       const value = entry.trim().toLowerCase();
       if (!value) continue;
@@ -128,6 +138,10 @@ export class BillingService {
 
   findPlan(priceId: string): BillingPlan | null {
     return this._plans.find((p) => p.price_id === priceId) ?? null;
+  }
+
+  listTips(): BillingTip[] {
+    return this._tips;
   }
 
   isAllowedReturnUrl(raw: string): boolean {
@@ -160,18 +174,7 @@ export class BillingService {
     const plan = this.findPlan(input.priceId);
     if (!plan)
       throw new ApiError(ApiErrorCode.PRICE_INVALID, 400, 'Unknown price_id');
-    for (const [field, value] of [
-      ['success_url', input.successUrl],
-      ['cancel_url', input.cancelUrl],
-    ] as const) {
-      if (!this.isAllowedReturnUrl(value)) {
-        throw new ApiError(
-          ApiErrorCode.RETURN_URL_NOT_ALLOWED,
-          400,
-          `${field} must point to an allowed origin`,
-        );
-      }
-    }
+    this._requireReturnUrls(input);
     const account = await this._account(sessionUser);
 
     // Fail closed throughout: a guard that cannot confirm the account's state
@@ -258,6 +261,57 @@ export class BillingService {
         plan: plan.plan_code,
         session_id: session.id,
         reused_customer: Boolean(existing),
+      },
+    });
+    return { url: session.url, sessionId: session.id };
+  }
+
+  // A one-time Checkout Session for a tip. Anyone may tip, signed in or not,
+  // and on any plan: a tip buys nothing, so none of checkout's guards apply.
+  // A signed-in tipper's App User ID goes on the session so RevenueCat can
+  // record the purchase on their customer; no Stripe customer is created here.
+  async createTip(
+    sessionUser: { id_user: number } | null,
+    input: { priceId: string; successUrl: string; cancelUrl: string },
+  ): Promise<{ url: string; sessionId: string }> {
+    const stripe = this._requireStripe();
+    const tip = this._tips.find((t) => t.price_id === input.priceId);
+    if (!tip)
+      throw new ApiError(ApiErrorCode.PRICE_INVALID, 400, 'Unknown price_id');
+    this._requireReturnUrls(input);
+
+    // An account that cannot be loaded still tips, just unattributed.
+    const account = sessionUser
+      ? await this._userDB.getActiveUserById(sessionUser.id_user)
+      : null;
+    const appUserId = account?.external_id || null;
+    const metadata: Record<string, string> = {
+      tip_code: tip.tip_code,
+      ...(appUserId ? { app_user_id: appUserId } : {}),
+    };
+    const session = await stripe.createCheckoutSession({
+      mode: 'payment',
+      submit_type: 'donate',
+      line_items: [{ price: tip.price_id, quantity: 1 }],
+      ...(appUserId ? { client_reference_id: appUserId } : {}),
+      // Checkout always asks a payment for an email (the receipt goes there);
+      // a signed-in tipper's is known, so they aren't asked for it.
+      ...(appUserId && account?.email ? { customer_email: account.email } : {}),
+      success_url: input.successUrl,
+      cancel_url: input.cancelUrl,
+      metadata,
+      payment_intent_data: { metadata },
+    });
+    if (!session.url) throw unavailable('Stripe did not return a checkout URL');
+
+    this._logger.log({
+      origin: 'BillingService.createTip',
+      message: 'tip checkout session created',
+      data: {
+        id_user: sessionUser?.id_user ?? null,
+        attributed: Boolean(appUserId),
+        tip: tip.tip_code,
+        session_id: session.id,
       },
     });
     return { url: session.url, sessionId: session.id };
@@ -632,6 +686,25 @@ export class BillingService {
     return account;
   }
 
+  // Checkout's success and cancel URLs, both on BILLING_RETURN_ORIGINS.
+  private _requireReturnUrls(input: {
+    successUrl: string;
+    cancelUrl: string;
+  }): void {
+    for (const [field, value] of [
+      ['success_url', input.successUrl],
+      ['cancel_url', input.cancelUrl],
+    ] as const) {
+      if (!this.isAllowedReturnUrl(value)) {
+        throw new ApiError(
+          ApiErrorCode.RETURN_URL_NOT_ALLOWED,
+          400,
+          `${field} must point to an allowed origin`,
+        );
+      }
+    }
+  }
+
   private _requireStripe(): StripeClient {
     if (!this._stripe) throw unavailable('Billing is not configured');
     return this._stripe;
@@ -654,24 +727,9 @@ export class BillingService {
 export function billingConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): BillingConfig {
-  let plans: unknown[] = [];
-  if (env.STRIPE_PLANS) {
-    try {
-      const parsed = JSON.parse(env.STRIPE_PLANS);
-      if (!Array.isArray(parsed)) throw new Error('not a JSON array');
-      plans = parsed;
-    } catch (err) {
-      logger.log(
-        {
-          origin: 'billingConfigFromEnv',
-          message: `invalid STRIPE_PLANS: ${err.message}`,
-        },
-        'error',
-      );
-    }
-  }
   return {
-    plans,
+    plans: jsonArrayFromEnv(env, 'STRIPE_PLANS'),
+    tips: jsonArrayFromEnv(env, 'STRIPE_TIPS'),
     returnOrigins: (env.BILLING_RETURN_ORIGINS || '').split(','),
     portalConfigurationId: env.STRIPE_PORTAL_CONFIGURATION_ID || undefined,
     skipStoreEntitlementCheck:
@@ -680,24 +738,66 @@ export function billingConfigFromEnv(
   };
 }
 
-export function parsePlans(raw: unknown[]): BillingPlan[] {
-  const plans: BillingPlan[] = [];
+// A malformed value is an empty catalog, logged, never a crash.
+function jsonArrayFromEnv(env: NodeJS.ProcessEnv, name: string): unknown[] {
+  if (!env[name]) return [];
+  try {
+    const parsed = JSON.parse(env[name] as string);
+    if (!Array.isArray(parsed)) throw new Error('not a JSON array');
+    return parsed;
+  } catch (err) {
+    logger.log(
+      {
+        origin: 'billingConfigFromEnv',
+        message: `invalid ${name}: ${err.message}`,
+      },
+      'error',
+    );
+    return [];
+  }
+}
+
+function parseCatalog<T>(
+  raw: unknown[],
+  schema: ZodType<T, ZodTypeDef, unknown>,
+  name: string,
+  origin: string,
+): T[] {
+  const entries: T[] = [];
   for (const entry of raw) {
-    const parsed = billingPlanSchema.safeParse(entry);
+    const parsed = schema.safeParse(entry);
     if (parsed.success) {
-      plans.push(parsed.data);
+      entries.push(parsed.data);
     } else {
       logger.log(
         {
-          origin: 'BillingService.parsePlans',
-          message: 'ignoring invalid STRIPE_PLANS entry',
+          origin,
+          message: `ignoring invalid ${name} entry`,
           data: { issues: parsed.error.issues.map((i) => i.path.join('.')) },
         },
         'warn',
       );
     }
   }
-  return plans;
+  return entries;
+}
+
+export function parsePlans(raw: unknown[]): BillingPlan[] {
+  return parseCatalog(
+    raw,
+    billingPlanSchema,
+    'STRIPE_PLANS',
+    'BillingService.parsePlans',
+  );
+}
+
+export function parseTips(raw: unknown[]): BillingTip[] {
+  return parseCatalog(
+    raw,
+    billingTipSchema,
+    'STRIPE_TIPS',
+    'BillingService.parseTips',
+  );
 }
 
 const isoOrNull = (unixSeconds: number | null): string | null =>
