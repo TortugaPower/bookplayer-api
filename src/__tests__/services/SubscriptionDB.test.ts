@@ -56,7 +56,8 @@ describe('SubscriptionDB.getLatestActiveEvent', () => {
 
   it('finds an event through its aliases', async () => {
     const user = randomUUID();
-    const anonymous = `$RCAnonymousID:${randomUUID()}`;
+    // RevenueCat's shape: 32 hex characters, fitting original_app_user_id's 50.
+    const anonymous = `$RCAnonymousID:${randomUUID().replace(/-/g, '')}`;
     await db.insertSubscriptionEvent(
       event(anonymous, { aliases: [anonymous, user] }),
     );
