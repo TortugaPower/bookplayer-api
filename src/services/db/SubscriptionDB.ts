@@ -10,6 +10,23 @@ export type LatestSubscriptionEvent = {
   entitlement_ids: string[] | null;
 };
 
+// RevenueCat webhook events that describe an entitlement's state. Any other
+// type, including ones RevenueCat adds later, never counts as the latest event.
+export const STATE_EVENT_TYPES = [
+  'INITIAL_PURCHASE',
+  'RENEWAL',
+  'NON_RENEWING_PURCHASE',
+  'PRODUCT_CHANGE',
+  'CANCELLATION',
+  'UNCANCELLATION',
+  'BILLING_ISSUE',
+  'EXPIRATION',
+  'SUBSCRIPTION_EXTENDED',
+  'SUBSCRIPTION_PAUSED',
+  'TEMPORARY_ENTITLEMENT_GRANT',
+  'REFUND_REVERSED',
+];
+
 export class SubscriptionDB {
   private readonly _logger = logger;
   private db = database;
@@ -20,6 +37,12 @@ export class SubscriptionDB {
   ): Promise<LatestSubscriptionEvent | null> {
     try {
       const db = trx || this.db;
+      // `aliases` is JSON null on Web Billing's INVOICE_ISSUANCE events and
+      // missing on TRANSFER: `@>` is false for those, where expanding the
+      // array failed the whole query, for every user, on one such row.
+      // Only STATE_EVENT_TYPES take part: the others (INVOICE_ISSUANCE,
+      // TRANSFER, TEST…) carry no entitlements, and their null expiry would
+      // read as a lifetime grant.
       const result = await db.raw(
         `SELECT type, period_type, expiration_at_ms, json->'entitlement_ids' AS entitlement_ids
          FROM (
@@ -30,15 +53,13 @@ export class SubscriptionDB {
              FROM subscription_events WHERE (json->>'app_user_id') = ?
            UNION ALL
            SELECT id_subscription_event, type, period_type, expiration_at_ms, json
-             FROM subscription_events WHERE EXISTS (
-               SELECT 1 FROM jsonb_array_elements_text(json->'aliases') AS elem
-               WHERE elem = ?
-             )
+             FROM subscription_events WHERE json->'aliases' @> jsonb_build_array(?::text)
          ) e
+         WHERE type = ANY(?::text[])
          ORDER BY (json->>'event_timestamp_ms')::bigint DESC NULLS LAST,
                   id_subscription_event DESC
          LIMIT 1`,
-        [externalId, externalId, externalId],
+        [externalId, externalId, externalId, STATE_EVENT_TYPES],
       );
       return result.rows[0] || null;
     } catch (err) {
