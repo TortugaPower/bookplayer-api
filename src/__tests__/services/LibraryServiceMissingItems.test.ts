@@ -158,11 +158,14 @@ describe('LibraryService — requests naming a missing item', () => {
       await expect(service.putExternalResource(user as any, ORIGIN, resource)).resolves.toBeNull();
     });
 
-    it('answers item_not_found when linking to a book that never existed here', async () => {
+    it('links nothing to a book that never existed here: its registration sends the link again', async () => {
       const trx = getTestTransaction();
       const user = await createTestUser(trx);
 
-      await expectNotFound(service.putExternalResource(user as any, NEVER, resource));
+      await expect(service.putExternalResource(user as any, NEVER, resource)).resolves.toBeNull();
+
+      const [{ count }] = await trx('external_resources').count('* as count');
+      expect(parseInt(`${count}`)).toBe(0);
     });
 
     it('treats unlinking a missing book or a missing link as done', async () => {

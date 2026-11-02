@@ -331,16 +331,16 @@ describe('LibraryController — legacy routes naming a missing item', () => {
   });
 
   describe('external resources', () => {
-    it('PUT /external answers an empty content for a deleted book, and 404 for one that never existed', async () => {
+    it('PUT /external answers an empty content when there is no item to link, and 500 when the lookup fails', async () => {
       libraryService.putExternalResource.mockResolvedValueOnce(null);
       const res = makeRes();
       await controller.putExternalResource(request({ uuid, providerName: 'jellyfin', providerId: 'p1' }), res);
       expect(res.json).toHaveBeenCalledWith({ content: {} });
 
-      libraryService.putExternalResource.mockRejectedValueOnce(notFound);
-      const res404 = makeRes();
-      await controller.putExternalResource(request({ uuid, providerName: 'jellyfin', providerId: 'p1' }), res404);
-      expect(res404.status).toHaveBeenCalledWith(404);
+      libraryService.putExternalResource.mockRejectedValueOnce(new LibraryLookupError());
+      const res500 = makeRes();
+      await controller.putExternalResource(request({ uuid, providerName: 'jellyfin', providerId: 'p1' }), res500);
+      expect(res500.status).toHaveBeenCalledWith(500);
     });
 
     it('DELETE /external answers 500 when the lookup fails', async () => {

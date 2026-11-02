@@ -567,7 +567,10 @@ from services and let the controller's `sendLibraryError` answer it.
 | `invalid_request` | 422 | Failed body validation (`validateBody`) |
 
 Removals of something already gone answer success: deleting a bookmark, unlinking an external resource, or
-`folder_in_out` on a folder that isn't there. A failed DB read on these routes is a 500 (`LibraryLookupError`), never
+`folder_in_out` on a folder that isn't there. So does linking an external resource (`PUT /external`) to an item the
+server doesn't have, deleted or never registered (`content: {}`, nothing stored): the apps can queue a link before
+the item itself (a Hardcover match made while the item's registration waits), that link can never apply, and an
+`item_not_found` would hold their sync queue behind it; registering the item sends its links again. A failed DB read on these routes is a 500 (`LibraryLookupError`), never
 a "not found" the apps would stop on. The audit log doesn't record `not_subscribed` / `tier_required` rejections: they are
 the same stuck task retrying every 5 seconds, and RevenueCat answers the account's state.
 
