@@ -977,7 +977,13 @@ export class LibraryService {
     }
   }
 
-  /** `null` when the item was deleted: there is nothing left to link. */
+  /**
+   * `null` when there is no item to link: it was deleted, or it hasn't reached
+   * us yet. A link sent before its item (a Hardcover match made while the
+   * item's registration was still queued) can never apply, and an
+   * `item_not_found` would hold the app's sync queue behind it for good; the
+   * item's registration sends its links again.
+   */
   async putExternalResource(user: User, libraryItemUuid: string, externalResource: ExternalResource): Promise<ExternalResource | null> {
     const trx = await this.db.transaction();
     try {
@@ -986,7 +992,6 @@ export class LibraryService {
       );
 
       if (!libraryItem) {
-        await this.confirmDeleted(user, { uuid: libraryItemUuid }, trx);
         await trx.rollback();
         return null;
       }

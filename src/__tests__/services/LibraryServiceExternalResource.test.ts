@@ -94,19 +94,6 @@ describe('LibraryService — external resource flows', () => {
         .count<{ count: string }[]>('* as count');
       expect(parseInt(count[0].count)).toBe(1);
     });
-
-    it('throws when the library item is not found', async () => {
-      const trx = getTestTransaction();
-      const user = await createTestUser(trx);
-
-      await expect(
-        service.putExternalResource(
-          user as any,
-          '33333333-3333-3333-3333-333333333333',
-          makeResource(),
-        ),
-      ).rejects.toThrow();
-    });
   });
 
   describe('deleteExternalResource', () => {

@@ -93,7 +93,8 @@ Open to PRO and LITE.
   (`{ items: { "<key>": "<uuid>" } }`, at most 1,000 per request):
   the server's row may already sit at that key under no uuid (a legacy row) or another one (the same file imported
   on two devices), and `PUT /` at an occupied key answers with that row without storing the client's uuid, so the
-  item would come back `unknown` every run and its bookmarks and external resources would answer `item_not_found`.
+  item would come back `unknown` every run, its bookmarks would answer `item_not_found` and its external resources
+  would be dropped (a link to an item the server doesn't have answers success with nothing stored).
   `/uuids` sets the uuid on a legacy row and answers a conflict for the other case (adopt the server's uuid). Then
   register each one like an import (`PUT /` at its local path, then its external resources and bookmarks), parents
   before children. No row holds the uuid, so the `PUT` can't move anything, and a deleted item keeps its uuid, so a
