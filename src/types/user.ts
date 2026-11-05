@@ -107,7 +107,9 @@ export type RevenuecatEvent = {
   purchased_at_ms: number;
   takehome_percentage: number;
   type: string;
-  aliases: string[];
+  // JSON null on Web Billing's INVOICE_ISSUANCE events; missing on TRANSFER,
+  // which names no subscriber (only transferred_from / transferred_to).
+  aliases?: string[] | null;
 };
 
 export enum SubscriptionEventType {
