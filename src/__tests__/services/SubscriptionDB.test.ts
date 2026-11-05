@@ -81,20 +81,59 @@ describe('SubscriptionDB.getLatestActiveEvent', () => {
         event_timestamp_ms: now + 1000,
       }),
     );
+    // Carries the subscriber's ids, but no expiry or entitlements.
+    await db.insertSubscriptionEvent(
+      event(user, {
+        type: 'EXPERIMENT_ENROLLMENT',
+        entitlement_ids: undefined,
+        expiration_at_ms: undefined,
+        event_timestamp_ms: now + 2000,
+      }),
+    );
+    // RevenueCat's TRANSFER names no subscriber, only the ids on each side.
     await db.insertSubscriptionEvent(
       event(user, {
         type: 'TRANSFER',
+        app_user_id: undefined,
+        original_app_user_id: undefined,
         aliases: undefined,
-        entitlement_ids: [],
-        expiration_at_ms: null,
-        event_timestamp_ms: now + 2000,
+        entitlement_ids: undefined,
+        expiration_at_ms: undefined,
+        transferred_from: [randomUUID()],
+        transferred_to: [user],
+        event_timestamp_ms: now + 3000,
       }),
     );
 
     const latest = await db.getLatestActiveEvent(user);
 
+    expect(mockLoggerService.log).not.toHaveBeenCalled();
     expect(latest?.type).toBe('RENEWAL');
     expect(Number(latest?.expiration_at_ms)).toBe(now + 3600000);
+  });
+
+  it('is null for an account whose events grant nothing', async () => {
+    const user = randomUUID();
+    await db.insertSubscriptionEvent(
+      event(user, {
+        type: 'INVOICE_ISSUANCE',
+        aliases: null,
+        entitlement_ids: null,
+        expiration_at_ms: null,
+      }),
+    );
+    await db.insertSubscriptionEvent(
+      event(user, {
+        type: 'EXPERIMENT_ENROLLMENT',
+        entitlement_ids: undefined,
+        expiration_at_ms: undefined,
+        event_timestamp_ms: now + 1000,
+      }),
+    );
+
+    // A null from a failed query would pass too: the logger tells them apart.
+    expect(await db.getLatestActiveEvent(user)).toBeNull();
+    expect(mockLoggerService.log).not.toHaveBeenCalled();
   });
 
   it('still returns an expiration as the latest event', async () => {
