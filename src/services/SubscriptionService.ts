@@ -245,7 +245,17 @@ export class SubscriptionService {
     if (!event || event.type === SubscriptionEventType.EXPIRATION) {
       return { state: MISSING_SUB_STATE, expiresMs: null };
     }
-    // null expiration_at_ms = lifetime grant (e.g. NON_RENEWING_PURCHASE promo).
+    // A null expiry is a lifetime grant only on a one-time purchase (a tip, a
+    // promotional lifetime). On any other event it grants nothing: a refunded
+    // one-time purchase arrives as a CANCELLATION with no expiry. Those read
+    // as inactive here, so RevenueCat decides: it knows whether another
+    // purchase still grants access.
+    if (
+      !event.expiration_at_ms &&
+      event.type !== SubscriptionEventType.NON_RENEWING_PURCHASE
+    ) {
+      return { state: MISSING_SUB_STATE, expiresMs: null };
+    }
     const expiresMs = event.expiration_at_ms ? Number(event.expiration_at_ms) : null;
 
     return {
