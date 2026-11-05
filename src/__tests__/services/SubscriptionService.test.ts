@@ -33,9 +33,15 @@ function makeCacheMock() {
   return { setObject, getObject, deleteObject, store };
 }
 
-function makeRcMock(result: { active: boolean; expiresMs: number | null }) {
+type RcResult = {
+  active: boolean;
+  expiresMs: number | null;
+  entitlementIds?: string[];
+};
+
+function makeRcMock(result: RcResult) {
   return {
-    fetchActiveStatus: jest.fn<() => Promise<{ active: boolean; expiresMs: number | null }>>()
+    fetchActiveStatus: jest.fn<() => Promise<RcResult>>()
       .mockResolvedValue(result),
   };
 }
@@ -245,6 +251,61 @@ describe('SubscriptionService.isActive', () => {
     expect(result?.active).toBe(true);
     const cached = JSON.parse(cache.store.get(`sub:v2:${externalId}`)!.value);
     expect(cached).toEqual({ active: true, verified: 'local', subscriptions: [] });
+  });
+
+  // A tip, then Apple's refund of it: RevenueCat sends the refund as a
+  // CANCELLATION with no expiry, like the purchase it undoes.
+  const refundedTip = async (externalId: string, tips: number) => {
+    const trx = getTestTransaction();
+    const now = Date.now();
+    for (let i = 0; i < tips; i++) {
+      await createTestSubscriptionEvent(trx, {
+        original_app_user_id: externalId,
+        type: 'NON_RENEWING_PURCHASE',
+        expiration_at_ms: null,
+        entitlement_ids: ['plus'],
+        event_timestamp_ms: now - (10 - i) * 86_400_000,
+      });
+    }
+    await createTestSubscriptionEvent(trx, {
+      original_app_user_id: externalId,
+      type: 'CANCELLATION',
+      expiration_at_ms: null,
+      entitlement_ids: ['plus'],
+      event_timestamp_ms: now - 86_400_000,
+    });
+  };
+
+  it('does not read a refunded one-time purchase as lifetime: RC decides', async () => {
+    const externalId = randomUUID();
+    await refundedTip(externalId, 1);
+    const rcMock = makeRcMock({ active: false, expiresMs: null });
+    (service as any)._rcV2 = rcMock;
+
+    const result = await service.isActive(externalId);
+
+    expect(result?.active).toBe(false);
+    expect(rcMock.fetchActiveStatus).toHaveBeenCalledWith(externalId);
+    const cached = JSON.parse(cache.store.get(`sub:v2:${externalId}`)!.value);
+    expect(cached).toEqual({ active: false, verified: 'rc', subscriptions: [] });
+  });
+
+  it('keeps the access another purchase still grants after a refund, per RC', async () => {
+    const externalId = randomUUID();
+    await refundedTip(externalId, 2);
+    const rcMock = makeRcMock({
+      active: true,
+      expiresMs: null,
+      entitlementIds: ['plus'],
+    });
+    (service as any)._rcV2 = rcMock;
+
+    const result = await service.isActive(externalId);
+
+    expect(result?.active).toBe(true);
+    expect(rcMock.fetchActiveStatus).toHaveBeenCalledWith(externalId);
+    const cached = JSON.parse(cache.store.get(`sub:v2:${externalId}`)!.value);
+    expect(cached).toEqual({ active: true, verified: 'rc', subscriptions: ['plus'] });
   });
 
   it('matches user via aliases JSON path', async () => {
