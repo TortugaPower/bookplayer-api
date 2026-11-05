@@ -1,0 +1,168 @@
+import { describe, it, expect, beforeEach } from '@jest/globals';
+import { randomUUID } from 'crypto';
+import { SubscriptionDB } from '../../services/db/SubscriptionDB';
+import { RevenuecatEvent, SubscriptionEventType } from '../../types/user';
+import { getTestTransaction, mockLoggerService } from '../setup';
+
+describe('SubscriptionDB.getLatestActiveEvent', () => {
+  let db: SubscriptionDB;
+  let now: number;
+
+  beforeEach(() => {
+    db = new SubscriptionDB();
+    (db as any).db = getTestTransaction();
+    (db as any)._logger = mockLoggerService;
+    mockLoggerService.log.mockClear();
+    now = Date.now();
+  });
+
+  // Shaped like RevenueCat's webhook events; `fields` overrides any key, and a
+  // key set to undefined is left out of the stored JSON.
+  const event = (
+    appUserId: string,
+    fields: Record<string, unknown>,
+  ): RevenuecatEvent =>
+    ({
+      id: randomUUID(),
+      type: 'RENEWAL',
+      app_user_id: appUserId,
+      original_app_user_id: appUserId,
+      aliases: [appUserId],
+      entitlement_ids: ['pro'],
+      expiration_at_ms: now + 86400000,
+      event_timestamp_ms: now,
+      environment: 'SANDBOX',
+      ...fields,
+    } as unknown as RevenuecatEvent);
+
+  it('answers when a Web Billing event with null aliases is stored', async () => {
+    const user = randomUUID();
+    await db.insertSubscriptionEvent(event(user, {}));
+    await db.insertSubscriptionEvent(
+      event(randomUUID(), {
+        type: 'INVOICE_ISSUANCE',
+        aliases: null,
+        entitlement_ids: null,
+        expiration_at_ms: null,
+      }),
+    );
+
+    const latest = await db.getLatestActiveEvent(user);
+
+    expect(mockLoggerService.log).not.toHaveBeenCalled();
+    expect(latest?.type).toBe('RENEWAL');
+    expect(latest?.entitlement_ids).toEqual(['pro']);
+  });
+
+  it('finds an event through its aliases', async () => {
+    const user = randomUUID();
+    // RevenueCat's shape: 32 hex characters, fitting original_app_user_id's 50.
+    const anonymous = `$RCAnonymousID:${randomUUID().replace(/-/g, '')}`;
+    await db.insertSubscriptionEvent(
+      event(anonymous, { aliases: [anonymous, user] }),
+    );
+
+    const latest = await db.getLatestActiveEvent(user);
+
+    expect(latest?.type).toBe('RENEWAL');
+  });
+
+  it('skips newer events that do not describe a subscription', async () => {
+    const user = randomUUID();
+    await db.insertSubscriptionEvent(
+      event(user, { expiration_at_ms: now + 3600000 }),
+    );
+    await db.insertSubscriptionEvent(
+      event(user, {
+        type: 'INVOICE_ISSUANCE',
+        aliases: null,
+        entitlement_ids: null,
+        expiration_at_ms: null,
+        event_timestamp_ms: now + 1000,
+      }),
+    );
+    // Carries the subscriber's ids, but no expiry or entitlements.
+    await db.insertSubscriptionEvent(
+      event(user, {
+        type: 'EXPERIMENT_ENROLLMENT',
+        entitlement_ids: undefined,
+        expiration_at_ms: undefined,
+        event_timestamp_ms: now + 2000,
+      }),
+    );
+    // RevenueCat's TRANSFER names no subscriber, only the ids on each side.
+    await db.insertSubscriptionEvent(
+      event(user, {
+        type: 'TRANSFER',
+        app_user_id: undefined,
+        original_app_user_id: undefined,
+        aliases: undefined,
+        entitlement_ids: undefined,
+        expiration_at_ms: undefined,
+        transferred_from: [randomUUID()],
+        transferred_to: [user],
+        event_timestamp_ms: now + 3000,
+      }),
+    );
+
+    const latest = await db.getLatestActiveEvent(user);
+
+    expect(mockLoggerService.log).not.toHaveBeenCalled();
+    expect(latest?.type).toBe('RENEWAL');
+    expect(Number(latest?.expiration_at_ms)).toBe(now + 3600000);
+  });
+
+  it('is null for an account whose events grant nothing', async () => {
+    const user = randomUUID();
+    await db.insertSubscriptionEvent(
+      event(user, {
+        type: 'INVOICE_ISSUANCE',
+        aliases: null,
+        entitlement_ids: null,
+        expiration_at_ms: null,
+      }),
+    );
+    await db.insertSubscriptionEvent(
+      event(user, {
+        type: 'EXPERIMENT_ENROLLMENT',
+        entitlement_ids: undefined,
+        expiration_at_ms: undefined,
+        event_timestamp_ms: now + 1000,
+      }),
+    );
+
+    // A null from a failed query would pass too: the logger tells them apart.
+    expect(await db.getLatestActiveEvent(user)).toBeNull();
+    expect(mockLoggerService.log).not.toHaveBeenCalled();
+  });
+
+  it('still returns an expiration as the latest event', async () => {
+    const user = randomUUID();
+    await db.insertSubscriptionEvent(event(user, {}));
+    await db.insertSubscriptionEvent(
+      event(user, {
+        type: 'EXPIRATION',
+        expiration_at_ms: now,
+        event_timestamp_ms: now + 1000,
+      }),
+    );
+
+    const latest = await db.getLatestActiveEvent(user);
+
+    expect(latest?.type).toBe('EXPIRATION');
+  });
+
+  it('is null for an account with no events', async () => {
+    expect(await db.getLatestActiveEvent(randomUUID())).toBeNull();
+    expect(mockLoggerService.log).not.toHaveBeenCalled();
+  });
+});
+
+describe('SubscriptionEventType', () => {
+  // A misspelled value would silently keep that event out of the lookup.
+  it('gives every member its own name as its value', () => {
+    for (const [name, value] of Object.entries(SubscriptionEventType)) {
+      expect(value).toBe(name);
+    }
+  });
+});

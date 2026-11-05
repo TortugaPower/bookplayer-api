@@ -107,11 +107,39 @@ export type RevenuecatEvent = {
   purchased_at_ms: number;
   takehome_percentage: number;
   type: string;
-  aliases: string[];
+  // JSON null on Web Billing's INVOICE_ISSUANCE events; missing on TRANSFER,
+  // which names no subscriber (only transferred_from / transferred_to).
+  aliases?: string[] | null;
 };
 
+// Every webhook event type RevenueCat documents
+// (https://www.revenuecat.com/docs/integrations/webhooks/event-types-and-fields).
+// No RevenueCat SDK exports them, so they are mirrored here.
+// `RevenuecatEvent.type` stays a string: a webhook can carry a type newer
+// than this list.
 export enum SubscriptionEventType {
+  TEST = 'TEST',
+  INITIAL_PURCHASE = 'INITIAL_PURCHASE',
+  RENEWAL = 'RENEWAL',
+  CANCELLATION = 'CANCELLATION',
+  UNCANCELLATION = 'UNCANCELLATION',
+  NON_RENEWING_PURCHASE = 'NON_RENEWING_PURCHASE',
+  SUBSCRIPTION_PAUSED = 'SUBSCRIPTION_PAUSED',
   EXPIRATION = 'EXPIRATION',
+  BILLING_ISSUE = 'BILLING_ISSUE',
+  PRODUCT_CHANGE = 'PRODUCT_CHANGE',
+  SUBSCRIPTION_EXTENDED = 'SUBSCRIPTION_EXTENDED',
+  REFUND_REVERSED = 'REFUND_REVERSED',
+  INVOICE_ISSUANCE = 'INVOICE_ISSUANCE',
+  TRANSFER = 'TRANSFER',
+  TEMPORARY_ENTITLEMENT_GRANT = 'TEMPORARY_ENTITLEMENT_GRANT',
+  VIRTUAL_CURRENCY_TRANSACTION = 'VIRTUAL_CURRENCY_TRANSACTION',
+  EXPERIMENT_ENROLLMENT = 'EXPERIMENT_ENROLLMENT',
+  PURCHASE_REDEEMED = 'PURCHASE_REDEEMED',
+  // Deprecated: newer RevenueCat projects don't receive it.
+  SUBSCRIBER_ALIAS = 'SUBSCRIBER_ALIAS',
+  PRICE_INCREASE_CONSENT_REQUIRED = 'PRICE_INCREASE_CONSENT_REQUIRED',
+  PRICE_INCREASE_CONSENT_APPROVED = 'PRICE_INCREASE_CONSENT_APPROVED',
 }
 
 export type HTTPMethod =
