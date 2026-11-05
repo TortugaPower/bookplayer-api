@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { randomUUID } from 'crypto';
 import { SubscriptionDB } from '../../services/db/SubscriptionDB';
-import { RevenuecatEvent } from '../../types/user';
+import { RevenuecatEvent, SubscriptionEventType } from '../../types/user';
 import { getTestTransaction, mockLoggerService } from '../setup';
 
 describe('SubscriptionDB.getLatestActiveEvent', () => {
@@ -155,5 +155,14 @@ describe('SubscriptionDB.getLatestActiveEvent', () => {
   it('is null for an account with no events', async () => {
     expect(await db.getLatestActiveEvent(randomUUID())).toBeNull();
     expect(mockLoggerService.log).not.toHaveBeenCalled();
+  });
+});
+
+describe('SubscriptionEventType', () => {
+  // A misspelled value would silently keep that event out of the lookup.
+  it('gives every member its own name as its value', () => {
+    for (const [name, value] of Object.entries(SubscriptionEventType)) {
+      expect(value).toBe(name);
+    }
   });
 });

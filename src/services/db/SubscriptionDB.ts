@@ -1,7 +1,7 @@
 import { Knex } from 'knex';
 import database from '../../database';
 import { logger } from '../LoggerService';
-import { RevenuecatEvent } from '../../types/user';
+import { RevenuecatEvent, SubscriptionEventType } from '../../types/user';
 
 export type LatestSubscriptionEvent = {
   type: string | null;
@@ -12,20 +12,20 @@ export type LatestSubscriptionEvent = {
 
 // RevenueCat webhook events that describe an entitlement's state. Any other
 // type, including ones RevenueCat adds later, never counts as the latest event.
-export const STATE_EVENT_TYPES = [
-  'INITIAL_PURCHASE',
-  'RENEWAL',
-  'NON_RENEWING_PURCHASE',
-  'PRODUCT_CHANGE',
-  'CANCELLATION',
-  'UNCANCELLATION',
-  'BILLING_ISSUE',
-  'EXPIRATION',
-  'SUBSCRIPTION_EXTENDED',
-  'SUBSCRIPTION_PAUSED',
-  'TEMPORARY_ENTITLEMENT_GRANT',
-  'REFUND_REVERSED',
-] as const;
+export const STATE_EVENT_TYPES: readonly SubscriptionEventType[] = [
+  SubscriptionEventType.INITIAL_PURCHASE,
+  SubscriptionEventType.RENEWAL,
+  SubscriptionEventType.NON_RENEWING_PURCHASE,
+  SubscriptionEventType.PRODUCT_CHANGE,
+  SubscriptionEventType.CANCELLATION,
+  SubscriptionEventType.UNCANCELLATION,
+  SubscriptionEventType.BILLING_ISSUE,
+  SubscriptionEventType.EXPIRATION,
+  SubscriptionEventType.SUBSCRIPTION_EXTENDED,
+  SubscriptionEventType.SUBSCRIPTION_PAUSED,
+  SubscriptionEventType.TEMPORARY_ENTITLEMENT_GRANT,
+  SubscriptionEventType.REFUND_REVERSED,
+];
 
 export class SubscriptionDB {
   private readonly _logger = logger;
