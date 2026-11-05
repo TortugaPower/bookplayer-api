@@ -25,7 +25,7 @@ export const STATE_EVENT_TYPES = [
   'SUBSCRIPTION_PAUSED',
   'TEMPORARY_ENTITLEMENT_GRANT',
   'REFUND_REVERSED',
-];
+] as const;
 
 export class SubscriptionDB {
   private readonly _logger = logger;
@@ -37,12 +37,15 @@ export class SubscriptionDB {
   ): Promise<LatestSubscriptionEvent | null> {
     try {
       const db = trx || this.db;
-      // `aliases` is JSON null on Web Billing's INVOICE_ISSUANCE events and
-      // missing on TRANSFER: `@>` is false for those, where expanding the
-      // array failed the whole query, for every user, on one such row.
+      // `aliases` is JSON null on Web Billing's INVOICE_ISSUANCE events.
+      // Expanding it with jsonb_array_elements_text threw on that value, and
+      // the alias branch read every row, so one such event failed the lookup
+      // for every user. `@>` is false on null (NULL when the key is missing)
+      // and can use idx_sub_events_aliases_gin.
       // Only STATE_EVENT_TYPES take part: the others (INVOICE_ISSUANCE,
-      // TRANSFER, TEST…) carry no entitlements, and their null expiry would
-      // read as a lifetime grant.
+      // EXPERIMENT_ENROLLMENT, SUBSCRIBER_ALIAS, TEST…) grant nothing, and
+      // their null or missing expiry would read as a lifetime grant.
+      // TRANSFER never matches: it names no subscriber.
       const result = await db.raw(
         `SELECT type, period_type, expiration_at_ms, json->'entitlement_ids' AS entitlement_ids
          FROM (
