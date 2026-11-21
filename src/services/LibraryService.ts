@@ -687,6 +687,13 @@ export class LibraryService {
       : await this._libraryDB.getLibrary(user.id_user, cleanPath, { exactly: true });
     const storedPlayedAt = Number(rows?.[0]?.last_play_date);
     if (!(storedPlayedAt > playedAt)) return item;
+    // sync_operations skips playback-only updates, so this line is the only
+    // trace when someone asks why their progress didn't move
+    this._logger.log({
+      origin: 'LibraryService.updateObject',
+      message: 'Kept the newer play: ignored progress played before it',
+      data: { id_user: user.id_user, relativePath: cleanPath, uuid, playedAt, storedPlayedAt },
+    });
     const {
       actual_time: _position,
       percent_completed: _progress,
