@@ -648,7 +648,7 @@ export class LibraryService {
       const result = await this._libraryDB.updateLibraryItem(
         user.id_user,
         cleanPath,
-        libraryItem,
+        await this.withoutStaleProgress(user, cleanPath, uuid, libraryItem),
         uuid,
       );
 
@@ -661,6 +661,51 @@ export class LibraryService {
       });
       throw Error(err);
     }
+  }
+
+  /**
+   * The update without its position when it was played before the play the
+   * server already has. Apps queue progress and can send it late (a browser tab
+   * closed before its queue drained, a phone back online), and that older
+   * position must not overwrite a newer play from another device. Every
+   * progress update carries when it was played (`lastPlayDateTimestamp`), so
+   * only a strictly older one loses its position, progress, finished flag and
+   * play time; a play in the same second still applies, and the rest of the
+   * update (a title, a speed) always does. An update without a play time (a
+   * mark as finished, a rename) or with 0 is never held back.
+   */
+  private async withoutStaleProgress(
+    user: User,
+    cleanPath: string,
+    uuid: string | undefined,
+    item: LibraryItemDB,
+  ): Promise<LibraryItemDB> {
+    const playedAt = Number(item.last_play_date);
+    if (!(playedAt > 0)) return item;
+    const rows = isValidUUID(uuid)
+      ? await this._libraryDB.getLibraryByUuid(user.id_user, uuid)
+      : await this._libraryDB.getLibrary(user.id_user, cleanPath, { exactly: true });
+    const storedPlayedAt = Number(rows?.[0]?.last_play_date);
+    if (!(storedPlayedAt > playedAt)) return item;
+    // sync_operations skips playback-only updates, so this line is the only
+    // trace when someone asks why their progress didn't move. Production logs
+    // warn and above.
+    this._logger.log(
+      {
+        origin: 'LibraryService.withoutStaleProgress',
+        message: 'Kept the newer play: ignored progress played before it',
+        data: { id_user: user.id_user, relativePath: cleanPath, uuid, playedAt, storedPlayedAt },
+      },
+      'warn',
+    );
+    const {
+      actual_time: _position,
+      percent_completed: _progress,
+      is_finish: _finished,
+      last_play_date: _playedAt,
+      ...rest
+    } = item;
+    return rest as LibraryItemDB;
   }
 
   /**
