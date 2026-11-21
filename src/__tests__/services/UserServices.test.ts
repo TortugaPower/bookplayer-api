@@ -398,7 +398,7 @@ describe('UserServices - verifyGoogleToken', () => {
 
     expect(verifyIdToken).toHaveBeenCalledWith({
       idToken: 'valid-token',
-      audience: 'test-client-id.apps.googleusercontent.com',
+      audience: ['test-client-id.apps.googleusercontent.com'],
     });
     expect(result).toEqual({
       success: true,
@@ -408,6 +408,21 @@ describe('UserServices - verifyGoogleToken', () => {
         name: 'Test User',
         picture: 'https://example.com/p.png',
       },
+    });
+  });
+
+  it("accepts a token for any of the clients listed in GOOGLE_CLIENT_ID (the Android app's and the web's)", async () => {
+    process.env.GOOGLE_CLIENT_ID = 'android-client.apps.googleusercontent.com, web-client.apps.googleusercontent.com';
+    mockPayload(basePayload);
+
+    await service.verifyGoogleToken('web-token');
+
+    expect(verifyIdToken).toHaveBeenCalledWith({
+      idToken: 'web-token',
+      audience: [
+        'android-client.apps.googleusercontent.com',
+        'web-client.apps.googleusercontent.com',
+      ],
     });
   });
 

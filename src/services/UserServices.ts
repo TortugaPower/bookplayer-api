@@ -10,6 +10,7 @@ import {
 } from '../types/user';
 import verifyAppleToken from 'verify-apple-id-token';
 import { OAuth2Client, TokenPayload } from 'google-auth-library';
+import { googleClientIds } from '../utils/idToken';
 import { Knex } from 'knex';
 import database from '../database';
 import JWT from 'jsonwebtoken';
@@ -59,11 +60,12 @@ export class UserServices {
   async verifyGoogleToken(idToken: string): Promise<VerificationResult> {
     try {
       // GOOGLE_CLIENT_ID is validated as required at boot (config/envs.ts), so
-      // it's guaranteed present here. Passing it as the audience ensures we only
-      // accept ID tokens minted for our own Google client (never another app's).
+      // it's guaranteed present here. Passing its clients as the audience ensures
+      // we only accept ID tokens minted for our own Google clients (the Android
+      // app's and the web app's), never another app's.
       const ticket = await this.googleClient.verifyIdToken({
         idToken,
-        audience: process.env.GOOGLE_CLIENT_ID!,
+        audience: googleClientIds(),
       });
 
       // ticket.getPayload() returns TokenPayload | undefined
