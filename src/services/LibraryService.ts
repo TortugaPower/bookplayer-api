@@ -687,11 +687,6 @@ export class LibraryService {
       : await this._libraryDB.getLibrary(user.id_user, cleanPath, { exactly: true });
     const storedPlayedAt = Number(rows?.[0]?.last_play_date);
     if (!(storedPlayedAt > playedAt)) return item;
-    // A stored play from the future came from a device whose clock is ahead.
-    // Holding updates back behind it would freeze the book's progress on every
-    // other device until that time comes, so the update applies, as it did
-    // before this check.
-    if (storedPlayedAt > Date.now() / 1000) return item;
     // sync_operations skips playback-only updates, so this line is the only
     // trace when someone asks why their progress didn't move. Production logs
     // warn and above.

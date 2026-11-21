@@ -115,18 +115,6 @@ describe('LibraryService.updateObject — progress played before the stored play
     expect(r.last_play_date).toBe(900);
   });
 
-  it('applies an update when the stored play is from the future, from a device whose clock is ahead', async () => {
-    const tomorrow = Math.floor(Date.now() / 1000) + 86_400;
-    const { user, item, row } = await setup({ last_play_date: tomorrow });
-    const now = Math.floor(Date.now() / 1000);
-
-    await service.updateObject(user as any, 'Book.m4b', progress(130, now) as any, item.uuid!);
-
-    const r = await row();
-    expect(r.actual_time).toBe('130');
-    expect(r.last_play_date).toBe(now);
-  });
-
   it('checks by path too, for clients that send no uuid', async () => {
     const { user, row } = await setup();
 
