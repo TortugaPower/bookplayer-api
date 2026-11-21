@@ -2,10 +2,11 @@ import bodyParser from 'body-parser';
 import { NextFunction, Request, Response } from 'express';
 
 // Routes that parse their own JSON body, with a larger limit, once they've checked the
-// caller: POST /v1/library/status carries every uuid in the client's library. Everything
-// else keeps body-parser's 100 KB, so an unauthenticated request can't make the server
-// buffer and parse a large body.
-const OWN_BODY_ROUTES = new Set(['/v1/library/status']);
+// caller: POST /v1/library/status carries every uuid in the client's library, and
+// POST /v1/library/uuids up to 1,000 path → uuid pairs, about 114 KB at the average path
+// (72 bytes), over the default. Everything else keeps body-parser's 100 KB, so an
+// unauthenticated request can't make the server buffer and parse a large body.
+const OWN_BODY_ROUTES = new Set(['/v1/library/status', '/v1/library/uuids']);
 
 const defaultJsonBody = bodyParser.json();
 
