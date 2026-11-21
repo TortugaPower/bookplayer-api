@@ -697,7 +697,7 @@ export class LibraryService {
     // warn and above.
     this._logger.log(
       {
-        origin: 'LibraryService.updateObject',
+        origin: 'LibraryService.withoutStaleProgress',
         message: 'Kept the newer play: ignored progress played before it',
         data: { id_user: user.id_user, relativePath: cleanPath, uuid, playedAt, storedPlayedAt },
       },
