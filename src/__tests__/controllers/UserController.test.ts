@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import JWT from 'jsonwebtoken';
 import { UserController } from '../../controllers/UserController';
 import { UserEventEnum } from '../../types/user';
 
@@ -182,5 +183,63 @@ describe('UserController.initLogin', () => {
     expect(userService.tokenUser).toHaveBeenCalledWith(
       expect.objectContaining({ id_user: 7, email: 'new@example.com' }),
     );
+  });
+
+  describe('choosing the verifier', () => {
+    // Unverified-looking tokens: only their issuer is read to choose a verifier.
+    const idToken = (iss: string) => JWT.sign({ iss, sub: 'sub-1' }, 'not-a-real-key');
+    const login = (token_id: string, platform?: string) =>
+      controller.initLogin(
+        { body: { token_id }, headers: platform ? { 'x-platform': platform } : {} } as any,
+        makeRes(),
+      );
+
+    beforeEach(() => {
+      userService.verifyGoogleToken = jest
+        .fn<() => Promise<unknown>>()
+        .mockResolvedValue({ success: true, user: { userId: 'google-sub', email: 'a@b.com' } });
+      userService.verifyToken.mockResolvedValue({ email: 'a@b.com', sub: 'apple-sub' });
+      userService.getAuthMethodByExternalId.mockResolvedValue(null);
+      userService.getUser.mockResolvedValue(null);
+      userService.addNewUser.mockResolvedValue({ id_user: 9, email: 'a@b.com', external_id: 'uuid-9' });
+    });
+
+    it('verifies a Google token from the web with Google (it used to go to Apple)', async () => {
+      await login(idToken('https://accounts.google.com'), 'web');
+      expect(userService.verifyGoogleToken).toHaveBeenCalled();
+      expect(userService.verifyToken).not.toHaveBeenCalled();
+      expect(userService.addAuthMethod).toHaveBeenCalledWith(
+        expect.objectContaining({ auth_type: 'google', external_id: 'google-sub' }),
+      );
+    });
+
+    it("takes Google's issuer without the scheme too", async () => {
+      await login(idToken('accounts.google.com'), 'web');
+      expect(userService.verifyGoogleToken).toHaveBeenCalled();
+    });
+
+    it('keeps Android on Google, whatever the token looks like', async () => {
+      await login('opaque-token', 'android');
+      expect(userService.verifyGoogleToken).toHaveBeenCalledWith('opaque-token');
+      expect(userService.verifyToken).not.toHaveBeenCalled();
+    });
+
+    it('keeps an Apple token from the web on Apple', async () => {
+      await login(idToken('https://appleid.apple.com'), 'web');
+      expect(userService.verifyToken).toHaveBeenCalled();
+      expect(userService.verifyGoogleToken).not.toHaveBeenCalled();
+    });
+
+    it("refuses a token that claims Google but doesn't verify", async () => {
+      userService.verifyGoogleToken.mockResolvedValue({ success: false, error: 'bad signature' });
+      const res = makeRes();
+      await controller.initLogin(
+        { body: { token_id: idToken('https://accounts.google.com') }, headers: { 'x-platform': 'web' } } as any,
+        res,
+      );
+      expect(res.status).toHaveBeenCalledWith(422);
+      expect(res.json).toHaveBeenCalledWith({ message: 'Invalid google id' });
+      expect(userService.tokenUser).not.toHaveBeenCalled();
+    });
   });
 });

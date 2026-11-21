@@ -340,7 +340,7 @@ npx knex migrate:rollback
 | Method | Path | Description | Auth |
 |--------|------|-------------|------|
 | GET | `/` | Check auth status | Optional |
-| POST | `/login` | Apple ID login | No |
+| POST | `/login` | Apple or Google ID token login (the token's issuer picks the verifier; Android is always Google) | No |
 | GET | `/logout` | Logout | Yes |
 | POST | `/second_onboarding` | Onboarding flow | Yes |
 | POST | `/events` | Track user events | Yes |

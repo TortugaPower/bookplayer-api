@@ -4,6 +4,7 @@ import { UserEventEnum } from '../types/user';
 import moment from 'moment-timezone';
 import { SubscriptionService } from '../services/SubscriptionService';
 import { gte, valid } from 'semver';
+import { isGoogleIdToken } from '../utils/idToken';
 
 export class UserController {
   constructor(
@@ -57,7 +58,9 @@ export class UserController {
       email: string;
     };
 
-    if (platform === 'android') {
+    // Google or Apple: Android only signs in with Google, while the web sends
+    // either with `x-platform: web`, so its token's issuer decides.
+    if (platform === 'android' || isGoogleIdToken(token_id)) {
       const googleAuth = await this._userService.verifyGoogleToken(token_id);
       if (!googleAuth.success || !googleAuth.user.email) {
         res.status(422).json({ message: 'Invalid google id' });

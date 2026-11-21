@@ -33,6 +33,8 @@ export const Envs = () => {
       .prop('S3_BUCKET', S.string().required())
       .prop('S3_REGION', S.string().required())
       .prop('APPLE_CLIENT_ID', S.string().required())
+      // Comma-separated Google OAuth client ids whose ID tokens /user/login
+      // accepts: the Android app's and the web app's.
       .prop('GOOGLE_CLIENT_ID', S.string().required())
       .prop('APP_SECRET', S.string().required())
       .prop('REVENUECAT_HEADER', S.string().required())
