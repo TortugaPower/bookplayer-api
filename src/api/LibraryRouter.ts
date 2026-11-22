@@ -102,7 +102,9 @@ LibraryRouter.post('/upload/abort', checkSubscription, validateBody(abortUploadS
 LibraryRouter.get('/keys', checkSubscription, requireCloudData, (req, res, next) =>
   controller.getUserLibraryKeys(req, res).catch(next),
 );
-LibraryRouter.post('/uuids', checkSubscription, requireCloudData, (req, res, next) =>
+// Up to 1,000 path → uuid pairs: at the average path that's over the 100 KB default, so the
+// body is parsed here, once the caller's tier is known (server.ts leaves this path to the route)
+LibraryRouter.post('/uuids', checkSubscription, requireCloudData, largeJsonBody, (req, res, next) =>
   controller.postLibraryUuids(req, res).catch(next),
 );
 // The missing-items pass: the body is the client's whole library (see

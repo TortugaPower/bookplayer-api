@@ -30,7 +30,7 @@ export class Server {
 
     const app = express();
     // 100 KB, except the routes that parse their own larger body after their
-    // subscription check (POST /v1/library/status)
+    // subscription check (POST /v1/library/status and /v1/library/uuids)
     app.use(jsonBody);
     app.use(bodyParser.urlencoded({ extended: true }));
     app.use(compress());
