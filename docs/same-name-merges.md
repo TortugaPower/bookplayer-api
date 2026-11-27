@@ -24,7 +24,7 @@ device still holds the erased uuid the same way.
 
 ## The rule
 
-Decided with the maintainer on 2026-11-25 and 2026-11-26.
+Decided with the maintainer from 2026-11-25 to 2026-11-27.
 
 - **The item already at the key survives and keeps its uuid.** Other devices already know it, so only the
   device that caused the clash has to change, and it is online and getting the reply.
@@ -40,10 +40,12 @@ Decided with the maintainer on 2026-11-25 and 2026-11-26.
   between devices.
 - **Bookmarks:** both items' bookmarks are kept on the survivor.
 - **Replies list the merges** (`your uuid X is now Y`), and the apps switch to the survivor's uuid.
-- **A book and a container never merge.** They can't be one item, so that clash stays an error. The one
-  case seen (October 2026) came from a single device making a folder named exactly like a file and moving
-  the file into it; it goes away with uuid-based placement (items pointing at their parent's uuid instead
-  of being keyed by path), not with a stopgap here.
+- **A book and a container never merge.** They can't be one item, and this design adds nothing for that
+  clash: no new error, no rename, no wrap. They clash only because the path is the key, so the clash goes
+  away with uuid-based placement (items pointing at their parent's uuid instead of being keyed by path),
+  and anything added here would be removed then. Until then, a customer stuck on one is fixed by hand
+  (below). The one case seen (October 2026) came from a single device making a folder named exactly like
+  a file and moving the file into it.
 
 ## Pointers
 
@@ -68,25 +70,37 @@ row when it has one and the survivor otherwise:
 | `LibraryDB.getBookmarks` (by uuid) | Returns the survivor's bookmarks |
 | `LibraryDB.getItemsByUuids` (`/status`) | **Not followed, on purpose.** A merged uuid stays `unknown`, and both apps' missing-items pass reacts by matching the item by path and taking the survivor's uuid, so apps that never read a merge reply still switch over |
 
-Support can unstick a customer by hand with one insert, without changing any row another device relies
-on:
+### Fixing a stuck customer by hand
+
+When the clash was between two items of the same kind (two books, or two containers: folders and bound
+books), one insert unsticks the customer without changing any row another device relies on:
 
 ```sql
 INSERT INTO library_item_merges (user_id, merged_uuid, into_item_id)
 VALUES (<user_id>, '<the uuid the app is stuck on, lowercase>', <id_library_item of the row at that key>);
 ```
 
+**Same-kind clashes only.** A pointer from a folder's uuid to a book's row turns the app's next request
+into moving the book into itself, which the server rejects as an invalid destination, so the app stays
+stuck. A book-vs-container clash is fixed by hand instead: move the book's row inside the folder (its key
+becomes `<key>/<name>`), then insert the folder row the app asked for, at the original key with the app's
+uuid. The app's stuck move then finds the book already in place and succeeds.
+
 ## How it ships
 
 1. **Pointers and lookups** (this change): the table, and the lookups, update and delete above following
    pointers. Nothing writes pointers yet, so nothing changes until one is inserted.
 2. **Upload and uuid matching record merges:** `PUT /` on a same-kind row with another uuid records a
-   pointer and lists the merge in its reply; on a book-vs-container clash it answers `uuid_conflict` (409)
-   instead of today's 200 that turns into a 404 later. `POST /uuids` conflicts record a pointer too.
+   pointer and lists the merge in its reply, and `POST /uuids` conflicts record a pointer too. A
+   book-vs-container upload keeps today's behavior.
 3. **One rule for key rewrites:** move, rename, `folder_in_out` and upload-as-move stop choosing a
-   `collisionWinner`; a clash becomes a merge into the occupant, applying the rule above.
-4. **Backfill:** pointers for clashes that happened before step 2, found in `sync_operations`.
-5. **Apps:** iOS and Android adopt the survivor's uuid from each reply that lists a merge.
+   `collisionWinner`; a clash between items of the same kind becomes a merge into the occupant, applying
+   the rule above. A book meeting a container keeps today's behavior.
+4. **Apps:** iOS and Android adopt the survivor's uuid from each reply that lists a merge.
+
+There is no backfill: clashes from before step 2 are fixed by hand with the insert above (decided
+2026-11-27). With uuid-based placement, the check that finds a clash changes from "same key" to "same name
+under the same parent"; the merge itself carries over unchanged.
 
 ## Open questions
 
