@@ -181,8 +181,10 @@ export class LibraryController {
     try {
       const params = req.body;
       const user = req.user;
-      const content = (await this._libraryService.putObject(user, params)) ?? {};
-      return res.json({ content });
+      const { content, conflicts } = await this._libraryService.putObject(user, params);
+      // `conflicts` (POST /uuids shape): an upload that merged into the item
+      // already at its key, whose uuid the app should take from now on
+      return res.json({ content: content ?? {}, conflicts });
     } catch (err) {
       return this.sendLibraryError(res, err, 'LibraryController.putLibraryObject', req);
     }

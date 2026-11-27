@@ -371,7 +371,10 @@ All routes require auth + an active subscription (`checkSubscription`); most als
 
 A uuid that was merged into another item (two items at one key are one item: `docs/same-name-merges.md`) resolves
 to that item wherever the server looks an item up by uuid, except `POST /status`, which keeps reporting it unknown
-so the apps re-match it by path and take the survivor's uuid.
+so the apps re-match it by path and take the survivor's uuid. `PUT /` is where merges are recorded: an upload of
+the same kind of item onto a key another item holds, under a uuid with no row of its own, merges into that item and
+answers `conflicts: [{ key: <uuid sent>, uuid: <uuid kept> }]` (the `POST /uuids` shape) next to `content`; every
+other `PUT /` answers `conflicts: []`.
 
 | Method | Path | Purpose |
 |--------|------|---------|
