@@ -308,7 +308,7 @@ describe('LibraryService.putObject — re-uploading a legacy row', () => {
       synced: false,
     });
 
-    const result = await service.putObject(
+    const { content: result } = await service.putObject(
       { ...user, subscriptions: [SubscriptionTierEnum.PRO] } as any,
       {
         relativePath: 'Folder/Book.m4b',

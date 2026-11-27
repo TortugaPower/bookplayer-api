@@ -362,3 +362,13 @@ export interface MatchUuidsResult {
   applied: string[];
   conflicts: ItemMatchPayload[];
 }
+
+/**
+ * `PUT /`'s answer. `conflicts` lists, in the `POST /uuids` shape, an upload
+ * that merged into the item already at its key (docs/same-name-merges.md):
+ * `key` is the uuid the app sent, `uuid` the one the item keeps.
+ */
+export interface PutObjectResult {
+  content: LibraryItem | null;
+  conflicts: ItemMatchPayload[];
+}

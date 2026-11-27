@@ -58,7 +58,7 @@ describe('LibraryService.putObject — uuid fallback (treat as move)', () => {
       source_path: 'root/20260101000000_Book.m4b',
     });
 
-    const result = await service.putObject(
+    const { content: result } = await service.putObject(
       user as any,
       makeUploadParams({ relativePath: '0_FINISHED/Book.m4b', uuid }),
     );
@@ -89,7 +89,7 @@ describe('LibraryService.putObject — uuid fallback (treat as move)', () => {
     });
     fileExistsMock.mockResolvedValue(true as never);
 
-    const result = await service.putObject(
+    const { content: result } = await service.putObject(
       user as any,
       makeUploadParams({ relativePath: '0_FINISHED/Book.m4b', uuid }),
     );
@@ -232,7 +232,7 @@ describe('LibraryService.putObject — uuid fallback (treat as move)', () => {
       active: false,
     });
 
-    const result = await service.putObject(
+    const { content: result } = await service.putObject(
       user as any,
       makeUploadParams({ relativePath: 'New.m4b', uuid }),
     );

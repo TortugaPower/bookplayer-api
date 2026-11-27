@@ -9,6 +9,7 @@ import {
   User,
   ItemMatchPayload,
   MatchUuidsResult,
+  PutObjectResult,
   ExternalResource,
   ExternalResourceDb,
   SubscriptionTierEnum
@@ -387,7 +388,7 @@ export class LibraryService {
     }
   }
 
-  async putObject(user: User, params: LibraryItem): Promise<LibraryItem> {
+  async putObject(user: User, params: LibraryItem): Promise<PutObjectResult> {
     try {
       const { relativePath } = params;
 
@@ -408,8 +409,8 @@ export class LibraryService {
             },
           },
         });
-        // Return null - controller will treat as success
-        return null;
+        // No content - controller will treat as success
+        return { content: null, conflicts: [] };
       }
 
       // Parse incoming params into library object
@@ -423,7 +424,17 @@ export class LibraryService {
         exactly: true,
       });
       let itemDb = objectDB[0];
-      if (!itemDb) {
+      let conflicts: ItemMatchPayload[] = [];
+      if (itemDb) {
+        // The key is taken: the upload may be the same item added on another
+        // device, which merges into this one (docs/same-name-merges.md)
+        ({ occupant: itemDb, conflicts } = await this.mergeUploadIntoOccupant(
+          user,
+          params.uuid,
+          libObj,
+          itemDb,
+        ));
+      } else {
         // The key missed, but the client may be re-uploading an item it moved
         // locally (the move never reached us): if the uuid belongs to an
         // existing active item, honor it as a move — inserting would trip
@@ -444,8 +455,8 @@ export class LibraryService {
             itemDb,
             LibraryItemOutput.API,
           )) as LibraryItem;
-          
-          return earlyApiResponse;
+
+          return { content: earlyApiResponse, conflicts };
         }
         // Sign where the row says the bytes live. A legacy row (no source_path)
         // is read at its key everywhere else — the synced guard, multipart's
@@ -466,7 +477,7 @@ export class LibraryService {
 
       if (!user.subscriptions || !user.subscriptions.includes(SubscriptionTierEnum.PRO)) {
         apiResponse.url = null;
-        return apiResponse
+        return { content: apiResponse, conflicts };
       }
 
       const resourcePath = `${storagePrefix}/${libObj.source_path}`;
@@ -477,7 +488,7 @@ export class LibraryService {
       });
       apiResponse.url = url;
       apiResponse.expires_in = expires_in;
-      return apiResponse;
+      return { content: apiResponse, conflicts };
     } catch (err) {
       this._logger.log({
         origin: 'LibraryService.putObject',
@@ -489,6 +500,99 @@ export class LibraryService {
       if (err.statusCode) throw err;
       throw Error(err);
     }
+  }
+
+  /**
+   * An upload landed on a key another item already holds. Two items at one key
+   * are one item (docs/same-name-merges.md): when the upload is the same kind of
+   * item (a book, or a folder or bound book) under a uuid the server holds no
+   * row for, the item already there survives and keeps its uuid, the uploaded
+   * uuid becomes a pointer to it, and the more recent play wins. A row from
+   * before uuids has none to keep, so it takes the uploaded one, as
+   * `POST /uuids` does. Returns the occupant as it now is and the merge to
+   * report to the app.
+   *
+   * Left as before: a book against a folder or bound book (they can't be one
+   * item; that clash goes away with uuid-based placement), and an uploaded uuid
+   * with an active row of its own elsewhere (a move onto a taken key, step 3 of
+   * the doc). A pointer is only ever recorded for a uuid with no active row.
+   */
+  private async mergeUploadIntoOccupant(
+    user: User,
+    sentUuid: string | undefined,
+    incoming: LibraryItemDB,
+    occupant: LibraryItemDB,
+  ): Promise<{ occupant: LibraryItemDB; conflicts: ItemMatchPayload[] }> {
+    const unchanged = { occupant, conflicts: [] as ItemMatchPayload[] };
+    if (!isValidUUID(sentUuid)) return unchanged;
+    // iOS sends uuids uppercase; Postgres hands them back lowercase
+    const arriving = sentUuid.toLowerCase();
+    const held = occupant.uuid ? `${occupant.uuid}`.toLowerCase() : null;
+    if (held === arriving) return unchanged;
+
+    // A book and a container are never one item, so neither gets the other's uuid
+    const isBook = (type: unknown) => parseInt(`${type}`) === parseInt(LibraryItemType.BOOK);
+    if (incoming.type == null || isBook(incoming.type) !== isBook(occupant.type)) {
+      return unchanged;
+    }
+
+    const arrivingRows = this.requireLookup(
+      await this._libraryDB.getItemsByUuids(user.id_user, [arriving]),
+    );
+    if (arrivingRows.some((row) => row.active)) return unchanged;
+
+    if (held === null) {
+      const adopted = await this._libraryDB.adoptUuidIfMissing({
+        user_id: user.id_user,
+        id_library_item: occupant.id_library_item,
+        uuid: arriving,
+      });
+      return adopted ? { occupant: { ...occupant, uuid: arriving }, conflicts: [] } : unchanged;
+    }
+
+    // The rule POST / applies between devices: an upload played after the
+    // survivor's last play brings its listening state; an older one doesn't
+    const playedAt = Number(incoming.last_play_date);
+    const storedPlayedAt = Number(occupant.last_play_date);
+    const progress = Object.fromEntries(
+      Object.entries({
+        actual_time: incoming.actual_time,
+        percent_completed: incoming.percent_completed,
+        is_finish: incoming.is_finish,
+        last_play_date: incoming.last_play_date,
+      }).filter(([, value]) => value != null),
+    );
+    const bringsNewerPlay = playedAt > 0 && !(storedPlayedAt > playedAt);
+
+    let survivor = occupant;
+    const trx = await this.db.transaction();
+    try {
+      await this._libraryDB.recordMerge(
+        {
+          user_id: user.id_user,
+          merged_uuid: arriving,
+          into_item_id: occupant.id_library_item,
+        },
+        trx,
+      );
+      if (bringsNewerPlay) {
+        survivor =
+          (await this._libraryDB.setItemProgress(
+            {
+              user_id: user.id_user,
+              id_library_item: occupant.id_library_item,
+              progress,
+            },
+            trx,
+          )) ?? occupant;
+      }
+      await trx.commit();
+    } catch (err) {
+      await trx.rollback();
+      throw err;
+    }
+    // `key` in the spelling the app sent, so it finds its own uuid as is
+    return { occupant: survivor, conflicts: [{ key: sentUuid, uuid: held }] };
   }
 
   /**

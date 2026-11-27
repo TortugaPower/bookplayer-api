@@ -1032,6 +1032,61 @@ export class LibraryDB {
   }
 
   /**
+   * Gives a row from before uuids the uuid an app uploaded it with; a row that
+   * already has a uuid keeps it. Returns whether the row took it. Throws on a
+   * failed write, for the caller's own catch.
+   */
+  async adoptUuidIfMissing(
+    params: { user_id: number; id_library_item: number; uuid: string },
+    trx?: Knex.Transaction,
+  ): Promise<boolean> {
+    const db = trx || this.db;
+    const updated = await db('library_items')
+      .where({ user_id: params.user_id, id_library_item: params.id_library_item, active: true })
+      .whereNull('uuid')
+      .update({ uuid: params.uuid, updated_at: db.fn.now() });
+    return updated === 1;
+  }
+
+  /**
+   * Records a same-name merge (docs/same-name-merges.md): `merged_uuid` now
+   * names the row `into_item_id`. Recording it again re-points it, so a retry
+   * is harmless. Throws on a failed write: it runs inside the caller's
+   * transaction, which must roll back as a unit.
+   */
+  async recordMerge(
+    params: { user_id: number; merged_uuid: string; into_item_id: number },
+    trx: Knex.Transaction,
+  ): Promise<void> {
+    await trx('library_item_merges')
+      .insert(params)
+      .onConflict(['user_id', 'merged_uuid'])
+      .merge({ into_item_id: params.into_item_id });
+  }
+
+  /**
+   * Overwrites a row's listening state (position, progress, finished flag, play
+   * time). The caller decides it is the newer play. Throws on a failed write,
+   * for the caller's transaction.
+   */
+  async setItemProgress(
+    params: {
+      user_id: number;
+      id_library_item: number;
+      progress: Partial<
+        Pick<LibraryItemDB, 'actual_time' | 'percent_completed' | 'is_finish' | 'last_play_date'>
+      >;
+    },
+    trx: Knex.Transaction,
+  ): Promise<LibraryItemDB> {
+    const [row] = await trx('library_items')
+      .where({ user_id: params.user_id, id_library_item: params.id_library_item, active: true })
+      .update({ ...params.progress, updated_at: trx.fn.now() })
+      .returning('*');
+    return row;
+  }
+
+  /**
    * Confirms a finished multipart upload: the item is synced and, for a book
    * streamed in from a media server, its media-server resources are
    * 'downloaded'. A normal upload has none, so the second update touches

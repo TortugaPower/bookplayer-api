@@ -39,7 +39,8 @@ Decided with the maintainer from 2026-11-25 to 2026-11-27.
 - **Progress:** the most recently played position wins, the rule `withoutStaleProgress` already applies
   between devices.
 - **Bookmarks:** both items' bookmarks are kept on the survivor.
-- **Replies list the merges** (`your uuid X is now Y`), and the apps switch to the survivor's uuid.
+- **Replies list the merges** (`your uuid X is now Y`, in the `POST /uuids` conflict shape), and the
+  apps switch to the survivor's uuid.
 - **A book and a container never merge.** They can't be one item, and this design adds nothing for that
   clash: no new error, no rename, no wrap. They clash only because the path is the key, so the clash goes
   away with uuid-based placement (items pointing at their parent's uuid instead of being keyed by path),
@@ -88,11 +89,23 @@ uuid. The app's stuck move then finds the book already in place and succeeds.
 
 ## How it ships
 
-1. **Pointers and lookups** (this change): the table, and the lookups, update and delete above following
-   pointers. Nothing writes pointers yet, so nothing changes until one is inserted.
-2. **Upload and uuid matching record merges:** `PUT /` on a same-kind row with another uuid records a
-   pointer and lists the merge in its reply, and `POST /uuids` conflicts record a pointer too. A
-   book-vs-container upload keeps today's behavior.
+1. **Pointers and lookups** (shipped): the table, and the lookups, update and delete above following
+   pointers.
+2. **Upload records merges** (this change): when `PUT /` lands on a key another item holds
+   (`LibraryService.mergeUploadIntoOccupant`):
+   - same kind (book and book, or two containers) under a uuid with no active row of its own: the upload
+     merges in. The pointer is recorded (a retry re-records it), the upload's listening state replaces
+     the survivor's only when it was played later, and the reply lists the merge as
+     `conflicts: [{ key: <uuid as sent>, uuid: <the survivor's uuid> }]`, the shape `POST /uuids` already
+     answers with and both apps already apply. Every other `PUT /` answers `conflicts: []`;
+   - a row from before uuids has none to keep, so an upload of the same kind gives it its uuid, as
+     `POST /uuids` does;
+   - a book against a container, or an uploaded uuid that has an active row elsewhere (a move onto a
+     taken key, step 3), keeps today's behavior.
+
+   `POST /uuids` records no pointer (decided 2026-11-27): both apps already move their library and
+   queued tasks to the uuid its conflicts name, so nothing would ever use one, and it is sent paths
+   without item kinds, so it could record a book-vs-container pointer.
 3. **One rule for key rewrites:** move, rename, `folder_in_out` and upload-as-move stop choosing a
    `collisionWinner`; a clash between items of the same kind becomes a merge into the occupant, applying
    the rule above. A book meeting a container keeps today's behavior.
