@@ -73,6 +73,10 @@ export class LibraryDB {
    * (`library_items_uuid_user_unique`, `library_items_uuid_user_inactive`), in
    * one UNION ALL statement so both read the same snapshot: a row changing state
    * between two statements would show up in neither.
+   *
+   * A merged uuid (docs/same-name-merges.md) has no row of its own, so it stays
+   * unknown to `/status` on purpose, unlike the item lookups: both apps' missing-
+   * items pass then matches the item by path and takes the survivor's uuid.
    */
   async getItemsByUuids(
     user_id: number,
@@ -158,7 +162,13 @@ export class LibraryDB {
     }
   }
 
-  /** `null` means the query failed; `[]` means no such uuid for this user. */
+  /**
+   * `null` means the query failed; `[]` means no such uuid for this user.
+   *
+   * A uuid with no active row of its own may have been merged into another
+   * item (docs/same-name-merges.md): it then resolves to the item it merged
+   * into, so every request naming the old uuid lands on the merged item.
+   */
   async getLibraryByUuid(
     user_id: number,
     uuid: string,
@@ -167,17 +177,25 @@ export class LibraryDB {
   ): Promise<LibraryItemDB[] | null> {
     try {
       const db = trx || this.db;
+      const withFilter = (builder: Knex.QueryBuilder) => {
+        if (!!filter?.rawFilter) {
+          builder.whereRaw(filter?.rawFilter);
+        } else {
+          builder.where(true);
+        }
+      };
       const objects = await db('library_items as li')
         .where({ user_id, active: true, uuid })
-        .andWhere((builder) => {
-          if (!!filter?.rawFilter) {
-            builder.whereRaw(filter?.rawFilter);
-          } else {
-            builder.where(true);
-          }
-        })
+        .andWhere(withFilter)
         .orderBy('order_rank', 'asc');
-      return objects;
+      if (objects.length > 0) return objects;
+
+      const survivorId = await this.mergedInto(user_id, uuid, db);
+      if (survivorId === undefined) return objects;
+      return await db('library_items as li')
+        .where({ user_id, active: true, id_library_item: survivorId })
+        .andWhere(withFilter)
+        .orderBy('order_rank', 'asc');
     } catch (err) {
       this._logger.log({
         origin: 'LibraryDB.getLibraryByUuid',
@@ -189,11 +207,30 @@ export class LibraryDB {
   }
 
   /**
+   * The row id a merged uuid now names (docs/same-name-merges.md), or
+   * `undefined` when the uuid was never merged. Throws on a failed read, for
+   * the caller's own catch.
+   */
+  private async mergedInto(
+    user_id: number,
+    uuid: string,
+    db: Knex | Knex.Transaction,
+  ): Promise<number | undefined> {
+    const pointer = await db('library_item_merges')
+      .where({ user_id, merged_uuid: uuid })
+      .first('into_item_id');
+    return pointer?.into_item_id;
+  }
+
+  /**
    * Whether the user once had this item and deleted it: a soft-deleted row
    * with that uuid (or, without one, that key). `null` means the query failed.
    * The uuid lookup is served by `library_items_uuid_user_inactive`, the key
    * lookup by `library_items_key_index` (both declared in migration
    * 20260924120000).
+   *
+   * A merged uuid has no row of its own: it counts as deleted when the item it
+   * merged into was deleted (docs/same-name-merges.md).
    */
   async hasDeletedItem(
     user_id: number,
@@ -202,14 +239,26 @@ export class LibraryDB {
   ): Promise<boolean | null> {
     try {
       const db = trx || this.db;
+      const byUuid = isValidUUID(ref.uuid);
       const query = db('library_items').where({ user_id, active: false });
-      if (isValidUUID(ref.uuid)) {
+      if (byUuid) {
         query.where('uuid', ref.uuid);
       } else {
         query.where('key', (ref.key ?? '').replace(/\/+$/, ''));
       }
       const row = await query.first('id_library_item');
-      return !!row;
+      if (row || !byUuid) return !!row;
+
+      const deletedSurvivor = await db('library_item_merges as m')
+        .join('library_items as li', 'li.id_library_item', 'm.into_item_id')
+        .where({
+          'm.user_id': user_id,
+          'm.merged_uuid': ref.uuid,
+          'li.user_id': user_id,
+          'li.active': false,
+        })
+        .first('li.id_library_item');
+      return !!deletedSurvivor;
     } catch (err) {
       this._logger.log({
         origin: 'LibraryDB.hasDeletedItem',
@@ -282,10 +331,10 @@ export class LibraryDB {
       const { user_id, uuid, active, exactly } = params;
       if (!isValidUUID(uuid)) throw Error(`Invalid UUID ${uuid}. Wrong format`);
       const db = trx || this.db;
-      const targetItem = await db('library_items')
-        .select('key')
-        .where({ user_id, uuid, active: true })
-        .first();
+      // Through getLibraryByUuid so a merged uuid deletes the item it merged into
+      const found = await this.getLibraryByUuid(user_id, uuid, undefined, trx);
+      if (found === null) throw Error('Could not look up the item to delete');
+      const targetItem = found[0];
 
       if (!targetItem) return [];
 
@@ -728,12 +777,24 @@ export class LibraryDB {
         },
         {},
       );
-      const whereClause = isValidUUID(uuid)
+      const byUuid = isValidUUID(uuid);
+      const whereClause = byUuid
         ? { user_id, uuid: uuid as string, active: true }
         : { user_id, key, active: true };
-      const updatedCount = await db('library_items')
+      let updatedCount = await db('library_items')
         .update(updateObject)
         .where(whereClause);
+      if (updatedCount === 0 && byUuid) {
+        // A merged uuid has no row of its own: the update belongs to the item
+        // it merged into (docs/same-name-merges.md). Only looked up on a miss,
+        // so the hot path (progress updates) keeps its single statement.
+        const survivorId = await this.mergedInto(user_id, uuid as string, db);
+        if (survivorId !== undefined) {
+          updatedCount = await db('library_items')
+            .update(updateObject)
+            .where({ user_id, id_library_item: survivorId, active: true });
+        }
+      }
 
       if (updatedCount !== 1)
         throw new Error(
@@ -789,8 +850,12 @@ export class LibraryDB {
       const filter: (number | string)[] = [user_id];
       let whereFilter = '';
       if (uuid && isValidUUID(uuid)) {
-        filter.push(uuid);
-        whereFilter += ' and li.uuid=? ';
+        // A merged uuid names the item it merged into (docs/same-name-merges.md)
+        filter.push(uuid, user_id, uuid);
+        whereFilter += ` and (li.uuid=? or li.id_library_item = (
+          select m.into_item_id from library_item_merges m
+          where m.user_id=? and m.merged_uuid=?
+        )) `;
       } else if (key) {
         filter.push(key);
         whereFilter += ' and li.key=? ';

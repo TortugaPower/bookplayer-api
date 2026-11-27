@@ -369,6 +369,10 @@ never upload.
 
 All routes require auth + an active subscription (`checkSubscription`); most also require `requireCloudData`.
 
+A uuid that was merged into another item (two items at one key are one item: `docs/same-name-merges.md`) resolves
+to that item wherever the server looks an item up by uuid, except `POST /status`, which keeps reporting it unknown
+so the apps re-match it by path and take the survivor's uuid.
+
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/` | List / resolve items. **`uuid` names the item; a trailing `/` on `relativePath` asks for its contents.** A valid uuid is authoritative (not found → `[]`, no path fallback); a folder or bound book resolved by uuid with a trailing slash lists its children by the *server-side* key. No uuid → path lookup. `sign=true` presigns URLs (PRO only). A failed DB read is a 500, never an empty library. |

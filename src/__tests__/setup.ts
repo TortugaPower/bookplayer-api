@@ -141,6 +141,15 @@ export async function createTestLibraryItem(
   return row;
 }
 
+// Helper to record a same-name merge (docs/same-name-merges.md): `merged_uuid`
+// now names the row `into_item_id`.
+export async function createTestMerge(
+  trx: Knex.Transaction,
+  params: { user_id: number; merged_uuid: string; into_item_id: number },
+): Promise<void> {
+  await trx('library_item_merges').insert(params);
+}
+
 // Helper to create test external_resources rows. Columns are snake_case to
 // match the create_external_resource_table migration.
 export async function createTestExternalResource(
